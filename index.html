@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Rally Pixel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#101410">
+<meta name="description" content="Rally Pixel - a pixel-art rally time-trial game. Race gravel, tarmac and snow stages, earn credits, upgrade your car in the garage.">
+</head>
+<body>
+<div id="app">
+  <canvas id="game"></canvas>
+
+  <!-- ============ HUD ============ -->
+  <div id="hud" class="hidden">
+    <div id="hud-timer" class="hud-box"><div class="t" id="t-time">0:00.00</div><div class="d" id="t-target">TGT 0:00</div></div>
+    <div id="hud-left" class="hud-box">
+      <div class="nm" id="h-stage">STAGE</div>
+      <div class="nm" style="margin-top:2px">PROGRESS</div><div class="meter"><i id="h-prog"></i></div>
+      <div class="nm" style="margin-top:3px">DAMAGE</div><div class="meter"><i id="h-dmg" class="dmg"></i></div>
+      <div class="nm" style="margin-top:3px">SURFACE <b id="h-surf" style="color:var(--text)">GRAVEL</b></div>
+    </div>
+    <div id="hud-speed" class="hud-box"><div class="v" id="h-kmh">0</div><div class="u">KM/H · <span id="h-gear">1</span></div></div>
+    <div id="hud-note"><div class="arrow" id="n-arrow">&#8598;</div><div class="txt" id="n-text">SHARP LEFT</div></div>
+    <div id="hud-split"></div>
+    <div id="big-msg"></div>
+  </div>
+
+  <!-- ============ touch controls ============ -->
+  <div id="controls" class="hidden">
+    <div class="pad" id="p-left">&#9664;</div>
+    <div class="pad" id="p-right">&#9654;</div>
+    <div class="pad" id="p-hbrake">H-BRAKE</div>
+    <div class="pad" id="p-gas">GAS</div>
+    <div class="pad" id="p-pause">II</div>
+    <div id="tilt-bar" class="hidden"><i id="tilt-ind"></i></div>
+  </div>
+
+  <!-- ============ main menu ============ -->
+  <div class="screen" id="screen-menu">
+    <div id="menu-logo">
+      <canvas id="menu-car" width="120" height="120" style="width:clamp(64px,17vh,120px);height:clamp(64px,17vh,120px)"></canvas>
+      <h1 class="title">RALLY PIXEL</h1>
+      <p class="subtitle">GRAVEL &middot; TARMAC &middot; SNOW</p>
+    </div>
+    <div id="menu-buttons">
+      <button class="btn primary" data-go="stages">PLAY</button>
+      <button class="btn" data-go="garage">GARAGE</button>
+      <button class="btn" data-go="settings">SETTINGS</button>
+    </div>
+    <div class="row" style="margin-top:6px;font-size:11px;letter-spacing:1px">
+      <span class="muted" style="color:var(--muted)">CREDITS</span> <span class="money" id="menu-money">0</span>
+    </div>
+    <div id="menu-foot">TIME-TRIAL RALLY &middot; TAP PLAY TO START A STAGE</div>
+  </div>
+
+  <!-- ============ stage select ============ -->
+  <div class="screen hidden" id="screen-stages">
+    <div class="row spread">
+      <div><h1 class="title" style="font-size:clamp(15px,3.2vh,24px)">SELECT STAGE</h1></div>
+      <div class="row"><span class="money" id="stages-money">0</span><button class="btn small" data-go="menu">BACK</button></div>
+    </div>
+    <div class="grow scroll"><div id="stage-list"></div></div>
+  </div>
+
+  <!-- ============ garage ============ -->
+  <div class="screen hidden" id="screen-garage">
+    <div class="row spread" style="margin-bottom:6px">
+      <h1 class="title" style="font-size:clamp(15px,3.2vh,24px)">GARAGE</h1>
+      <div class="row"><span class="money" id="garage-money">0</span><button class="btn small" data-go="menu">BACK</button></div>
+    </div>
+    <div id="garage-body">
+      <div id="garage-left" class="card">
+        <canvas id="car-canvas"></canvas>
+        <div id="car-name">CAR</div>
+        <div id="car-stats"></div>
+      </div>
+      <div id="garage-right">
+        <div id="tabs">
+          <button class="btn small tab active" data-tab="upgrades">UPGRADES</button>
+          <button class="btn small tab" data-tab="tires">TIRES</button>
+          <button class="btn small tab" data-tab="paint">PAINT</button>
+          <button class="btn small tab" data-tab="cars">CARS</button>
+        </div>
+        <div id="tab-body" class="card scroll grow"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ settings ============ -->
+  <div class="screen hidden" id="screen-settings">
+    <div class="row spread" style="margin-bottom:6px">
+      <h1 class="title" style="font-size:clamp(15px,3.2vh,24px)">SETTINGS</h1>
+      <button class="btn small" data-go="menu">BACK</button>
+    </div>
+    <div class="card grow scroll" style="padding:4px 10px" id="settings-body"></div>
+  </div>
+
+  <!-- ============ results ============ -->
+  <div class="screen hidden" id="screen-results" style="align-items:center;justify-content:center;gap:10px">
+    <h1 class="title" id="res-title">STAGE COMPLETE</h1>
+    <div class="card" style="min-width:min(360px,88vw)"><div id="res-rows"></div></div>
+    <div class="row" id="res-buttons"></div>
+  </div>
+
+  <!-- ============ pause ============ -->
+  <div id="pause-overlay" class="hidden">
+    <h1 class="title">PAUSED</h1>
+    <div class="row">
+      <button class="btn primary" id="pause-resume">RESUME</button>
+      <button class="btn" id="pause-restart">RESTART</button>
+      <button class="btn" id="pause-quit">QUIT</button>
+    </div>
+  </div>
+
+  <div id="rotate"><div class="ph"></div><div class="title" style="font-size:18px">ROTATE YOUR DEVICE</div><div class="subtitle">RALLY PIXEL PLAYS IN LANDSCAPE</div></div>
+</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

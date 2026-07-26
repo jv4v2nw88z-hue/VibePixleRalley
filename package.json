@@ -1,0 +1,15 @@
+{
+  "name": "rally-pixel",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Pixel-art rally time-trial game — gravel, tarmac and snow stages, pacenotes, surface-specific physics and a garage upgrade tree.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^8.1.5"
+  }
+}
