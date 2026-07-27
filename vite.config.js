@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  plugins: [],
   // Relative base so the build works from a domain root, a project
   // subpath, or straight off the filesystem.
   base: './',
