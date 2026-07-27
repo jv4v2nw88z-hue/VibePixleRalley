@@ -22,25 +22,27 @@
       <div class="nm" style="margin-top:3px">DAMAGE</div><div class="meter"><i id="h-dmg" class="dmg"></i></div>
       <div class="nm" style="margin-top:3px">SURFACE <b id="h-surf" style="color:var(--text)">GRAVEL</b></div>
     </div>
-    <!-- backdrop tying the whole dash band together, behind the controls -->
-    <div id="dash-rail"></div>
-    <!-- instrument cluster: pedals, tacho, gear + lamps, speedo. All canvas. -->
+    <!-- The dash: one edge-to-edge canvas carrying every instrument and
+         every control's art — switchgear, pedals, gear ladder, tacho,
+         centre stack, speedo, lamps, handbrake, throttle. -->
     <div id="hud-cluster"><canvas id="cluster-cv"></canvas></div>
     <div id="hud-note"><div class="arrow" id="n-arrow">&#8598;</div><div class="txt" id="n-text">SHARP LEFT</div></div>
     <div id="hud-split"></div>
     <div id="big-msg"></div>
   </div>
 
-  <!-- ============ touch controls ============ -->
+  <!-- ============ touch controls ============
+       Every control's art is painted on the dash canvas above; these are
+       only the touch targets, parked over their painted zones by JS so the
+       panel reads as one object while each control stays separately
+       tappable. Transparent by design — .zone carries no styling. -->
   <div id="controls" class="hidden">
-    <!-- steering rockers, drawn as chrome-housed buttons like the dash -->
-    <div class="pad rocker" id="p-left"><canvas id="steer-l-cv"></canvas></div>
-    <div class="pad rocker" id="p-right"><canvas id="steer-r-cv"></canvas></div>
-    <div class="pad lever" id="p-hbrake"><canvas id="hbrake-cv"></canvas><small>HANDBRAKE</small></div>
-    <div class="pad" id="p-gas">GAS</div>
-    <!-- paddles sit on the outer edges of the dash: left drops a gear, right takes one -->
-    <div class="pad paddle" id="p-shiftdn"><canvas id="pad-dn-cv"></canvas></div>
-    <div class="pad paddle" id="p-shiftup"><canvas id="pad-up-cv"></canvas></div>
+    <div class="pad zone" id="p-left"></div>
+    <div class="pad zone" id="p-right"></div>
+    <div class="pad zone" id="p-hbrake"></div>
+    <div class="pad zone" id="p-gas"></div>
+    <div class="pad zone" id="p-shiftdn"></div>
+    <div class="pad zone" id="p-shiftup"></div>
     <div class="pad" id="p-pause">II</div>
     <div id="tilt-bar" class="hidden"><i id="tilt-ind"></i></div>
   </div>

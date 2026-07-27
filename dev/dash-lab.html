@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dash lab</title>
+<style>
+  body{background:#101010;color:#ccc;font:12px monospace;margin:0;padding:8px}
+  figure{margin:0 0 10px}
+  canvas{display:block;background:#000;image-rendering:pixelated}
+  figcaption{padding:2px 0;color:#7a7a7a}
+</style>
+</head>
+<body>
+<!-- Development harness only. Renders each dash element at the reference
+     image's own scale so a screenshot can be diffed against the reference
+     crop. Never part of the game build — index.html is the only entry. -->
+<div id="out"></div>
+<script type="module">
+import * as D from '../src/dash.js';
+
+const out = document.getElementById('out');
+function cell(id, w, h, draw){
+  const f = document.createElement('figure');
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h; c.id = id;
+  f.appendChild(c);
+  const cap = document.createElement('figcaption');
+  cap.textContent = id + '  ' + w + 'x' + h;
+  f.appendChild(cap);
+  out.appendChild(f);
+  const g = c.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  draw(g, w, h);
+}
+
+/* Reference geometry: panel 2398x450, both dials R=205.5, centres at
+   (967.5,228) tacho and (1498,228) speedo. */
+const H = 450, R = 205.5;
+
+cell('panel', 600, H, (g,w,h) => D.drawPanelBase(g, w, h));
+
+cell('tach', 460, H, (g,w,h) => {
+  D.drawPanelBase(g, w, h);
+  D.drawGauge(g, w/2, 228, R, {
+    min:0, max:11, majors:11, minors:2, redFrom:9.3,
+    label:'TYPE R', sub:'X1000', num:D.DC.numTach
+  });
+  D.drawNeedle(g, w/2, 228, R, D.gaugeAngle(5, 0, 11, 11));
+});
+
+cell('speedo', 460, H, (g,w,h) => {
+  D.drawPanelBase(g, w, h);
+  D.drawGauge(g, w/2, 228, R, {
+    min:0, max:240, majors:8, minors:2, label:'KMH', num:D.DC.numSpeed
+  });
+  D.drawNeedle(g, w/2, 228, R, D.gaugeAngle(57, 0, 240, 8));
+});
+
+cell('readout', 220, 120, (g,w,h) => {
+  D.drawPanelBase(g, w, h);
+  D.drawReadout(g, 12, 20, 152, 80, 69, 'KMH');
+});
+
+cell('gear', 300, 180, (g,w,h) => {
+  D.drawPanelBase(g, w, h);
+  D.drawRevLadder(g, 26, 20, 128, 112, 1);
+  D.drawGearWord(g, 172, 22, 4);
+  D.drawGearState(g, 172, 78, 4, 'N');
+});
+
+cell('pedals', 420, 220, (g,w,h) => {
+  D.drawPanelBase(g, w, h);
+  D.drawPedal(g, 20, 22, 155, 165, 0);
+  D.drawPedal(g, 215, 22, 155, 165, 0.6);
+});
+
+cell('throttle', 220, 360, (g,w,h) => {
+  D.drawPanelBase(g, w, h);
+  D.drawPedal(g, 34, 14, 140, 328, 0, {taper:0.05, lean:0.10});
+});
+
+cell('paddles', 420, 180, (g,w,h) => {
+  D.drawPanelBase(g, w, h);
+  D.drawPaddle(g, 26, 18, 124, 98, false, false, 0, false);
+  D.drawPaddle(g, 240, 18, 124, 98, true, true, 0, false);
+});
+
+cell('steer', 340, 170, (g,w,h) => {
+  D.drawPanelBase(g, w, h);
+  D.drawPushButton(g, 84, 78, 62, {arrow:'left'});
+  D.drawPushButton(g, 240, 78, 62, {arrow:'right', press:true});
+});
+
+cell('handbrake', 200, 200, (g,w,h) => {
+  D.drawPanelBase(g, w, h);
+  D.drawHandbrake(g, 20, 20, 160, 160, 0);
+});
+
+cell('lamps', 320, 140, (g,w,h) => {
+  D.drawPanelBase(g, w, h);
+  D.drawLampPanel(g, 20, 30, 260, 78, [
+    {kind:'engine', col:D.DC.amber}, {kind:'temp', col:D.DC.red},
+    {kind:'abs', col:D.DC.amber},    {kind:'beam', col:D.DC.green}
+  ]);
+  D.drawTellTales(g, 20, 6, 120, 18, true, false);
+});
+
+/* full assembled panel at reference scale, for the final comparison */
+cell('full', 2398, 450, (g,w,h) => {
+  D.drawPanelBase(g, w, h);
+  D.drawPushButton(g, 205, 90, 62, {arrow:'left'});
+  D.drawPedal(g, 95, 215, 165, 190, 0);
+  D.drawPedal(g, 290, 215, 165, 190, 0);
+  D.drawRevLadder(g, 540, 300, 130, 140, 0.8);
+  D.drawGearWord(g, 700, 312, 5);
+  D.drawGearState(g, 700, 366, 5, 3);
+  D.drawPaddle(g, 622, 96, 124, 108, false, false, 0, false);
+  D.drawGauge(g, 967.5, 228, R, {
+    min:0, max:11, majors:11, minors:2, redFrom:9.3,
+    label:'TYPE R', sub:'X1000', num:D.DC.numTach});
+  D.drawNeedle(g, 967.5, 228, R, D.gaugeAngle(5, 0, 11, 11));
+  D.drawTellTales(g, 1198, 30, 130, 60, true, true);
+  D.drawReadout(g, 1195, 355, 152, 80, 69, 'KMH');
+  D.drawHazard(g, 1240, 315, 34, true);
+  D.drawGauge(g, 1498, 228, R, {
+    min:0, max:240, majors:8, minors:2, label:'KMH', num:D.DC.numSpeed});
+  D.drawNeedle(g, 1498, 228, R, D.gaugeAngle(57, 0, 240, 8));
+  D.drawPaddle(g, 1722, 100, 124, 108, true, true, 0, false);
+  D.drawMiniDial(g, 1850, 282, 54, 0.3);
+  D.drawLampPanel(g, 1800, 352, 224, 78, [
+    {kind:'engine', col:D.DC.amber}, {kind:'temp', col:D.DC.red},
+    {kind:'abs', col:D.DC.amber}, {kind:'beam', col:D.DC.green}]);
+  D.drawHandbrake(g, 2050, 250, 120, 180, 0);
+  D.drawPedal(g, 2192, 87, 160, 333, 0, {taper:0.16, cell:56});
+});
+
+window.__labReady = true;
+</script>
+</body>
+</html>

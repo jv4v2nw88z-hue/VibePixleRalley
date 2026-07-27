@@ -32,8 +32,10 @@ The build uses a relative `base`, so it works from a domain root or a project su
 ```
 index.html       page shell and DOM (HUD, menus, garage, touch controls)
 src/main.js      the whole game — sprites, track builder, physics, UI
+src/dash.js      instrument-panel art: palette, pixel font and painters
 src/style.css    retro rally styling for the HUD and menu screens
 vite.config.js   build config (output to /dist)
+dev/             screenshot harnesses for working on the dash (not shipped)
 ```
 
 ## The loop
@@ -70,26 +72,52 @@ corner. Red notes are the ones that will hurt.
 | Steer | on-screen ◀ / ▶ |
 | Throttle | `GAS` (or switch to auto throttle in Settings) |
 | Handbrake | the lever on the right — locks the rears for hairpins, and reverses when stopped |
-| Shift | the paddles on the outer edges of the dash: `−` bottom left drops a gear, `+` bottom right takes one (manual gearbox only) |
+| Shift | the blades either side of the dash: `−` on the left drops a gear, `+` on the right takes one (manual gearbox only) |
 | Pause | `II`, top right |
 
 ## The dash
 
-The instrument binnacle along the bottom of the screen is one canvas, drawn from scratch
-every frame: a footwell with live brake and throttle pedals, an analog tachometer reading
-in thousands of rpm with the redline banded in red at 7, a gear panel with a shift bar, and
-an analog speedometer with a digital km/h readout. Chrome bezels, near-black glass and thin
-red pointers. The speedometer scales itself to the car you are driving. Three warning lamps
-— coolant, check-engine, brake — pick up on a cooked engine, a battered car and the
-handbrake, purely for atmosphere.
+The whole bottom band is a **single canvas** spanning the viewport edge to edge — one slab of
+moulding with no gaps between the control zones. Left to right: the steering switchgear, the
+shift-down blade, the pedal box, the rev ladder and gear legends, the tachometer, the centre
+stack with its tell-tales and digital km/h readout, the speedometer, the warning lamps, the
+handbrake, the shift-up blade and the throttle pedal.
 
-The dash is held to under a fifth of the screen height and pinned to the bottom edge, and
-the steering pads, shifter blades and handbrake line up on the same baseline so the whole
-band reads as one dashboard. It has to stay small: this is a chase cam, and the camera aims
-at a point *ahead* of the car, which means the car itself is drawn that far down the screen
-and rides lower the faster you go. So the camera also watches where the car will land and
-lifts its focal point only as far as it takes to keep it above the dash — at low speed the
-framing is untouched.
+Every control's art lives on that shared panel, but each one keeps its own transparent hit
+box parked exactly over its painted zone, so the dash reads as one object while the touch
+targets stay separate. The boxes claim the dead moulding around their art and run the full
+height of the panel, so no thumb has to be precise about a 25px pedal.
+
+The art is in `src/dash.js` and was matched to a Pixel Car Racer dashboard by sampling the
+reference image directly — bezel gradient, dial face, tick ring, numeral and needle colours,
+and the proportions of every part as fractions of the gauge radius. The notable numbers:
+
+| Part | Value |
+|---|---|
+| Bezel | vertical gradient `#959595` top → `#6d6d6d` centreline → `#545559` bottom, 0.082 R thick |
+| Dial face | flat `#1e1e1e` under a `#111111` inner shadow from 0.845 to 0.918 R |
+| Tick ring | `#9d9d9d` at 0.833 R, majors `#c8c8c8`, minors `#6a6a6a` |
+| Numerals | tacho `#b2b3e3`, speedo `#c9c9c9`, glyph centres at 0.700 R |
+| Needle | `#d2453c`, 0.66 R long, 0.068 R at the hub tapering to 0.039 R |
+| Redline | `#b92c23`, banded 0.778 → 0.886 R |
+
+Both dials start at 30° and gain 30° per division, exactly as the reference does, so the
+speedometer sweeps 240° in eight steps and the tacho 270° in nine. The speedometer scales
+itself to the car you are driving, and thins its labelling out when the dial gets small
+enough that three-digit numbers would collide. Four warning lamps — check-engine, coolant,
+ABS and beams — pick up on a battered car, a cooked engine and the handbrake, purely for
+atmosphere.
+
+The panel is held to under a fifth of the screen height and sits on the bottom edge. It has
+to stay short: this is a chase cam, and the camera aims at a point *ahead* of the car, which
+means the car itself is drawn that far down the screen and rides lower the faster you go. So
+the camera also watches where the car will land and lifts its focal point only as far as it
+takes to keep it above the dash — at low speed the framing is untouched.
+
+Cost control: the parts that never move — panel shell, dial faces, readout moulding, gear
+legend — are painted once into an offscreen bitmap at device resolution and blitted as one
+image per frame. The switchgear is cached as small sprites keyed on its quantised state. A
+frame is a couple of blits plus the needles, digits and ladder as plain rectangles.
 
 **Tilt** — enable in Settings (iOS asks for motion permission). Steering comes from the
 phone's tilt; gas and handbrake stay on screen. Hold the phone how you want to drive, then
