@@ -179,9 +179,12 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 #hud-cluster canvas{display:block;}
 /* the rail ties the binnacle, pedals, paddles and lever into one dash
    instead of separate boxes floating at the screen edges. Purely a
-   backdrop — it fades out upwards so the road still reads through it. */
+   backdrop — it fades out upwards so the road still reads through it.
+   Its height is the FLAT BAR only, not the whole cluster: the dials and
+   the steering buttons stand above this line and break it, which is what
+   gives the dash its silhouette instead of one full-width rectangle. */
 #dash-rail{position:absolute;left:0;right:0;pointer-events:none;
-  bottom:0;height:calc(var(--cluster-h, 76px) + 16px + env(safe-area-inset-bottom));
+  bottom:0;height:calc(var(--dash-bar-h, 52px) + 4px + env(safe-area-inset-bottom));
   background:
     linear-gradient(180deg, rgba(176,196,224,.16) 0 1px, rgba(176,196,224,0) 1px),
     linear-gradient(180deg, rgba(6,9,13,.10) 0%, rgba(6,9,13,.36) 45%, rgba(4,6,9,.62) 100%);
@@ -221,12 +224,14 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 }
 .pad.act{background:linear-gradient(180deg,rgba(255,196,87,.55),rgba(224,146,26,.5));
   border-color:#ffd487;color:#1a1200;}
-/* left thumb: shifter blade outboard, then the two steering rockers.
-   The rockers carry their own chrome housing on canvas, so the pad itself
-   is just the tap target — no border, no fill of its own. */
+/* left thumb: shifter blade outboard, then the two steering buttons.
+   The buttons carry their own raised chrome mount on canvas, so the pad
+   itself is just the tap target — no border, no fill, and no size of its
+   own: it shrink-wraps the canvas, which is cut tall enough for the button
+   head to stand clear of the bar. */
 #p-shiftdn{left:calc(6px + env(safe-area-inset-left));}
-#p-left{left:calc(50px + env(safe-area-inset-left));width:72px;height:62px;}
-#p-right{left:calc(126px + env(safe-area-inset-left));width:72px;height:62px;}
+#p-left{left:calc(50px + env(safe-area-inset-left));}
+#p-right{left:calc(126px + env(safe-area-inset-left));}
 .pad.rocker{background:none;border:none;box-shadow:none;padding:0;}
 .pad.rocker canvas{image-rendering:pixelated;display:block;}
 .pad.rocker.act{background:none;border:none;}

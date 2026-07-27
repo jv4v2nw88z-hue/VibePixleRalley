@@ -76,15 +76,21 @@ corner. Red notes are the ones that will hurt.
 ## The dash
 
 The instrument binnacle along the bottom of the screen is one canvas, drawn from scratch
-every frame: a footwell with live brake and throttle pedals, an analog tachometer reading
-in thousands of rpm with the redline banded in red at 7, a gear panel with a shift bar, and
-an analog speedometer with a digital km/h readout. Chrome bezels, near-black glass and thin
-red pointers. The speedometer scales itself to the car you are driving. Three warning lamps
-— coolant, check-engine, brake — pick up on a cooked engine, a battered car and the
-handbrake, purely for atmosphere.
+every frame: a bay of chunky checker-tread brake and throttle pedals, an analog tachometer
+reading in thousands of rpm with the redline banded in red at 7, a gear panel with a
+vertical shift-light ladder, and an analog speedometer with a digital km/h readout. Chrome
+bezels, near-black glass and thin red pointers. The speedometer scales itself to the car you
+are driving. Three warning lamps — coolant, check-engine, brake — pick up on a cooked
+engine, a battered car and the handbrake, purely for atmosphere.
+
+The dash is not a rectangle. It is a flat bar across the bottom of the screen with the two
+dials standing proud of it: the bar's top edge runs *below* the tops of the dials, so the
+circles break its outline rather than sitting inset inside it. The steering buttons get the
+same treatment — round, domed heads on raised chrome mounts rooted in the bar, clear of its
+edge — while the shifter blades and handbrake stay flush in the band.
 
 The dash is held to under a fifth of the screen height and pinned to the bottom edge, and
-the steering pads, shifter blades and handbrake line up on the same baseline so the whole
+the steering mounts, shifter blades and handbrake line up on the same baseline so the whole
 band reads as one dashboard. It has to stay small: this is a chase cam, and the camera aims
 at a point *ahead* of the car, which means the car itself is drawn that far down the screen
 and rides lower the faster you go. So the camera also watches where the car will land and
