@@ -1838,24 +1838,27 @@ var dash = {
   sprites:{}, kmhMax:240, nRpm:0, nKmh:0, heat:0
 };
 
-/* The panel sits on the safe-area edge itself. It is one continuous slab
-   and nothing should show underneath it, so there is no gap here. */
-var DASH_BOTTOM = 0;
-
-/* Total horizontal safe-area inset, read off a probe rather than assumed —
-   a notched phone in landscape hands back a good 40px on one side, and the
-   panel has to keep its instruments inside that. */
+/* Safe-area insets, read off a probe rather than assumed. A notched phone
+   in landscape hands back a good 40px on one side, and the home indicator
+   takes ~20px off the bottom — the instruments have to stay inside both,
+   but the panel's own moulding runs on through the bottom inset so nothing
+   of the game shows underneath it. */
 var safeProbe = null;
 function safeInsets(){
   if(!safeProbe){
     safeProbe = document.createElement('div');
+    /* id so a test harness can override the padding and exercise the
+       notched-phone path on a desktop browser, which reports no insets */
+    safeProbe.id = 'safe-probe';
     safeProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;' +
-      'visibility:hidden;pointer-events:none;' +
-      'padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);';
+      'visibility:hidden;pointer-events:none;padding:0 ' +
+      'env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);';
     document.body.appendChild(safeProbe);
   }
   var cs = getComputedStyle(safeProbe);
-  return { l: parseFloat(cs.paddingLeft) || 0, r: parseFloat(cs.paddingRight) || 0 };
+  return { l: parseFloat(cs.paddingLeft) || 0,
+           r: parseFloat(cs.paddingRight) || 0,
+           b: parseFloat(cs.paddingBottom) || 0 };
 }
 
 /* -------------------------------------------------------------- layout
@@ -1877,10 +1880,16 @@ function dashLayout(){
   var H = clamp(Math.round(vh*0.185), 56, 88);
   var pad = Math.max(2, Math.round(H*0.05));
   var x0 = ins.l + pad, x1 = vw - ins.r - pad;
-  var L = { W: vw, H: H, cy: Math.round(H*0.507) };
+  /* `deep` is the strip under the home indicator. The canvas covers it so
+     the moulding reaches the true bottom edge; no instrument goes there. */
+  var L = { W: vw, H: H, deep: Math.round(ins.b), cy: Math.round(H*0.507) };
 
   var gap = Math.max(2, Math.round(H*0.045));
-  var btnW = Math.round(H*0.46);                 /* steering switch cell   */
+  /* The reference's NOS button is the largest single control on its dash,
+     and steering is this game's primary input, so the switches get a cell
+     0.66 of the panel height rather than the 0.14 H the reference gives its
+     button — big enough to read as a raised object and to hit at a glance. */
+  var btnW = Math.round(H*0.66);                 /* steering switch cell   */
   var padW = Math.round(H*0.44);                 /* shift blade           */
   var pedW = Math.round(H*0.36), pedH = Math.round(H*0.60);
   var thW  = Math.round(H*0.34), thH  = Math.round(H*0.86);
@@ -1940,7 +1949,7 @@ function dashLayout(){
   L.hazY = Math.round(H*0.48);
   /* The readout is wider than the gap between the dials and laps onto both
      bezels — that is how the reference places it too. */
-  L.lcd  = { w: Math.round(H*0.60), h: Math.max(8, Math.round(H*0.24)) };
+  L.lcd  = { w: Math.round(H*0.72), h: Math.max(9, Math.round(H*0.26)) };
   L.lcd.x = Math.round(L.stack.x + (stackW - L.lcd.w)/2);
   L.lcd.y = H - L.lcd.h - pad;
   L.pedY  = Math.round(H*0.30);
@@ -1963,31 +1972,33 @@ function dashLayout(){
   L.padY  = Math.round(H*0.20);
   L.padH  = Math.round(H*0.56);
   L.btnY  = L.cy;
-  L.btnR  = Math.round(btnW*0.44);
+  L.btnR  = Math.round(btnW*0.46);
   L.lampY = Math.round(H - lampH - pad);
   L.hbY   = Math.round(H*0.22);
   L.hbH   = Math.round(H*0.62);
   return L;
 }
 
-/* How much of the screen bottom the dash band occupies, so the chase camera
-   can keep the car clear of it. Mirrors the CSS that positions the panel. */
+/* How much of the screen bottom the dash occludes, so the chase camera can
+   keep the car clear of it — the instrument band plus the strip of moulding
+   running on down through the home-indicator inset. */
 function dashBandH(){
-  return (dash.L ? dash.L.H : dashLayout().H) + DASH_BOTTOM;
+  var L = dash.L || dashLayout();
+  return L.H + L.deep;
 }
 
 /* ------------------------------------------------------------- sprites
    Small offscreen bitmaps for the switchgear, keyed on the quantised state
    that produced them, so a pressed pedal or a swinging lever costs one blit
-   instead of a stack of gradients every frame. */
+   instead of re-rasterising a stack of shapes every frame. They live at art
+   resolution like everything else, so a blit is a straight pixel copy. */
 function dashSprite(key, w, h, draw){
-  var S = dash.S, c = dash.sprites[key];
+  var c = dash.sprites[key];
   if(!c){
     c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(w*S));
-    c.height = Math.max(1, Math.round(h*S));
+    c.width = Math.max(1, Math.round(w));
+    c.height = Math.max(1, Math.round(h));
     var g = c.getContext('2d');
-    g.setTransform(S, 0, 0, S, 0, 0);
     g.imageSmoothingEnabled = false;
     draw(g);
     dash.sprites[key] = c;
@@ -1998,14 +2009,13 @@ function blitSprite(g, c, x, y, w, h){ g.drawImage(c, x, y, w, h); }
 function q6(v){ return Math.round(clamp(v, 0, 1)*5); }
 
 /* ---------------------------------------------------------- static base */
-function buildDashBase(L, S){
+function buildDashBase(L){
   var c = document.createElement('canvas');
-  c.width = Math.round(L.W*S); c.height = Math.round(L.H*S);
+  c.width = Math.round(L.W); c.height = Math.round(L.H + L.deep);
   var g = c.getContext('2d');
-  g.setTransform(S, 0, 0, S, 0, 0);
   g.imageSmoothingEnabled = false;
 
-  DASH.drawPanelBase(g, L.W, L.H);
+  DASH.drawPanelBase(g, L.W, L.H, L.deep);
 
   DASH.drawGauge(g, L.tachX, L.cy, L.R, {
     min:0, max:TACH_MAX, majors:TACH_MAX, minors:2, redFrom:TACH_RED,
@@ -2020,24 +2030,29 @@ function buildDashBase(L, S){
   return c;
 }
 
-/* ------------------------------------------------------- live repaint */
+/* ------------------------------------------------------- live repaint
+   The backing store is one art pixel per CSS pixel — deliberately *not*
+   device resolution. The browser blows it up to the device pixel ratio with
+   image-rendering: pixelated, so every art pixel lands as a hard 2x2 or 3x3
+   block and the hand-rasterised circles keep their stepped edges instead of
+   being resolved away. */
 function ensureDash(){
   var el = document.getElementById('cluster-cv');
   if(!el) return false;
-  var S = Math.max(1, Math.round(Math.min(window.devicePixelRatio || 1, 2)));
-  var key = Math.round(view.w) + 'x' + Math.round(view.h) + '@' + S + '/' + dash.kmhMax;
+  var key = Math.round(view.w) + 'x' + Math.round(view.h) + '/' + dash.kmhMax;
   if(key !== dash.key || dash.cv !== el || !dash.base){
     var L = dashLayout();
-    dash.cv = el; dash.L = L; dash.S = S; dash.sprites = {};
-    el.width = Math.round(L.W*S); el.height = Math.round(L.H*S);
-    el.style.width = L.W + 'px'; el.style.height = L.H + 'px';
+    dash.cv = el; dash.L = L; dash.sprites = {};
+    el.width = Math.round(L.W); el.height = Math.round(L.H + L.deep);
+    /* width comes from the stylesheet as 100%, so a fractional innerWidth
+       cannot leave a sliver of game showing down the right-hand edge */
+    el.style.height = (L.H + L.deep) + 'px';
     dash.g = el.getContext('2d');
-    dash.base = buildDashBase(L, S);
+    dash.base = buildDashBase(L);
     dash.key = key;
-    document.documentElement.style.setProperty('--cluster-h', L.H + 'px');
+    document.documentElement.style.setProperty('--cluster-h', (L.H + L.deep) + 'px');
     placeDashHits(L);
   }
-  dash.g.setTransform(S, 0, 0, S, 0, 0);
   dash.g.imageSmoothingEnabled = false;
   return true;
 }
@@ -2045,7 +2060,8 @@ function ensureDash(){
 /* Park each control's transparent hit box exactly over its painted zone.
    The art lives on the shared panel; these are only the touch targets, and
    they are deliberately full-height so a thumb does not have to be precise
-   about a 20px-tall pedal. */
+   about a 20px-tall pedal. They stop at the top of the home-indicator
+   inset — the moulding runs on below that, but nothing tappable does. */
 function placeDashHits(L){
   var H = L.H;
   var put = function(id, z, y, h){
@@ -2054,8 +2070,9 @@ function placeDashHits(L){
     el.style.left = Math.round(z.x) + 'px';
     el.style.width = Math.round(z.w) + 'px';
     el.style.height = Math.round(h) + 'px';
-    el.style.bottom = 'calc(' + Math.round(DASH_BOTTOM + (H - y - h)) +
-                      'px + env(safe-area-inset-bottom))';
+    /* measured off the same probe the layout used, so the boxes and the
+       moulding can never disagree about where the inset starts */
+    el.style.bottom = Math.round(L.deep + (H - y - h)) + 'px';
     el.style.right = 'auto'; el.style.top = 'auto';
   };
   put('p-left',    L.hit.left,    0, H);
@@ -2069,8 +2086,7 @@ function placeDashHits(L){
 function drawDash(r){
   if(!ensureDash()) return;
   var L = dash.L, g = dash.g, i;
-  g.clearRect(0, 0, L.W, L.H);
-  g.drawImage(dash.base, 0, 0, L.W, L.H);
+  g.drawImage(dash.base, 0, 0);
 
   var manual = save.settings.transmission === 'manual';
   var rpm = dash.nRpm, hot = rpm >= 1.0;

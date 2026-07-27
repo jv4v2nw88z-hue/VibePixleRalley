@@ -77,11 +77,24 @@ corner. Red notes are the ones that will hurt.
 
 ## The dash
 
-The whole bottom band is a **single canvas** spanning the viewport edge to edge — one slab of
-moulding with no gaps between the control zones. Left to right: the steering switchgear, the
-shift-down blade, the pedal box, the rev ladder and gear legends, the tachometer, the centre
-stack with its tell-tales and digital km/h readout, the speedometer, the warning lamps, the
-handbrake, the shift-up blade and the throttle pedal.
+The whole bottom band is a **single canvas** spanning the viewport edge to edge and sitting
+flush on the true bottom edge — one slab of moulding with no gaps between the control zones
+and nothing showing underneath it. On a notched phone the moulding runs on down through the
+home-indicator inset while every touch target stops above it. Left to right: the steering
+switchgear, the shift-down blade, the pedal box, the rev ladder and gear legends, the
+tachometer, the centre stack with its tell-tales and digital km/h readout, the speedometer,
+the warning lamps, the handbrake, the shift-up blade and the throttle pedal.
+
+### It is rasterised, not drawn
+
+Nothing on the panel goes through a smooth canvas primitive. There is no `arc()`, no
+`stroke()`, no `createLinearGradient` — those anti-alias, and one anti-aliased circle makes
+the whole panel read as vector art however chunky everything around it is. `src/dash.js`
+carries its own rasteriser: circles and rings are filled a row at a time with stepped edges,
+gradients come out as banded rows, arcs are walked by angle, polygons are scanline-filled to
+whole pixels, and text is a 5×7 bitmap font. The canvas backing store is **one art pixel per
+CSS pixel** — deliberately not device resolution — and `image-rendering: pixelated` blows it
+up so each art pixel lands as a hard 2×2 or 3×3 block.
 
 Every control's art lives on that shared panel, but each one keeps its own transparent hit
 box parked exactly over its painted zone, so the dash reads as one object while the touch
@@ -114,10 +127,16 @@ means the car itself is drawn that far down the screen and rides lower the faste
 the camera also watches where the car will land and lifts its focal point only as far as it
 takes to keep it above the dash — at low speed the framing is untouched.
 
+The steering switches take the reference's NOS-button spot and construction — scalloped steel
+collar, cap standing proud on a visible side wall, lit crescent upper-left and shadow
+lower-right — but they are sized to two thirds of the panel height rather than the reference
+button's one seventh, because steering is this game's primary input and has to be findable at
+a glance. The cap is the panel's own steel and lights amber, not nitrous red.
+
 Cost control: the parts that never move — panel shell, dial faces, readout moulding, gear
-legend — are painted once into an offscreen bitmap at device resolution and blitted as one
-image per frame. The switchgear is cached as small sprites keyed on its quantised state. A
-frame is a couple of blits plus the needles, digits and ladder as plain rectangles.
+legend — are rasterised once into an offscreen bitmap and blitted as one image per frame. The
+switchgear is cached as small sprites keyed on its quantised state. A frame is a couple of
+blits plus the needles, digits and ladder as plain rectangles.
 
 **Tilt** — enable in Settings (iOS asks for motion permission). Steering comes from the
 phone's tilt; gas and handbrake stay on screen. Hold the phone how you want to drive, then

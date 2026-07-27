@@ -168,10 +168,14 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
    is a chase cam and the car rides low on screen at speed. It spans edge to
    edge — the safe-area insets are handled inside the layout, which keeps
    the instruments clear of a notch without leaving a gap in the moulding. */
-#hud-cluster{position:absolute;left:0;right:0;
-  bottom:env(safe-area-inset-bottom);line-height:0;
-  filter:drop-shadow(0 -1px 6px rgba(0,0,0,.55));}
-#hud-cluster canvas{display:block;}
+#hud-cluster{position:absolute;left:0;right:0;bottom:0;line-height:0;}
+/* One art pixel per CSS pixel, blown up to the device ratio with nearest
+   neighbour: that is what keeps the hand-rasterised circles, ticks and
+   numerals reading as pixel art instead of being smoothed back into curves.
+   The canvas is tall enough to cover the home-indicator inset, so the
+   moulding reaches the true bottom edge with no seam under it. */
+#hud-cluster canvas{display:block;width:100%;
+  image-rendering:pixelated;image-rendering:crisp-edges;}
 #hud-left{top:calc(6px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));min-width:118px;}
 #hud-left .nm{font-size:10px;color:var(--muted);letter-spacing:1px;}
 .meter{height:6px;background:#0d110c;border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-top:3px;}
