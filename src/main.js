@@ -1864,20 +1864,318 @@ function frame(ts){
     else { race.shake = Math.max(0, race.shake - dt*2); spawnEffects(race,dt,0,SURFACES[race.stage.surface],false); }
     renderRace();
   } else if(!race){
-    ctx.fillStyle = '#10150e';
-    ctx.fillRect(0,0,view.w,view.h);
+    if(currentScreen === 'garage') drawGarageScene(dt);
+    else if(currentScreen === 'lot') drawLotScene(dt);
+    else {
+      ctx.fillStyle = '#10150e';
+      ctx.fillRect(0,0,view.w,view.h);
+    }
   }
 }
 /* =========================================================================
-   UI — screens, stage select, garage, settings, results
+   SCENES — canvas-drawn backdrops for the garage and the parking lot.
+
+   Both are painted once into a small offscreen canvas at chunky "scene
+   pixel" resolution, then blitted up with smoothing off, so they sit at the
+   same pixel density as the car sprites. Only the small animated bits (light
+   flicker, dust, lamp glow) are redrawn per frame, which keeps these screens
+   as cheap as the dark fill they replaced.
    ========================================================================= */
 
-var SCREENS = ['menu','stages','garage','settings','results'];
+var sceneCache = {};
+
+/* one scene pixel, in CSS px — also the scale the side-view car is drawn at */
+function scenePx(){ return clamp(Math.round(view.h/96), 3, 6); }
+
+function sceneLayer(key, w, h, paint){
+  var c = sceneCache[key];
+  if(!c || c.width !== w || c.height !== h){
+    c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    paint(c.getContext('2d'), w, h);
+    sceneCache[key] = c;
+  }
+  return c;
+}
+/* rounded fill helper, so everything lands on whole scene pixels */
+function R(g,x,y,w,h,col){
+  g.fillStyle = col;
+  g.fillRect(Math.round(x), Math.round(y), Math.max(1,Math.round(w)), Math.max(1,Math.round(h)));
+}
+
+/* ------------------------------------------------------ garage interior */
+function paintGarage(g, w, h){
+  var floor = Math.round(h*0.66);
+
+  /* --- back wall: corrugated steel with a mid rail --- */
+  R(g,0,0,w,floor,'#2b3331');
+  for(var x=0;x<w;x+=4) R(g,x,0,2,floor,'#303937');
+  R(g,0,0,w,Math.round(h*0.06),'#202725');
+  R(g,0,Math.round(h*0.40),w,2,'#232a28');
+  R(g,0,floor-3,w,3,'#1b2120');
+
+  /* --- overhead strip lights --- */
+  var lights = [0.17,0.45,0.74];
+  for(var i=0;i<lights.length;i++){
+    var lx = Math.round(w*lights[i]), ly = Math.round(h*0.07);
+    R(g,lx-11,ly-2,22,2,'#6a7370');
+    R(g,lx-10,ly,20,2,'#fff6d8');
+    R(g,lx-10,ly+2,20,1,'#c9b98c');
+    /* soft cone down the wall */
+    var grd = g.createLinearGradient(0,ly,0,floor);
+    grd.addColorStop(0,'rgba(255,244,206,.16)');
+    grd.addColorStop(1,'rgba(255,244,206,0)');
+    g.fillStyle = grd;
+    g.beginPath();
+    g.moveTo(lx-10,ly+3); g.lineTo(lx+10,ly+3);
+    g.lineTo(lx+26,floor); g.lineTo(lx-26,floor);
+    g.closePath(); g.fill();
+  }
+
+  /* --- pegboard with tools, left of the bay --- */
+  var px0 = Math.round(w*0.03), py0 = Math.round(h*0.16);
+  var pw = Math.round(w*0.17), ph = Math.round(h*0.26);
+  R(g,px0-1,py0-1,pw+2,ph+2,'#3d3326');
+  R(g,px0,py0,pw,ph,'#6d5c40');
+  for(var hx=px0+2;hx<px0+pw-1;hx+=3)
+    for(var hy=py0+2;hy<py0+ph-1;hy+=3) R(g,hx,hy,1,1,'#4a3f2c');
+  /* spanners, hammer, wrench */
+  R(g,px0+3,py0+3,2,9,'#c2c7cd');  R(g,px0+2,py0+3,4,2,'#c2c7cd');
+  R(g,px0+8,py0+3,2,8,'#aab0b6');  R(g,px0+7,py0+10,4,2,'#aab0b6');
+  R(g,px0+13,py0+4,2,7,'#8a6a3f'); R(g,px0+12,py0+3,4,3,'#6f757b');
+  R(g,px0+18,py0+3,2,10,'#c2c7cd');R(g,px0+17,py0+12,4,2,'#c2c7cd');
+  R(g,px0+3,py0+16,10,2,'#9aa0a6');
+  R(g,px0+15,py0+16,6,2,'#9aa0a6');
+
+  /* --- workshop sign --- */
+  var sx = Math.round(w*0.24), sy = Math.round(h*0.17);
+  R(g,sx,sy,Math.round(w*0.10),Math.round(h*0.09),'#1d2422');
+  R(g,sx+1,sy+1,Math.round(w*0.10)-2,Math.round(h*0.09)-2,'#8a5f1a');
+  R(g,sx+2,sy+2,Math.round(w*0.10)-4,2,'#ffb432');
+  R(g,sx+2,sy+6,Math.round(w*0.10)-7,1,'#ffb432');
+  R(g,sx+2,sy+8,Math.round(w*0.10)-5,1,'#d99a24');
+
+  /* --- tyre stack --- */
+  var tx = Math.round(w*0.375);
+  for(var t=0;t<3;t++){
+    var ty = floor - 5 - t*4;
+    R(g,tx,ty,13,4,'#191b1d');
+    R(g,tx+1,ty+1,11,2,'#242729');
+    R(g,tx+4,ty+1,5,2,'#3a3e42');
+  }
+
+  /* --- workbench + clutter (mostly behind the UI panel) --- */
+  var bx = Math.round(w*0.50), bw = Math.round(w*0.32);
+  var by = floor - Math.round(h*0.17);
+  R(g,bx,by,bw,3,'#7d6845');
+  R(g,bx,by+3,bw,2,'#5c4c32');
+  R(g,bx+2,by+5,3,floor-by-5,'#3a3430');
+  R(g,bx+bw-5,by+5,3,floor-by-5,'#3a3430');
+  R(g,bx+6,by-6,10,6,'#b0392c');           /* toolbox */
+  R(g,bx+6,by-6,10,2,'#cf4a3a');
+  R(g,bx+10,by-8,2,2,'#6f757b');
+  R(g,bx+20,by-5,4,5,'#3f6d4a');           /* oil cans */
+  R(g,bx+25,by-4,3,4,'#8a5f1a');
+  R(g,bx+31,by-7,6,7,'#5a6168');           /* jack */
+  R(g,bx+40,by-4,9,4,'#46504a');
+
+  /* --- roller shutter, far right --- */
+  var rx = Math.round(w*0.86);
+  R(g,rx,Math.round(h*0.10),w-rx,floor-Math.round(h*0.10),'#3c4348');
+  for(var ry=Math.round(h*0.10);ry<floor;ry+=3) R(g,rx,ry,w-rx,1,'#2f353a');
+  R(g,rx-2,Math.round(h*0.10),2,floor-Math.round(h*0.10),'#232829');
+
+  /* --- floor --- */
+  R(g,0,floor,w,h-floor,'#3a3d3c');
+  R(g,0,floor,w,2,'#464a48');
+  for(var fy=floor+4;fy<h;fy+=5) R(g,0,fy,w,1,'#343736');
+
+  /* service bay: painted outline under the car */
+  var bay0 = Math.round(w*0.04), bay1 = Math.round(w*0.44);
+  R(g,bay0,floor,bay1-bay0,h-floor-1,'#414544');
+  R(g,bay0,floor,bay1-bay0,1,'#c9b98c');
+  R(g,bay0,h-2,bay1-bay0,1,'#c9b98c');
+  R(g,bay0,floor,1,h-floor-1,'#c9b98c');
+  R(g,bay1-1,floor,1,h-floor-1,'#c9b98c');
+
+  /* oil stains, cracks, drain */
+  R(g,Math.round(w*0.30),floor+7,7,3,'#2a2c2b');
+  R(g,Math.round(w*0.32),floor+6,3,1,'#2a2c2b');
+  R(g,Math.round(w*0.09),h-6,5,2,'#2d2f2e');
+  R(g,Math.round(w*0.60),floor+9,9,3,'#2f3231');
+  R(g,Math.round(w*0.72),floor+5,12,1,'#333635');
+  var dx = Math.round(w*0.49);
+  R(g,dx,floor+8,7,4,'#2b2e2d');
+  for(var d=0;d<3;d++) R(g,dx+1+d*2,floor+9,1,2,'#4a4e4d');
+}
+
+/* ------------------------------------------------------ parking lot */
+function paintLot(g, w, h){
+  var horizon = Math.round(h*0.42);
+
+  /* --- dusk sky in chunky bands --- */
+  var bands = ['#26324a','#31405a','#455169','#6a6273','#96707a','#c4886d','#e0a173'];
+  var bh = Math.ceil(horizon/bands.length);
+  for(var i=0;i<bands.length;i++) R(g,0,i*bh,w,bh+1,bands[i]);
+
+  /* stars in the upper band */
+  for(var s=0;s<26;s++){
+    var sx = Math.round(rnd2(s,3,21)*w), sy = Math.round(rnd2(s,7,22)*horizon*0.5);
+    R(g,sx,sy,1,1,'rgba(255,255,255,.5)');
+  }
+
+  /* --- distant ridge + treeline --- */
+  for(var x=0;x<w;x++){
+    var ridge = horizon - 4 - Math.round(Math.sin(x*0.06)*2 + rnd2(x,1,9)*2);
+    R(g,x,ridge,1,horizon-ridge,'#2b3a3c');
+  }
+  for(var tx=0;tx<w;tx+=2){
+    var th = 3 + Math.round(rnd2(tx,2,11)*4);
+    R(g,tx,horizon-th,2,th,'#1d2b23');
+  }
+  R(g,0,horizon-1,w,2,'#16201b');
+
+  /* --- garage building on the left --- */
+  var bw = Math.round(w*0.30), by = Math.round(h*0.12);
+  R(g,0,by,bw,horizon-by+3,'#4a4741');
+  R(g,0,by,bw,3,'#5d5951');                     /* roof lip */
+  R(g,0,by+3,bw,1,'#33312d');
+  for(var wy=by+6;wy<horizon;wy+=6) R(g,0,wy,bw,1,'#403d38');
+  /* lit sign */
+  R(g,Math.round(bw*0.16),by+6,Math.round(bw*0.62),8,'#1d2422');
+  R(g,Math.round(bw*0.16)+1,by+7,Math.round(bw*0.62)-2,6,'#8a5f1a');
+  R(g,Math.round(bw*0.16)+2,by+8,Math.round(bw*0.62)-4,2,'#ffb432');
+  R(g,Math.round(bw*0.16)+2,by+11,Math.round(bw*0.62)-8,1,'#ffd487');
+  /* shutter door */
+  var dx0 = Math.round(bw*0.20), dw = Math.round(bw*0.55), dy0 = by+18;
+  R(g,dx0,dy0,dw,horizon-dy0+3,'#33383c');
+  for(var dy=dy0;dy<horizon+3;dy+=3) R(g,dx0,dy,dw,1,'#282c30');
+  R(g,dx0-1,dy0,1,horizon-dy0+3,'#22262a');
+  R(g,dx0+dw,dy0,1,horizon-dy0+3,'#22262a');
+  /* doorway spill on the ground */
+  R(g,dx0,horizon+3,dw,3,'rgba(255,200,110,.16)');
+
+  /* --- fence across the back --- */
+  for(var fx=bw+3;fx<w;fx+=5) R(g,fx,horizon-7,1,7,'#4c5257');
+  R(g,bw+3,horizon-6,w-bw-3,1,'#565c61');
+  R(g,bw+3,horizon-3,w-bw-3,1,'#565c61');
+
+  /* --- lamp posts --- */
+  var posts = [0.52,0.86];
+  for(var pI=0;pI<posts.length;pI++){
+    var lx = Math.round(w*posts[pI]);
+    R(g,lx,Math.round(h*0.10),2,horizon-Math.round(h*0.10)+2,'#3c4247');
+    R(g,lx-3,Math.round(h*0.10),8,3,'#4c5257');
+    R(g,lx-2,Math.round(h*0.10)+2,6,2,'#fff2c6');
+    var lg = g.createRadialGradient(lx+1,Math.round(h*0.10)+3,1,lx+1,Math.round(h*0.10)+3,Math.round(h*0.22));
+    lg.addColorStop(0,'rgba(255,238,190,.20)');
+    lg.addColorStop(1,'rgba(255,238,190,0)');
+    g.fillStyle = lg;
+    g.fillRect(lx-Math.round(h*0.22), Math.round(h*0.10), Math.round(h*0.44), Math.round(h*0.44));
+  }
+
+  /* --- kerb, then asphalt --- */
+  R(g,0,horizon+3,w,3,'#5a5f55');
+  R(g,0,horizon+6,w,h-horizon-6,'#34383b');
+  R(g,0,horizon+6,w,1,'#3d4245');
+  /* tarmac grain */
+  for(var q=0;q<160;q++){
+    var gx = Math.round(rnd2(q,5,31)*w), gy = horizon+7+Math.round(rnd2(q,9,32)*(h-horizon-8));
+    R(g,gx,gy,1,1, rnd2(q,11,33) < 0.5 ? '#3a3e41' : '#2e3235');
+  }
+  /* parking bay lines, splayed slightly for perspective */
+  var lotTop = horizon+9, lotBot = h-2;
+  for(var b=0;b<=3;b++){
+    var f = b/3;
+    var xt = Math.round(w*(0.050 + f*0.300));
+    var xb = Math.round(w*(0.006 + f*0.329));
+    for(var yy=lotTop;yy<=lotBot;yy++){
+      var t2 = (yy-lotTop)/(lotBot-lotTop);
+      R(g, Math.round(xt+(xb-xt)*t2), yy, 1, 1, 'rgba(214,206,178,.55)');
+    }
+  }
+  R(g,0,lotTop-1,w,1,'rgba(214,206,178,.35)');
+  /* puddles */
+  R(g,Math.round(w*0.20),h-7,10,3,'rgba(120,150,170,.22)');
+  R(g,Math.round(w*0.66),h-5,7,2,'rgba(120,150,170,.18)');
+}
+
+/* --------------------------------------------------------- scene draw */
+var sceneT = 0;
+
+function drawSceneBackdrop(kind, paint){
+  var W = view.w, H = view.h, px = scenePx();
+  var sw = Math.ceil(W/px), sh = Math.ceil(H/px);
+  var bg = sceneLayer(kind+'|'+sw+'x'+sh, sw, sh, paint);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(bg, 0, 0, sw*px, sh*px);
+  return { px:px, sw:sw, sh:sh };
+}
+
+/* the car stands in the service bay, on the painted floor */
+function garageCarBox(){
+  var px = scenePx(), sh = Math.ceil(view.h/px);
+  var def = curCarDef(), spec = CAR_SIDE[def.sprite];
+  var floorPx = Math.round(sh*0.66)*px;
+  var w = spec.gw*px, h = spec.gh*px;
+  var cx = Math.round(view.w*0.235);
+  return { x: Math.round((cx - w/2)/px)*px, y: floorPx - spec.ground*px,
+           w: w, h: h, px: px, spec: spec };
+}
+
+function drawGarageScene(dt){
+  var s = drawSceneBackdrop('garage', paintGarage);
+  sceneT += dt;
+
+  /* the car itself, from the Pass 1 side-view sprite */
+  var cs = curCarSave();
+  var box = garageCarBox();
+  var sp = getCarSide(save.current, { paint:cs.paint, livery:cs.livery, scale:box.px });
+  ctx.drawImage(sp.canvas, box.x, box.y);
+
+  /* strip light flicker over the bay, and slow dust in the light */
+  var flick = 0.05 + 0.035*Math.sin(sceneT*2.1) + (Math.random()<0.02 ? 0.05 : 0);
+  ctx.fillStyle = 'rgba(255,244,206,'+flick.toFixed(3)+')';
+  ctx.fillRect(0, 0, view.w*0.5, view.h*0.72);
+  for(var i=0;i<16;i++){
+    var dxp = (rnd2(i,1,41)*view.w*0.55 + sceneT*(6+rnd2(i,2,42)*10)) % (view.w*0.55);
+    var dyp = (rnd2(i,3,43)*view.h*0.55 + Math.sin(sceneT*0.6+i)*7) % (view.h*0.6);
+    ctx.fillStyle = 'rgba(255,246,214,.30)';
+    ctx.fillRect(Math.round(dxp), Math.round(dyp+view.h*0.06), 2, 2);
+  }
+}
+
+function drawLotScene(dt){
+  drawSceneBackdrop('lot', paintLot);
+  sceneT += dt;
+  /* lamp shimmer */
+  var a = 0.03 + 0.02*Math.sin(sceneT*1.6);
+  ctx.fillStyle = 'rgba(255,226,170,'+a.toFixed(3)+')';
+  ctx.fillRect(0, 0, view.w, view.h);
+}
+
+/* =========================================================================
+   UI — screens, stage select, garage, parking lot, settings, results
+   ========================================================================= */
+
+var SCREENS = ['menu','stages','garage','lot','settings','results'];
 var currentScreen = 'menu';
 
+var screenTimers = {};
 function showScreen(name){
   for(var i=0;i<SCREENS.length;i++){
-    document.getElementById('screen-'+SCREENS[i]).classList.toggle('hidden', SCREENS[i] !== name);
+    var id = SCREENS[i], el = document.getElementById('screen-'+id);
+    clearTimeout(screenTimers[id]);
+    if(id === name){
+      el.classList.remove('hidden');
+      void el.offsetWidth;                 /* commit the un-hide before fading in */
+      el.classList.add('on');
+    } else if(!el.classList.contains('hidden')){
+      el.classList.remove('on');
+      screenTimers[id] = setTimeout(function(e){
+        return function(){ e.classList.add('hidden'); };
+      }(el), 200);
+    }
   }
   currentScreen = name;
   var racing = (name === null);
@@ -1891,6 +2189,7 @@ function showScreen(name){
   if(name==='menu') renderMenu();
   if(name==='stages') renderStages();
   if(name==='garage') renderGarage();
+  if(name==='lot') renderLot();
   if(name==='settings') renderSettings();
 }
 
@@ -1899,6 +2198,7 @@ function refreshMoney(){
   document.getElementById('menu-money').textContent = m;
   document.getElementById('stages-money').textContent = m;
   document.getElementById('garage-money').textContent = m;
+  document.getElementById('lot-money').textContent = m;
 }
 
 /* ------------------------------------------------------------- menu */
@@ -2015,18 +2315,6 @@ function renderGarage(){
   refreshMoney();
   var def = curCarDef(), cs = curCarSave(), s = computeStats(save.current);
   document.getElementById('car-name').textContent = def.name + '  ·  ' + def.cls;
-
-  var cc = document.getElementById('car-canvas');
-  var rect = cc.getBoundingClientRect();
-  cc.width = Math.max(60, Math.round(rect.width));
-  cc.height = Math.max(40, Math.round(rect.height));
-  var g = cc.getContext('2d');
-  g.imageSmoothingEnabled = false;
-  g.clearRect(0,0,cc.width,cc.height);
-  var side = CAR_SIDE[def.sprite];
-  var sc = Math.max(1, Math.min(6, Math.min(Math.floor(cc.width/side.gw), Math.floor(cc.height/side.gh))));
-  var sp = getCarSide(save.current, { paint:cs.paint, livery:cs.livery, scale:sc });
-  g.drawImage(sp.canvas, Math.round((cc.width-sp.w)/2), Math.round((cc.height-sp.h)/2));
 
   document.getElementById('car-stats').innerHTML =
     statRow('SPEED', s.kmh+' KM/H', s.kmh/240*100) +
@@ -2204,6 +2492,58 @@ function renderCars(body){
       var sp = getCarSprite(def.id, cs.paint, cs.livery, 0, 2);
       g.drawImage(sp.canvas, (cvs.width-sp.w)/2, (cvs.height-sp.h)/2);
     })(CARS[i], i);
+  }
+}
+
+/* ---------------------------------------------------------- parking lot */
+function renderLot(){
+  refreshMoney();
+  var list = document.getElementById('lot-list');
+  list.innerHTML = '';
+  for(var i=0;i<CARS.length;i++){
+    (function(def){
+      var cs = save.cars[def.id];
+      var spec = CAR_SIDE[def.sprite];
+
+      if(!cs.owned){                                   /* an empty bay to fill */
+        var bay = document.createElement('div');
+        bay.className = 'lot-bay';
+        bay.innerHTML = '<div class="nm">EMPTY BAY</div>' +
+                        '<div class="st">' + def.name + '<br>' + fmtMoney(def.price) + ' &middot; BUY IN GARAGE</div>';
+        list.appendChild(bay);
+        return;
+      }
+
+      var card = document.createElement('div');
+      card.className = 'lot-car' + (save.current === def.id ? ' sel' : '');
+
+      var avail = Math.max(70, view.w*0.30 - 18);
+      var sc = clamp(Math.floor(avail / spec.gw), 2, 5);
+      var sp = getCarSide(def.id, { paint:cs.paint, livery:cs.livery, scale:sc });
+      var cvs = document.createElement('canvas');
+      cvs.width = sp.w; cvs.height = sp.h;
+      cvs.style.width = sp.w+'px'; cvs.style.height = sp.h+'px';
+      var g = cvs.getContext('2d');
+      g.imageSmoothingEnabled = false;
+      g.drawImage(sp.canvas, 0, 0);
+      card.appendChild(cvs);
+
+      var nm = document.createElement('div');
+      nm.className = 'nm'; nm.textContent = def.name;
+      var st = document.createElement('div');
+      st.className = 'st';
+      st.textContent = save.current === def.id ? '\u2605 IN USE' : 'TAP TO TAKE OUT';
+      card.appendChild(nm); card.appendChild(st);
+
+      card.onclick = function(){
+        if(save.current === def.id) return;
+        save.current = def.id;                         /* same switch the garage uses */
+        persist();
+        audioBeep(760, 0.09);
+        renderLot();
+      };
+      list.appendChild(card);
+    })(CARS[i]);
   }
 }
 

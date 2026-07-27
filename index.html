@@ -66,15 +66,19 @@
   </div>
 
   <!-- ============ garage ============ -->
-  <div class="screen hidden" id="screen-garage">
+  <div class="screen scene hidden" id="screen-garage">
     <div class="row spread" style="margin-bottom:6px">
       <h1 class="title" style="font-size:clamp(15px,3.2vh,24px)">GARAGE</h1>
-      <div class="row"><span class="money" id="garage-money">0</span><button class="btn small" data-go="menu">BACK</button></div>
+      <div class="row">
+        <span class="money" id="garage-money">0</span>
+        <button class="btn small" data-go="lot">PARKING LOT</button>
+        <button class="btn small" data-go="menu">BACK</button>
+      </div>
     </div>
     <div id="garage-body">
-      <div id="garage-left" class="card">
-        <canvas id="car-canvas"></canvas>
+      <div id="garage-stage">
         <div id="car-name">CAR</div>
+        <div id="car-plate"></div>
         <div id="car-stats"></div>
       </div>
       <div id="garage-right">
@@ -87,6 +91,19 @@
         <div id="tab-body" class="card scroll grow"></div>
       </div>
     </div>
+  </div>
+
+  <!-- ============ parking lot ============ -->
+  <div class="screen scene hidden" id="screen-lot">
+    <div class="row spread" style="margin-bottom:4px">
+      <h1 class="title" style="font-size:clamp(15px,3.2vh,24px)">PARKING LOT</h1>
+      <div class="row">
+        <span class="money" id="lot-money">0</span>
+        <button class="btn small" data-go="garage">GARAGE</button>
+      </div>
+    </div>
+    <div id="lot-hint">TAP A CAR TO TAKE IT OUT</div>
+    <div class="grow"><div id="lot-list"></div></div>
   </div>
 
   <!-- ============ settings ============ -->
