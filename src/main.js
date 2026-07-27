@@ -781,44 +781,95 @@ function buildSideModel(spec, o, sg){
   };
 }
 
-/* ---------------------------------------------------- wheels (swappable) */
-var WHEEL_STYLES = {
-  steel: function(g, m, w){
+/* ---------------------------------------------------- wheels (swappable)
+   A wheel is a tread (the compound fitted) plus a rim (how much has been
+   spent on tyres). WHEEL_STYLES stays as whole-wheel presets so anything
+   selecting via opts.wheels keeps working. */
+var WHEEL_TREADS = {
+  all: function(g, m, w){                                 /* mild all-terrain */
     var c = m.colors;
     m.disc(w.cx, w.axleY, w.r, c.black);
-    m.disc(w.cx, w.axleY, w.r-1, c.tyreLite);
+    m.disc(w.cx, w.axleY, w.r-1, '#2f343a');
+    for(var a=0;a<8;a++){
+      var th = a*Math.PI/4;
+      m.px(w.cx + Math.round(Math.cos(th)*(w.r-0.5)),
+           w.axleY + Math.round(Math.sin(th)*(w.r-0.5)), 1, 1, c.tyre);
+    }
+  },
+  gravel: function(g, m, w){                              /* chunky, dust-stained */
+    var c = m.colors;
+    m.disc(w.cx, w.axleY, w.r, c.black);
+    m.disc(w.cx, w.axleY, w.r-1, '#453a2c');
+    for(var a=0;a<8;a++){
+      var th = a*Math.PI/4;
+      m.px(w.cx + Math.round(Math.cos(th)*(w.r-0.5)) - 1,
+           w.axleY + Math.round(Math.sin(th)*(w.r-0.5)) - 1, 2, 2, '#6b5a3f');
+    }
+  },
+  tarmac: function(g, m, w){                              /* slick and glossy */
+    var c = m.colors;
+    m.disc(w.cx, w.axleY, w.r, c.black);
+    m.disc(w.cx, w.axleY, w.r-1, '#15171a');
+    m.px(w.cx - w.r + 1, w.axleY - w.r + 3, 1, 4, '#5d656e');   /* gloss */
+    m.px(w.cx - w.r + 2, w.axleY - w.r + 2, 1, 2, '#7d858e');
+    m.px(w.cx + w.r - 2, w.axleY + w.r - 6, 1, 3, '#454b52');
+  },
+  snow: function(g, m, w){                                /* studded, cold cast */
+    var c = m.colors;
+    m.disc(w.cx, w.axleY, w.r, c.black);
+    m.disc(w.cx, w.axleY, w.r-1, '#2c3641');
+    for(var a=0;a<10;a++){
+      var th = a*Math.PI/5;
+      m.px(w.cx + Math.round(Math.cos(th)*(w.r-0.5)),
+           w.axleY + Math.round(Math.sin(th)*(w.r-0.5)), 1, 1, c.chrome);
+    }
+  }
+};
+
+var WHEEL_RIMS = {
+  steel: function(g, m, w){
+    var c = m.colors;
     m.disc(w.cx, w.axleY, w.r-3, c.chromeDark);
     m.disc(w.cx, w.axleY, w.r-4, c.chrome);
     m.px(w.cx-1, w.axleY-1, 2, 2, c.chromeDark);
   },
   alloy: function(g, m, w){
     var c = m.colors;
-    m.disc(w.cx, w.axleY, w.r, c.black);
-    m.disc(w.cx, w.axleY, w.r-1, c.tyreLite);
     m.disc(w.cx, w.axleY, w.r-3, c.chrome);
-    /* cross spokes */
     m.px(w.cx-1, w.axleY-w.r+3, 2, w.r*2-6, c.chromeDark);
     m.px(w.cx-w.r+3, w.axleY-1, w.r*2-6, 2, c.chromeDark);
     m.px(w.cx-1, w.axleY-1, 2, 2, c.black);
   },
-  rallyWheel: function(g, m, w){
+  race: function(g, m, w){                                /* coloured lip, 5 spokes */
     var c = m.colors;
-    m.disc(w.cx, w.axleY, w.r, c.black);
-    m.disc(w.cx, w.axleY, w.r-1, c.tyre);
-    /* blocky tread notches around the carcass */
-    for(var a=0;a<8;a++){
-      var th = a*Math.PI/4;
-      m.px(w.cx + Math.round(Math.cos(th)*(w.r-0.5)) - 1,
-           w.axleY + Math.round(Math.sin(th)*(w.r-0.5)) - 1, 2, 2, c.tyreLite);
-    }
+    m.disc(w.cx, w.axleY, w.r-2, c.accent);
     m.disc(w.cx, w.axleY, w.r-3, c.chromeDark);
-    m.disc(w.cx, w.axleY, w.r-5, c.accent);
+    for(var a=0;a<5;a++){
+      var th = a*Math.PI*2/5 - Math.PI/2;
+      for(var t=1;t<=w.r-4;t++)
+        m.px(w.cx + Math.round(Math.cos(th)*t),
+             w.axleY + Math.round(Math.sin(th)*t), 1, 1, c.chrome);
+    }
     m.px(w.cx-1, w.axleY-1, 2, 2, c.black);
   }
 };
+
+var WHEEL_STYLES = {
+  steel:      function(g, m, w){ WHEEL_TREADS.all(g,m,w);    WHEEL_RIMS.steel(g,m,w); },
+  alloy:      function(g, m, w){ WHEEL_TREADS.all(g,m,w);    WHEEL_RIMS.alloy(g,m,w); },
+  rallyWheel: function(g, m, w){ WHEEL_TREADS.gravel(g,m,w); WHEEL_RIMS.race(g,m,w);  }
+};
+
 function drawSideWheels(g, m){
-  var style = WHEEL_STYLES[m.opts.wheels] || WHEEL_STYLES.steel;
-  for(var i=0;i<m.spec.wheels.length;i++) style(g, m, m.spec.wheels[i], i);
+  var o = m.opts, ws = m.spec.wheels, i;
+  if(o.tread || o.rim){                                   /* composed from parts */
+    var tread = WHEEL_TREADS[o.tread] || WHEEL_TREADS.all;
+    var rim   = WHEEL_RIMS[o.rim]     || WHEEL_RIMS.steel;
+    for(i=0;i<ws.length;i++){ tread(g, m, ws[i], i); rim(g, m, ws[i], i); }
+  } else {                                                /* whole-wheel preset */
+    var style = WHEEL_STYLES[o.wheels] || WHEEL_STYLES.steel;
+    for(i=0;i<ws.length;i++) style(g, m, ws[i], i);
+  }
 }
 
 /* ------------------------------------------------------------- chassis */
@@ -869,13 +920,16 @@ function drawSideChassis(g, m){
 /* --------------------------------------------------------------- glass */
 function drawSideGlass(g, m){
   var s = m.spec, c = m.colors, dy = m.dy;
+  /* "strip the interior, lexan glass" — so at higher weight tiers it is */
+  var gMain = m.opts.lexan ? '#9db2c0' : c.glass;
+  var gLite = m.opts.lexan ? '#c0d2dc' : c.glassLite;
   for(var i=0;i<s.windows.length;i++){
     var w = s.windows[i];
     for(var r=0;r<w.h;r++){
       var l  = w.x + Math.round((w.rakeL||0)*(w.h-1-r));
       var rr = w.x + w.w - Math.round((w.rakeR||0)*(w.h-1-r));
       if(rr <= l) continue;
-      m.px(l, w.y+r+dy, rr-l, 1, r===0 ? c.glassLite : c.glass);
+      m.px(l, w.y+r+dy, rr-l, 1, r===0 ? gLite : gMain);
     }
   }
 }
@@ -904,6 +958,21 @@ var HOOD_PARTS = {
       m.px(x, top-3, 1, 1, c.lite);
     }
     m.px(x0+wdt-2, m.topAt(x0+wdt-2)+dy-2, 2, 2, c.black);
+  },
+  turbo: function(g, m){                                  /* top tier: scoop + piping */
+    var h = m.spec.hood, c = m.colors, dy = m.dy;
+    HOOD_PARTS.stock(g, m);
+    var x0 = h.x0 + 2, wdt = 9;
+    for(var x=x0;x<x0+wdt;x++){
+      var top = m.topAt(x) + dy;
+      m.px(x, top-5, 1, 5, c.dark);
+      m.px(x, top-5, 1, 1, c.lite);
+    }
+    m.px(x0+wdt-3, m.topAt(x0+wdt-3)+dy-4, 3, 3, c.black);   /* intake mouth */
+    var ip = h.x1 - 2;                                       /* intercooler pipe */
+    m.px(ip-1, m.topAt(ip)+dy+2, 2, 4, c.chromeDark);
+    m.px(ip-3, m.topAt(ip)+dy+5, 4, 2, c.chromeDark);
+    m.px(ip-3, m.topAt(ip)+dy+5, 4, 1, c.chrome);
   }
 };
 function drawSideHood(g, m){
@@ -1016,6 +1085,9 @@ function renderCarSide(carId, opts){
     scale:      opts.scale || 4,
     rideHeight: opts.rideHeight || 0,
     wheels:     opts.wheels || spec.wheelStyle,
+    tread:      opts.tread || null,
+    rim:        opts.rim || null,
+    lexan:      !!opts.lexan,
     hood:       opts.hood || 'stock',
     trim:       opts.trim || spec.trim,
     damage:     opts.damage || 0
@@ -1040,12 +1112,55 @@ function renderCarSide(carId, opts){
   return { canvas:cv, w:cv.width, h:cv.height, scale:o.scale, pw:spec.gw, ph:spec.gh, spec:spec, opts:o };
 }
 
-var sideCache = {};
+/* ---------------------------------------------------------------------
+   Upgrade reflection — turns a car's equipped upgrades into side-view
+   sprite options. Presentational only: nothing here feeds back into
+   stats, pricing or handling, it just picks which layers get drawn.
+     suspension -> chassis ride height
+     turbo      -> bonnet furniture, up to a scoop with intercooler piping
+     tyres      -> tread from the fitted compound, rim from the tier bought
+     weight     -> trim comes off, heaviest items first
+   --------------------------------------------------------------------- */
+var TURBO_HOODS = ['stock','vents','scoop','turbo'];
+var TYRE_RIMS   = ['steel','steel','alloy','race'];       /* by tyre tier 0..3 */
+var STRIP_ORDER = [null, 'mirror', 'handle', 'spoiler'];  /* by weight tier */
+
+function carSideOpts(carId, extra){
+  var def = carDef(carId), cs = save.cars[carId], u = cs.up;
+  var spec = CAR_SIDE[def.sprite];
+  var tyreLvl = clamp(cs.tires[cs.fitted]|0, 0, 3);
+
+  var stripped = {};
+  for(var w=1; w<=clamp(u.weight,0,3); w++) stripped[STRIP_ORDER[w]] = true;
+  var trim = [];
+  for(var i=0;i<spec.trim.length;i++)
+    if(!stripped[spec.trim[i]]) trim.push(spec.trim[i]);
+
+  var o = {
+    paint:      cs.paint,
+    livery:     cs.livery,
+    rideHeight: clamp(u.susp, 0, 3),
+    hood:       TURBO_HOODS[clamp(u.turbo, 0, 3)],
+    tread:      cs.fitted,
+    rim:        TYRE_RIMS[tyreLvl],
+    lexan:      u.weight >= 2,
+    trim:       trim
+  };
+  if(extra) for(var k in extra) o[k] = extra[k];
+  return o;
+}
+
+var sideCache = {}, sideCacheN = 0;
 function getCarSide(carId, opts){
   opts = opts || {};
   var key = [carId, opts.paint, opts.livery|0, opts.scale|0, opts.rideHeight|0,
-             opts.wheels, opts.hood, (opts.trim||[]).join(','), opts.damage|0].join('|');
-  if(!sideCache[key]) sideCache[key] = renderCarSide(carId, opts);
+             opts.wheels, opts.tread, opts.rim, opts.hood, opts.lexan?1:0,
+             (opts.trim||[]).join(','), opts.damage|0].join('|');
+  if(!sideCache[key]){
+    if(sideCacheN > 80){ sideCache = {}; sideCacheN = 0; }   /* keep it bounded */
+    sideCache[key] = renderCarSide(carId, opts);
+    sideCacheN++;
+  }
   return sideCache[key];
 }
 
@@ -2533,9 +2648,8 @@ function drawGarageScene(dt){
   sceneT += dt;
 
   /* the car itself, from the Pass 1 side-view sprite */
-  var cs = curCarSave();
   var box = garageCarBox();
-  var sp = getCarSide(save.current, { paint:cs.paint, livery:cs.livery, scale:box.px });
+  var sp = getCarSide(save.current, carSideOpts(save.current, { scale:box.px }));
   ctx.drawImage(sp.canvas, box.x, box.y);
 
   /* strip light flicker over the bay, and slow dust in the light */
@@ -2924,7 +3038,7 @@ function renderLot(){
 
       var avail = Math.max(70, view.w*0.30 - 18);
       var sc = clamp(Math.floor(avail / spec.gw), 2, 5);
-      var sp = getCarSide(def.id, { paint:cs.paint, livery:cs.livery, scale:sc });
+      var sp = getCarSide(def.id, carSideOpts(def.id, { scale:sc }));
       var cvs = document.createElement('canvas');
       cvs.width = sp.w; cvs.height = sp.h;
       cvs.style.width = sp.w+'px'; cvs.style.height = sp.h+'px';
