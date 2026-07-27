@@ -230,9 +230,41 @@ function curCarSave(){ return save.cars[save.current]; }
 function curCarDef(){ return carDef(save.current); }
 function carIndex(id){ for(var i=0;i<CARS.length;i++) if(CARS[i].id===id) return i; return 0; }
 
-/* ---------------------------------------------------------------- stats */
-function computeStats(carId){
-  var def = carDef(carId), cs = save.cars[carId], u = cs.up;
+/* ------------------------------------------------------- shop preview
+   Tapping something in the garage equips it as a preview instead of buying
+   it: a shadow copy of that car's save entry with the one item already
+   applied. Nothing reaches `save` — or localStorage — until PURCHASE is
+   confirmed, so CANCEL and backing out of the garage both just drop the
+   copy and the car snaps back to its last paid-for state.
+
+     { kind, item, carId, current, cs, cost, name, note }
+
+   `cs` is the shadow car entry and `current` is which car would be in use,
+   which is how an unowned car can stand in the bay before it is bought.
+   Because the preview IS the post-purchase state, committing is a straight
+   hand-over of the copy — the preview and the thing you pay for can never
+   drift apart. */
+var preview = null;
+
+function cloneCarSave(cs){ return JSON.parse(JSON.stringify(cs)); }
+
+/* the car the garage should show — previewed if there is one, else in use */
+function shopCarId(){ return preview ? preview.current : save.current; }
+/* a car's entry as the garage should show it, preview folded in */
+function shopCarSave(carId){
+  return (preview && preview.carId === carId) ? preview.cs : save.cars[carId];
+}
+function isPreviewing(kind, item){
+  return !!preview && preview.kind === kind && preview.item === item;
+}
+function previewAffordable(){ return !preview || save.money >= preview.cost; }
+
+/* ---------------------------------------------------------------- stats
+   `csOverride` lets the garage cost out a shop preview without touching the
+   save. Everything that gates progression calls this with one argument, so
+   gating always reads the paid-for car. */
+function computeStats(carId, csOverride){
+  var def = carDef(carId), cs = csOverride || save.cars[carId], u = cs.up;
   var topSpeed = def.topSpeed * (1 + 0.050*u.engine + 0.060*u.turbo + 0.035*u.trans + 0.022*u.weight);
   var accel    = def.accel    * (1 + 0.075*u.engine + 0.105*u.turbo + 0.075*u.trans + 0.065*u.weight);
   var handling = def.handling * (1 + 0.105*u.susp + 0.048*u.weight);
@@ -801,76 +833,130 @@ function buildSideModel(spec, o, sg){
   };
 }
 
+/* --------------------------------------------------- round-shape helpers
+   Everything circular in the side view (tyres, rims, turbo housings) is
+   plotted from angles so the stair-stepping stays consistent. Canvas Y
+   grows downward, so PI..1.5PI is the upper-left quadrant — the lit side. */
+function ringPx(m, cx, cy, ang, rad, col, w, h){
+  m.px(cx + Math.round(Math.cos(ang)*rad),
+       cy + Math.round(Math.sin(ang)*rad), w||1, h||1, col);
+}
+function arcRun(m, cx, cy, rad, a0, a1, steps, col){
+  for(var i=0;i<=steps;i++) ringPx(m, cx, cy, a0 + (a1-a0)*(i/steps), rad, col);
+}
+var LIT_A0 = Math.PI*1.08, LIT_A1 = Math.PI*1.56;         /* upper-left, lit  */
+var SHD_A0 = Math.PI*0.10, SHD_A1 = Math.PI*0.56;         /* lower-right, dark */
+
 /* ---------------------------------------------------- wheels (swappable)
    A wheel is a tread (the compound fitted) plus a rim (how much has been
    spent on tyres). WHEEL_STYLES stays as whole-wheel presets so anything
-   selecting via opts.wheels keeps working. */
+   selecting via opts.wheels keeps working.
+
+   Treads share one carcass — black outer wall, rubber inner, a sheen on the
+   lit side and a shadow opposite — then lay their own block pattern over it,
+   so a compound reads by its texture and not just by its tint. */
+function tyreCarcass(m, w, rubber, sheen, shadow){
+  m.disc(w.cx, w.axleY, w.r,   m.colors.black);
+  m.disc(w.cx, w.axleY, w.r-1, rubber);
+  arcRun(m, w.cx, w.axleY, w.r-1, LIT_A0, LIT_A1, 12, sheen);
+  arcRun(m, w.cx, w.axleY, w.r-1, SHD_A0, SHD_A1, 12, shadow);
+  arcRun(m, w.cx, w.axleY, w.r-2, LIT_A0+0.4, LIT_A1-0.4, 6, sheen);
+}
+/* repeated marks around the circumference — the tread blocks */
+function treadBlocks(m, w, n, rad, col, bw, bh, phase){
+  for(var a=0;a<n;a++)
+    ringPx(m, w.cx, w.axleY, a*TAU/n + (phase||0), rad, col, bw||1, bh||1);
+}
+
 var WHEEL_TREADS = {
   all: function(g, m, w){                                 /* mild all-terrain */
-    var c = m.colors;
-    m.disc(w.cx, w.axleY, w.r, c.black);
-    m.disc(w.cx, w.axleY, w.r-1, '#2f343a');
-    for(var a=0;a<8;a++){
-      var th = a*Math.PI/4;
-      m.px(w.cx + Math.round(Math.cos(th)*(w.r-0.5)),
-           w.axleY + Math.round(Math.sin(th)*(w.r-0.5)), 1, 1, c.tyre);
-    }
+    tyreCarcass(m, w, '#2b3037', '#464e57', '#16191d');
+    treadBlocks(m, w, 12, w.r-1, '#12151a');              /* fine block edges */
+    treadBlocks(m, w, 12, w.r-1, '#3c434c', 1, 1, TAU/24);
+    m.disc(w.cx, w.axleY, w.r-3, '#22262b');              /* sidewall step */
   },
   gravel: function(g, m, w){                              /* chunky, dust-stained */
-    var c = m.colors;
-    m.disc(w.cx, w.axleY, w.r, c.black);
-    m.disc(w.cx, w.axleY, w.r-1, '#453a2c');
-    for(var a=0;a<8;a++){
-      var th = a*Math.PI/4;
-      m.px(w.cx + Math.round(Math.cos(th)*(w.r-0.5)) - 1,
-           w.axleY + Math.round(Math.sin(th)*(w.r-0.5)) - 1, 2, 2, '#6b5a3f');
-    }
+    tyreCarcass(m, w, '#3b3428', '#5c5140', '#1e1a14');
+    treadBlocks(m, w, 8, w.r-1, '#7a684a', 2, 2);         /* big shoulder lugs */
+    treadBlocks(m, w, 8, w.r-2, '#100e0b', 1, 1, TAU/16); /* gaps between them */
+    m.disc(w.cx, w.axleY, w.r-3, '#2c2820');
+    arcRun(m, w.cx, w.axleY, w.r-3, LIT_A0, LIT_A1, 6, '#4a4234');
   },
   tarmac: function(g, m, w){                              /* slick and glossy */
-    var c = m.colors;
-    m.disc(w.cx, w.axleY, w.r, c.black);
-    m.disc(w.cx, w.axleY, w.r-1, '#15171a');
-    m.px(w.cx - w.r + 1, w.axleY - w.r + 3, 1, 4, '#5d656e');   /* gloss */
-    m.px(w.cx - w.r + 2, w.axleY - w.r + 2, 1, 2, '#7d858e');
-    m.px(w.cx + w.r - 2, w.axleY + w.r - 6, 1, 3, '#454b52');
+    tyreCarcass(m, w, '#15181c', '#5a626b', '#0b0d10');
+    treadBlocks(m, w, 16, w.r-1, '#0a0c0e');              /* fine cut grooves */
+    arcRun(m, w.cx, w.axleY, w.r-2, Math.PI*1.18, Math.PI*1.44, 5, '#828a94');
+    m.disc(w.cx, w.axleY, w.r-3, '#1a1e23');
   },
   snow: function(g, m, w){                                /* studded, cold cast */
-    var c = m.colors;
-    m.disc(w.cx, w.axleY, w.r, c.black);
-    m.disc(w.cx, w.axleY, w.r-1, '#2c3641');
-    for(var a=0;a<10;a++){
-      var th = a*Math.PI/5;
-      m.px(w.cx + Math.round(Math.cos(th)*(w.r-0.5)),
-           w.axleY + Math.round(Math.sin(th)*(w.r-0.5)), 1, 1, c.chrome);
-    }
+    tyreCarcass(m, w, '#262f39', '#48586a', '#12171d');
+    treadBlocks(m, w, 10, w.r-1, m.colors.chrome);        /* steel studs */
+    treadBlocks(m, w, 10, w.r-2, '#0f1318', 1, 1, TAU/20);/* siping */
+    m.disc(w.cx, w.axleY, w.r-3, '#1e252d');
   }
 };
 
+/* ------------------------------------------------------------ rim helpers
+   Race rims take the car's accent, except when that accent is near-white —
+   a white rim on a light car vanishes, so those fall back to rally gold. */
+function rimLipColor(accent){
+  var c = accent.replace('#','');
+  if(c.length===3) c = c[0]+c[0]+c[1]+c[1]+c[2]+c[2];
+  var lum = (parseInt(c.substr(0,2),16)*0.30 + parseInt(c.substr(2,2),16)*0.59
+           + parseInt(c.substr(4,2),16)*0.11) / 255;
+  return lum > 0.72 ? '#d9a02c' : accent;
+}
+
+function rimSpokes(m, w, n, r0, r1, col, phase){
+  for(var a=0;a<n;a++){
+    var th = a*TAU/n + (phase||0);
+    for(var t=r0;t<=r1;t+=0.5)
+      ringPx(m, w.cx, w.axleY, th, t, col);
+  }
+}
+function rimShine(m, w, rad, hi, lo){                     /* the metallic catch */
+  arcRun(m, w.cx, w.axleY, rad, LIT_A0, LIT_A1, 8, hi);
+  arcRun(m, w.cx, w.axleY, rad, SHD_A0, SHD_A1, 8, lo);
+}
+function rimHub(m, w, cap, boss){
+  m.px(w.cx-1, w.axleY-1, 2, 2, cap);
+  m.px(w.cx-1, w.axleY-1, 1, 1, boss);
+}
+
 var WHEEL_RIMS = {
-  steel: function(g, m, w){
-    var c = m.colors;
-    m.disc(w.cx, w.axleY, w.r-3, c.chromeDark);
-    m.disc(w.cx, w.axleY, w.r-4, c.chrome);
-    m.px(w.cx-1, w.axleY-1, 2, 2, c.chromeDark);
+  steel: function(g, m, w){                               /* pressed steel, hub cap */
+    var c = m.colors, f = w.r-3;
+    m.disc(w.cx, w.axleY, f+1, '#31363c');                /* bead lip */
+    m.disc(w.cx, w.axleY, f, '#6e757d');                  /* dished face */
+    for(var a=0;a<4;a++) ringPx(m, w.cx, w.axleY, a*TAU/4+TAU/8, f, '#2a2f34');
+    rimShine(m, w, f, '#b6bdc4', '#4b5157');
+    rimHub(m, w, c.chrome, '#eef1f4');
   },
-  alloy: function(g, m, w){
-    var c = m.colors;
-    m.disc(w.cx, w.axleY, w.r-3, c.chrome);
-    m.px(w.cx-1, w.axleY-w.r+3, 2, w.r*2-6, c.chromeDark);
-    m.px(w.cx-w.r+3, w.axleY-1, w.r*2-6, 2, c.chromeDark);
-    m.px(w.cx-1, w.axleY-1, 2, 2, c.black);
+  alloy: function(g, m, w){                               /* five polished spokes */
+    var c = m.colors, f = w.r-3;
+    m.disc(w.cx, w.axleY, f+1, '#3a4046');
+    m.disc(w.cx, w.axleY, f, '#2f343a');                  /* dark between spokes */
+    rimSpokes(m, w, 5, 2, f, '#a2aab2', -Math.PI/2);  /* tips only: gaps show */
+    rimShine(m, w, f+1, '#c9d0d7', '#41474d');
+    rimHub(m, w, c.chromeDark, c.chrome);
   },
-  race: function(g, m, w){                                /* coloured lip, 5 spokes */
-    var c = m.colors;
-    m.disc(w.cx, w.axleY, w.r-2, c.accent);
-    m.disc(w.cx, w.axleY, w.r-3, c.chromeDark);
-    for(var a=0;a<5;a++){
-      var th = a*Math.PI*2/5 - Math.PI/2;
-      for(var t=1;t<=w.r-4;t++)
-        m.px(w.cx + Math.round(Math.cos(th)*t),
-             w.axleY + Math.round(Math.sin(th)*t), 1, 1, c.chrome);
-    }
-    m.px(w.cx-1, w.axleY-1, 2, 2, c.black);
+  sport: function(g, m, w){                               /* dark mesh, machined lip */
+    var c = m.colors, f = w.r-3;
+    m.disc(w.cx, w.axleY, f+1, '#9aa2ab');                /* machined outer lip */
+    m.disc(w.cx, w.axleY, f, '#23272c');
+    rimSpokes(m, w, 6, f-1, f, '#8e969f', TAU/12);  /* short mesh spokes */
+    rimSpokes(m, w, 3, 2, f-1, '#6d747c', -Math.PI/2);
+    rimShine(m, w, f+1, '#e4e9ee', '#4b5158');
+    rimHub(m, w, '#1b1e22', c.chromeDark);
+  },
+  race: function(g, m, w){                                /* coloured lip, centre lock */
+    var c = m.colors, f = w.r-3, lip = rimLipColor(c.accent);
+    m.disc(w.cx, w.axleY, f+1, shade(lip, -0.18));        /* painted rim lip */
+    arcRun(m, w.cx, w.axleY, f+1, LIT_A0, LIT_A1, 8, lip);
+    m.disc(w.cx, w.axleY, f, '#2b3036');
+    rimSpokes(m, w, 5, 2, f, '#b2b9c1', -Math.PI/2);
+    rimShine(m, w, f, '#dfe6ec', '#3f454b');              /* inside the painted lip */
+    rimHub(m, w, c.accent, '#f4f6f8');
   }
 };
 
@@ -892,9 +978,49 @@ function drawSideWheels(g, m){
   }
 }
 
-/* ------------------------------------------------------------- chassis */
+/* Inner wheel arches, drawn under the wheels. They give the arch gap a dark
+   well to read against, so raising or dropping the body is obvious instead
+   of just letting the backdrop show through. */
+function drawSideWells(g, m){
+  var s = m.spec, dy = m.dy;
+  for(var i=0;i<s.wheels.length;i++){
+    var w = s.wheels[i], R = w.archR;
+    for(var dx=-R;dx<=R;dx++){
+      var t = R*R - dx*dx; if(t <= 0) continue;
+      var xx = w.cx + dx;
+      if(xx < s.x0 || xx > s.x1) continue;
+      var y = w.axleY - Math.round(Math.sqrt(t)) + dy;
+      if(w.axleY > y) m.px(xx, y, 1, w.axleY - y + 1, '#0b0d0f');
+    }
+  }
+}
+
+/* ------------------------------------------------------------- chassis
+   Shading is light-source consistent: the sun sits above and slightly
+   behind, so every column runs bright along the top edge, holds body
+   colour through the doors, and falls away through the lower flank into a
+   near-black rocker. The shoulder crease above the belt line catches a
+   second highlight, which is what gives the flank its 16-bit roundness. */
+function shadeEnd(m, x, k){                              /* wash a column darker */
+  var t = m.topAt(x), b = m.bottomAt(x);
+  if(b - t < 1) return;
+  m.px(x, t+m.dy, 1, b-t, 'rgba(10,12,16,'+(0.16*k).toFixed(3)+')');
+}
+function bodyBandColor(m, y, top, bot){
+  var c = m.colors, s = m.spec, h = bot - top;
+  if(y === top)   return c.hi;                           /* roof / bonnet catch */
+  if(y === top+1) return h > 4 ? c.lite : c.body;
+  if(h > 6){
+    if(y === bot-1) return c.deep;                       /* sill in shadow */
+    if(y === bot-2) return c.darker;                     /* rocker */
+    if(y === bot-3) return c.dark;                       /* lower flank falls off */
+  } else if(h > 2 && y === bot-1) return c.darker;
+  if(y === s.belt)   return c.dark;                      /* shoulder crease */
+  if(y === s.belt-1) return c.lite;                      /* light along the crease */
+  return c.body;
+}
 function drawSideChassis(g, m){
-  var s = m.spec, c = m.colors, dy = m.dy, x;
+  var s = m.spec, c = m.colors, dy = m.dy, x, y;
   /* 1px dark silhouette so the car reads against any backdrop */
   for(x=s.x0-1;x<=s.x1+1;x++){
     var ox = clamp(x, s.x0, s.x1);
@@ -905,17 +1031,11 @@ function drawSideChassis(g, m){
   for(x=s.x0;x<=s.x1;x++){
     var top = m.topAt(x), bot = m.bottomAt(x);
     if(bot - top < 1) continue;
-    m.px(x, top+dy, 1, bot-top, c.body);
-    m.px(x, top+dy, 1, 1, c.lite);                       /* roof/bonnet highlight */
-    if(bot - top > 5){
-      m.px(x, bot+dy-2, 1, 2, c.dark);                   /* shaded lower flank */
-      m.px(x, bot+dy-1, 1, 1, c.darker);                 /* rocker */
-    }
+    for(y=top;y<bot;y++) m.px(x, y+dy, 1, 1, bodyBandColor(m, y, top, bot));
   }
-  /* belt-line crease across the doors */
-  for(x=s.x0+3;x<=s.x1-3;x++){
-    if(s.belt > m.topAt(x)+1 && s.belt < m.bottomAt(x)-1) m.px(x, s.belt+dy, 1, 1, c.dark);
-  }
+  /* nose and tail turn away from the light, so both ends darken off */
+  for(x=s.x0;x<=s.x0+2;x++) shadeEnd(m, x, (s.x0+3-x)/4);
+  for(x=s.x1-2;x<=s.x1;x++) shadeEnd(m, x, (x-s.x1+3)/4);
   /* panel shut lines — only below the glass, so they read as door gaps */
   for(var k=0;k<s.shuts.length;k++){
     var sx = s.shuts[k], t = Math.max(s.belt-1, m.topAt(sx)+1), b = m.bottomAt(sx);
@@ -954,45 +1074,93 @@ function drawSideGlass(g, m){
   }
 }
 
-/* ------------------------------- hood / engine bay (turbo scoop goes here) */
+/* ------------------------------- hood / engine bay (turbo scoop goes here)
+   The four tiers are meant to read as hardware, not as silhouettes: a bare
+   bonnet, then louvres, then a moulded scoop with a real intake mouth, and
+   finally an exposed turbo housing plumbed to a front-mount intercooler. */
+
+/* front-mount intercooler sitting behind the bumper opening */
+function drawIntercooler(m, x0, y0, wdt){
+  var c = m.colors;
+  m.px(x0, y0, wdt, 1, c.chrome);                         /* top tank, lit */
+  m.px(x0, y0+1, wdt, 3, '#3a4046');                      /* core shadow box */
+  for(var i=0;i<wdt;i++)                                  /* alternating fins */
+    m.px(x0+i, y0+1, 1, 3, (i%2) ? '#8e969f' : '#565d65');
+  m.px(x0, y0+4, wdt, 1, c.chromeDark);                   /* bottom tank */
+  m.px(x0, y0, 1, 5, '#2b3036');                          /* end tank, shaded */
+  m.px(x0+wdt-1, y0, 1, 5, '#a8b0b8');                    /* end tank, lit */
+}
+/* charge pipe following the bonnet line, with a highlight along its top */
+function drawChargePipe(m, xa, xb, drop){
+  var c = m.colors, dy = m.dy;
+  for(var x=xa;x<=xb;x++){
+    var t = m.topAt(x) + dy + drop;
+    m.px(x, t, 1, 2, c.chromeDark);
+    m.px(x, t, 1, 1, c.chrome);
+  }
+}
+
 var HOOD_PARTS = {
   stock: function(g, m){
     var h = m.spec.hood, c = m.colors, dy = m.dy;
     m.px(h.x0, m.topAt(h.x0)+dy+1, 1, 2, c.darker);      /* bonnet shut line */
+    for(var x=h.x0+2;x<=h.x1-1;x++)                      /* pressed swage line */
+      m.px(x, m.topAt(x)+dy+2, 1, 1, c.dark);
   },
-  vents: function(g, m){
+  vents: function(g, m){                                  /* louvred bonnet */
     var h = m.spec.hood, c = m.colors, dy = m.dy;
     HOOD_PARTS.stock(g, m);
     for(var i=0;i<3;i++){
-      var x = h.x0 + 4 + i*3;
-      m.px(x, m.topAt(x)+dy+1, 2, 1, c.deep);
+      var x = h.x0 + 4 + i*3, t = m.topAt(x)+dy;
+      m.px(x, t+1, 2, 1, c.deep);                         /* slot cut into the panel */
+      m.px(x, t+2, 2, 1, c.darker);                       /* shadow under the louvre */
+      m.px(x+2, t+1, 1, 1, c.hi);                         /* raised lip catches light */
     }
   },
-  scoop: function(g, m){                                  /* reserved for the turbo pass */
+  scoop: function(g, m){                                  /* moulded bonnet scoop */
     var h = m.spec.hood, c = m.colors, dy = m.dy;
     HOOD_PARTS.stock(g, m);
-    var x0 = h.x0 + 3, wdt = 7;
-    for(var x=x0;x<x0+wdt;x++){
-      var top = m.topAt(x) + dy;
-      m.px(x, top-3, 1, 3, c.dark);
-      m.px(x, top-3, 1, 1, c.lite);
+    var x0 = h.x0 + 3, wdt = 7, x;
+    for(x=x0;x<x0+wdt;x++){
+      var t = m.topAt(x) + dy;
+      var rise = (x < x0+2) ? 2 : 3;                      /* ramps up off the panel */
+      m.px(x, t-rise, 1, rise, c.dark);                   /* scoop flank in shadow */
+      m.px(x, t-rise, 1, 1, c.lite);                      /* moulding catches light */
+      m.px(x, t-rise+1, 1, 1, c.body);
     }
-    m.px(x0+wdt-2, m.topAt(x0+wdt-2)+dy-2, 2, 2, c.black);
+    var fx = x0 + wdt - 3, ft = m.topAt(fx) + dy;
+    m.px(fx, ft-4, 3, 1, c.hi);                           /* lip above the mouth */
+    m.px(fx, ft-3, 3, 3, c.black);                        /* intake mouth */
+    m.px(fx+1, ft-2, 2, 1, '#2a3036');                    /* depth inside the mouth */
+    m.px(fx-1, ft-3, 1, 3, c.darker);                     /* mouth cheek */
   },
-  turbo: function(g, m){                                  /* top tier: scoop + piping */
-    var h = m.spec.hood, c = m.colors, dy = m.dy;
+  turbo: function(g, m){                                  /* exposed turbo + FMIC */
+    var h = m.spec.hood, c = m.colors, dy = m.dy, s = m.spec;
     HOOD_PARTS.stock(g, m);
-    var x0 = h.x0 + 2, wdt = 9;
-    for(var x=x0;x<x0+wdt;x++){
-      var top = m.topAt(x) + dy;
-      m.px(x, top-5, 1, 5, c.dark);
-      m.px(x, top-5, 1, 1, c.lite);
-    }
-    m.px(x0+wdt-3, m.topAt(x0+wdt-3)+dy-4, 3, 3, c.black);   /* intake mouth */
-    var ip = h.x1 - 2;                                       /* intercooler pipe */
-    m.px(ip-1, m.topAt(ip)+dy+2, 2, 4, c.chromeDark);
-    m.px(ip-3, m.topAt(ip)+dy+5, 4, 2, c.chromeDark);
-    m.px(ip-3, m.topAt(ip)+dy+5, 4, 1, c.chrome);
+
+    /* cut-out in the bonnet with the compressor housing standing proud */
+    var tx = h.x0 + Math.round((h.x1-h.x0)*0.52), ty = m.topAt(tx) + dy;
+    m.px(tx-3, ty+1, 7, 2, c.deep);                       /* opening, in shadow */
+    m.px(tx-3, ty, 7, 1, c.darker);                       /* folded panel edge */
+    m.disc(tx, ty, 2, '#22272c');                         /* housing shadow */
+    m.disc(tx, ty-1, 2, '#7d858e');                       /* snail body */
+    arcRun(m, tx, ty-1, 2, LIT_A0, LIT_A1, 6, '#d2d9e0'); /* polished highlight */
+    arcRun(m, tx, ty-1, 2, SHD_A0, SHD_A1, 6, '#3d434a');
+    m.px(tx, ty-1, 1, 1, '#2b3036');                      /* compressor centre */
+    m.px(tx-3, ty-1, 2, 2, '#5b636b');                    /* turbine inlet snout */
+    m.px(tx-3, ty-1, 2, 1, '#9aa2ab');
+    m.px(tx+2, ty-3, 2, 2, '#8e969f');                    /* wastegate can */
+    m.px(tx+2, ty-3, 1, 1, '#cfd6dd');
+
+    /* charge pipe running down the wing to the front-mount cooler, which
+       sits in the bumper opening ahead of the front arch */
+    var fw = s.wheels[s.wheels.length-1];
+    var nx = fw.cx + fw.archR + 1, wdt = Math.max(3, s.x1 - nx);
+    drawChargePipe(m, tx+3, s.x1-2, 2);
+    var icY = s.sill + dy - 5;
+    m.px(nx-1, icY-1, 2, 2, c.chromeDark);                /* elbow into the cooler */
+    m.px(nx-1, icY-1, 2, 1, c.chrome);
+    drawIntercooler(m, nx, icY, wdt);
   }
 };
 function drawSideHood(g, m){
@@ -1050,12 +1218,24 @@ var TRIM_PARTS = {
     m.px(mx, my+dy, 1, 1, c.dark);
   },
   exhaust: function(g, m){
-    var s = m.spec;
-    m.px(s.x0+1, m.bottomAt(s.x0+1)-2+m.dy, 3, 2, m.colors.chromeDark);
+    var s = m.spec, c = m.colors, y = m.bottomAt(s.x0+1)-2+m.dy;
+    m.px(s.x0+1, y, 3, 2, c.chromeDark);
+    m.px(s.x0+1, y, 3, 1, c.chrome);                      /* lit top of the tip */
+    m.px(s.x0+1, y+1, 1, 1, '#0e1114');                   /* dark tail pipe mouth */
+  },
+  exhaustBig: function(g, m){                             /* engine tier: bigger system */
+    var s = m.spec, c = m.colors, y = m.bottomAt(s.x0+1)-3+m.dy;
+    m.px(s.x0+1, y+1, 5, 1, '#3b3f44');                   /* back box under the valance */
+    m.px(s.x0, y, 4, 3, c.chromeDark);                    /* twin tips */
+    m.px(s.x0, y, 4, 1, c.chrome);
+    m.px(s.x0, y+1, 1, 1, '#0e1114');
+    m.px(s.x0, y+2, 1, 1, '#0e1114');
+    m.px(s.x0+3, y+1, 1, 2, '#7f878f');                   /* heat-stained shoulder */
   },
   splitter: function(g, m){                               /* front lip */
-    var s = m.spec, x = s.x1-7;
-    m.px(x, m.bottomAt(x)-1+m.dy, 8, 2, m.colors.deep);
+    var s = m.spec, c = m.colors, x = s.x1-7;
+    m.px(x, m.bottomAt(x)-1+m.dy, 8, 2, c.deep);
+    m.px(x, m.bottomAt(x)-1+m.dy, 8, 1, c.darker);        /* top face catches light */
   },
   spoiler: function(g, m){
     var t = m.spec.spoiler; if(!t) return;
@@ -1067,12 +1247,99 @@ var TRIM_PARTS = {
     m.px(t.standX, y+dy+t.h, 2, deck-(y+t.h)+1, c.deep);
     var xo = t.x + 1;                                     /* outer stand */
     m.px(xo, y+dy+t.h, 2, Math.max(1, m.topAt(xo)-(y+t.h)+1), c.deep);
+  },
+
+  /* ---- cues left behind when weight reduction takes a part off. A deleted
+     part never just vanishes: what is left is the blanking plate and the
+     patch of paint the part had been shading. */
+  mirrorGone: function(g, m){
+    var s = m.spec, c = m.colors, dy = m.dy;
+    var w = s.windows[s.windows.length-1];
+    var mx = w.x + w.w, my = w.y + w.h - 1;
+    m.px(mx, my+dy, 2, 1, c.darker);                      /* blanking plate */
+    m.px(mx, my+dy-1, 2, 1, c.lite);                      /* unfaded paint above it */
+  },
+  handleGone: function(g, m){
+    var s = m.spec, c = m.colors;
+    m.px(s.shuts[0]+3, s.belt+2+m.dy, 3, 1, c.dark);      /* filled recess */
+    m.px(s.shuts[0]+3, s.belt+1+m.dy, 3, 1, c.lite);      /* shadow line gone lighter */
+  },
+  spoilerGone: function(g, m){
+    var t = m.spec.spoiler; if(!t) return;
+    var c = m.colors, dy = m.dy;
+    var xo = t.x + 1;
+    m.px(t.standX, m.topAt(t.standX)+dy, 2, 1, c.deep);   /* capped mounting holes */
+    m.px(xo, m.topAt(xo)+dy, 2, 1, c.deep);
+    for(var x=t.x;x<t.x+t.w;x++)                          /* paint the blade masked */
+      m.px(x, m.topAt(x)+dy+1, 1, 1, c.lite);
   }
 };
 function drawSideTrim(g, m){
   var list = m.opts.trim || [];
   for(var i=0;i<list.length;i++){
     var fn = TRIM_PARTS[list[i]];
+    if(fn) fn(g, m);
+  }
+}
+
+/* ----------------------------------------------- body kit (top tiers only)
+   Small additions that only appear once a category is maxed, so a finished
+   car has a shape a stock one does not: flared arches, a skirt joining
+   them, and a bigger wing on the deck. */
+var KIT_PARTS = {
+  fenders: function(g, m){                                /* flared wheel arches */
+    var s = m.spec, c = m.colors, dy = m.dy;
+    for(var i=0;i<s.wheels.length;i++){
+      var w = s.wheels[i], R = w.archR + 1;
+      for(var dx=-R;dx<=R;dx++){
+        var t = R*R - dx*dx; if(t <= 0) continue;
+        var xx = w.cx + dx;
+        if(xx < s.x0 || xx > s.x1) continue;
+        var y = w.axleY - Math.round(Math.sqrt(t));
+        if(y > s.sill-3) continue;                        /* stop short of the sill */
+        m.px(xx, y+dy, 1, 2, c.dark);                     /* flare face */
+        m.px(xx, y+dy, 1, 1, c.body);                     /* lit crown of the flare */
+        m.px(xx, y+dy+2, 1, 1, 'rgba(0,0,0,.5)');         /* shadow it casts inside */
+      }
+    }
+  },
+  skirt: function(g, m){                                  /* side skirt joining the arches */
+    var s = m.spec, c = m.colors, dy = m.dy;
+    var a = s.wheels[0], b = s.wheels[s.wheels.length-1];
+    var xa = a.cx + a.archR - 1, xb = b.cx - b.archR + 1;
+    if(xb - xa < 3) return;
+    m.px(xa, s.sill+dy, xb-xa, 1, c.darker);              /* skirt top face */
+    m.px(xa+1, s.sill+dy+1, xb-xa-2, 1, c.deep);          /* drops below the rocker */
+    m.px(xa+1, s.sill+dy+2, xb-xa-2, 1, 'rgba(0,0,0,.45)');
+  },
+  wing: function(g, m){                                   /* taller blade, end plate */
+    var s = m.spec, t = s.spoiler, c = m.colors, dy = m.dy;
+    if(!t){                                               /* no wing mount: ducktail */
+      for(var x=s.x0+1;x<=s.x0+7;x++){
+        var top = m.topAt(x) + dy;
+        m.px(x, top-2, 1, 2, c.dark);
+        m.px(x, top-2, 1, 1, c.hi);
+      }
+      m.px(s.x0+1, m.topAt(s.x0+1)+dy-2, 1, 3, c.deep);
+      return;
+    }
+    var deck = m.topAt(t.standX), y = deck - t.standH - 2; /* sits higher than stock */
+    y = Math.max(y, 3 - dy);                              /* but never off the top */
+    var wdt = t.w + 2;
+    m.px(t.x-1, y+dy, wdt, t.h+1, c.deep);                /* blade */
+    m.px(t.x-1, y+dy, wdt, 1, c.hi);                      /* lit leading edge */
+    m.px(t.x-1, y+dy+t.h+1, wdt, 1, 'rgba(0,0,0,.4)');
+    m.px(t.x-1, y+dy-2, 1, t.h+4, c.darker);              /* end plate */
+    m.px(t.x-1, y+dy-2, 1, 1, c.dark);
+    m.px(t.standX, y+dy+t.h+1, 2, deck-(y+t.h)+1, c.deep);
+    var xo = t.x + 1;
+    m.px(xo, y+dy+t.h+1, 2, Math.max(1, m.topAt(xo)-(y+t.h)+1), c.deep);
+  }
+};
+function drawSideKit(g, m){
+  var list = m.opts.kit || [];
+  for(var i=0;i<list.length;i++){
+    var fn = KIT_PARTS[list[i]];
     if(fn) fn(g, m);
   }
 }
@@ -1086,14 +1353,16 @@ function drawSideShadow(g, m){
 /* Layer table and draw order — either can be re-pointed by a later pass. */
 var SIDE_LAYERS = {
   shadow:  drawSideShadow,
+  wells:   drawSideWells,
   wheels:  drawSideWheels,
   chassis: drawSideChassis,
   hood:    drawSideHood,
   livery:  drawSideLivery,
   glass:   drawSideGlass,
+  kit:     drawSideKit,
   trim:    drawSideTrim
 };
-var SIDE_LAYER_ORDER = ['shadow','wheels','chassis','hood','livery','glass','trim'];
+var SIDE_LAYER_ORDER = ['shadow','wells','wheels','chassis','hood','livery','glass','kit','trim'];
 
 /* Returns {canvas, w, h, pw, ph, spec, opts} — a side-on car facing RIGHT. */
 function renderCarSide(carId, opts){
@@ -1110,6 +1379,7 @@ function renderCarSide(carId, opts){
     lexan:      !!opts.lexan,
     hood:       opts.hood || 'stock',
     trim:       opts.trim || spec.trim,
+    kit:        opts.kit || [],
     damage:     opts.damage || 0
   };
 
@@ -1136,35 +1406,59 @@ function renderCarSide(carId, opts){
    Upgrade reflection — turns a car's equipped upgrades into side-view
    sprite options. Presentational only: nothing here feeds back into
    stats, pricing or handling, it just picks which layers get drawn.
-     suspension -> chassis ride height
-     turbo      -> bonnet furniture, up to a scoop with intercooler piping
+     suspension -> chassis ride height: stock sits tall on its springs, each
+                   tier drops it until the arches tuck over the tyres
+     turbo      -> bonnet furniture, up to an exposed turbo plumbed to a
+                   front-mount intercooler
      tyres      -> tread from the fitted compound, rim from the tier bought
-     weight     -> trim comes off, heaviest items first
+     engine     -> exhaust system
+     weight     -> trim comes off, heaviest items first, leaving blanking
+                   plates and unfaded paint behind
+     maxed tiers add body kit pieces on top of all that
    --------------------------------------------------------------------- */
 var TURBO_HOODS = ['stock','vents','scoop','turbo'];
-var TYRE_RIMS   = ['steel','steel','alloy','race'];       /* by tyre tier 0..3 */
+var TYRE_RIMS   = ['steel','alloy','sport','race'];       /* by tyre tier 0..3 */
 var STRIP_ORDER = [null, 'mirror', 'handle', 'spoiler'];  /* by weight tier */
+var STRIP_SCARS = { mirror:'mirrorGone', handle:'handleGone', spoiler:'spoilerGone' };
+var SUSP_RIDE   = [3, 2, 1, -1];      /* +ve lifts the body off the wheels */
 
 function carSideOpts(carId, extra){
-  var def = carDef(carId), cs = save.cars[carId], u = cs.up;
+  /* shopCarSave, not save.cars, so an unpaid shop preview shows on the car
+     through this same renderer — there is no second preview sprite path */
+  var def = carDef(carId), cs = shopCarSave(carId), u = cs.up;
   var spec = CAR_SIDE[def.sprite];
   var tyreLvl = clamp(cs.tires[cs.fitted]|0, 0, 3);
+  var susp = clamp(u.susp, 0, 3), turbo = clamp(u.turbo, 0, 3), weight = clamp(u.weight, 0, 3);
 
   var stripped = {};
-  for(var w=1; w<=clamp(u.weight,0,3); w++) stripped[STRIP_ORDER[w]] = true;
-  var trim = [];
-  for(var i=0;i<spec.trim.length;i++)
-    if(!stripped[spec.trim[i]]) trim.push(spec.trim[i]);
+  for(var w=1; w<=weight; w++) stripped[STRIP_ORDER[w]] = true;
+  var trim = [], part;
+  for(var i=0;i<spec.trim.length;i++){
+    part = spec.trim[i];
+    if(stripped[part]){                                   /* removed, but it shows */
+      if(part === 'spoiler' && turbo >= 3) continue;      /* the wing takes its place */
+      if(STRIP_SCARS[part]) trim.push(STRIP_SCARS[part]);
+      continue;
+    }
+    if(part === 'exhaust' && u.engine >= 2) part = 'exhaustBig';
+    trim.push(part);
+  }
+
+  var kit = [];
+  if(tyreLvl >= 3) kit.push('fenders');                   /* widest rubber needs arches */
+  if(susp >= 3)    kit.push('skirt');
+  if(turbo >= 3)   kit.push('wing');                      /* the aero the boost needs */
 
   var o = {
     paint:      cs.paint,
     livery:     cs.livery,
-    rideHeight: clamp(u.susp, 0, 3),
-    hood:       TURBO_HOODS[clamp(u.turbo, 0, 3)],
+    rideHeight: SUSP_RIDE[susp],
+    hood:       TURBO_HOODS[turbo],
     tread:      cs.fitted,
     rim:        TYRE_RIMS[tyreLvl],
-    lexan:      u.weight >= 2,
-    trim:       trim
+    lexan:      weight >= 2,
+    trim:       trim,
+    kit:        kit
   };
   if(extra) for(var k in extra) o[k] = extra[k];
   return o;
@@ -1175,7 +1469,7 @@ function getCarSide(carId, opts){
   opts = opts || {};
   var key = [carId, opts.paint, opts.livery|0, opts.scale|0, opts.rideHeight|0,
              opts.wheels, opts.tread, opts.rim, opts.hood, opts.lexan?1:0,
-             (opts.trim||[]).join(','), opts.damage|0].join('|');
+             (opts.trim||[]).join(','), (opts.kit||[]).join(','), opts.damage|0].join('|');
   if(!sideCache[key]){
     if(sideCacheN > 80){ sideCache = {}; sideCacheN = 0; }   /* keep it bounded */
     sideCache[key] = renderCarSide(carId, opts);
@@ -3130,7 +3424,7 @@ function drawSceneBackdrop(kind, paint){
 /* the car stands in the service bay, on the painted floor */
 function garageCarBox(){
   var px = scenePx(), sh = Math.ceil(view.h/px);
-  var def = curCarDef(), spec = CAR_SIDE[def.sprite];
+  var def = carDef(shopCarId()), spec = CAR_SIDE[def.sprite];
   var floorPx = Math.round(sh*0.66)*px;
   var w = spec.gw*px, h = spec.gh*px;
   var cx = Math.round(view.w*0.235);
@@ -3142,9 +3436,12 @@ function drawGarageScene(dt){
   var s = drawSceneBackdrop('garage', paintGarage);
   sceneT += dt;
 
-  /* the car itself, from the Pass 1 side-view sprite */
+  /* the car itself, from the Pass 1 side-view sprite. Sprites are cached by
+     their option key, so a preview costs one render on the tap and nothing
+     per frame after that. */
   var box = garageCarBox();
-  var sp = getCarSide(save.current, carSideOpts(save.current, { scale:box.px }));
+  var carId = shopCarId();
+  var sp = getCarSide(carId, carSideOpts(carId, { scale:box.px }));
   ctx.drawImage(sp.canvas, box.x, box.y);
 
   /* strip light flicker over the bay, and slow dust in the light */
@@ -3177,6 +3474,9 @@ var currentScreen = 'menu';
 
 var screenTimers = {};
 function showScreen(name){
+  /* leaving the garage at all — BACK, parking lot, starting a stage — counts
+     as cancelling: the preview is dropped and nothing was ever charged */
+  if(name !== 'garage') clearPreview();
   for(var i=0;i<SCREENS.length;i++){
     var id = SCREENS[i], el = document.getElementById('screen-'+id);
     clearTimeout(screenTimers[id]);
@@ -3320,23 +3620,167 @@ function renderStages(){
 /* ------------------------------------------------------------- garage */
 var garageTab = 'upgrades';
 
-function statRow(label, val, pct, green){
+/* --------------------------------------------------- preview lifecycle */
+
+/* Equip a shop item as an unpaid preview. Only one runs at a time, so
+   picking something else silently drops the previous one — still no charge. */
+function startPreview(pv){
+  preview = pv;
+  audioBeep(620, 0.05);
+  renderGarage();
+}
+/* drop the preview without a sound — used when the screen changes under us */
+function clearPreview(){ preview = null; }
+
+function cancelPreview(){
+  if(!preview) return;
+  preview = null;
+  audioBeep(330, 0.07);
+  renderGarage();
+}
+
+/* The preview already IS the post-purchase car entry, so buying is a
+   hand-over plus the debit. This is the only place the garage writes. */
+function commitPreview(){
+  if(!preview) return;
+  if(save.money < preview.cost) return;        /* can't afford: nothing happens */
+  var pv = preview;
+  preview = null;
+  save.money -= pv.cost;
+  save.cars[pv.carId] = pv.cs;
+  save.current = pv.current;
+  persist();
+  audioBeep(940, 0.14);
+  renderGarage();
+}
+
+/* Free, instantly reversible actions — fitting tyres, taking another car
+   out, gear ratios — drop any preview first, so a pending purchase can
+   never be committed on top of a car entry that moved underneath it. */
+function shopAction(fn){
+  return function(e){
+    if(e && e.stopPropagation) e.stopPropagation();
+    clearPreview();
+    fn();
+  };
+}
+
+function previewUpgrade(up){
+  var carId = save.current, real = save.cars[carId], lvl = real.up[up.id];
+  if(lvl >= up.max) return;
+  var cs = cloneCarSave(real);
+  cs.up[up.id] = lvl + 1;
+  startPreview({
+    kind:'upgrade', item:up.id, carId:carId, current:carId, cs:cs,
+    cost: upgradeCost(up, lvl, carIndex(carId)),          /* unchanged pricing */
+    name: up.name + ' → T' + (lvl+1),
+    note: up.desc
+  });
+}
+
+function previewTire(t){
+  var carId = save.current, real = save.cars[carId], lvl = real.tires[t.id];
+  if(lvl >= 3) return;
+  var cs = cloneCarSave(real);
+  cs.tires[t.id] = lvl + 1;
+  if(cs.tires[t.id] === 1) cs.fitted = t.id;              /* as buying does */
+  startPreview({
+    kind:'tire', item:t.id, carId:carId, current:carId, cs:cs,
+    cost: tireCost(t, lvl, carIndex(carId)),
+    name: t.name + ' → T' + (lvl+1),
+    note: lvl===0 ? t.desc + ' Fitted on purchase.' : t.desc
+  });
+}
+
+function previewPaint(col){
+  var carId = save.current, real = save.cars[carId];
+  if(real.paint === col){ clearPreview(); renderGarage(); return; }
+  var cs = cloneCarSave(real);
+  cs.paint = col;
+  startPreview({
+    kind:'paint', item:col, carId:carId, current:carId, cs:cs, cost:0,
+    name:'RESPRAY', note:'A fresh coat, on the house. Applied to the sprite you drive.'
+  });
+}
+
+function previewLivery(lv){
+  var carId = save.current, real = save.cars[carId];
+  if(real.livery === lv.id){ clearPreview(); renderGarage(); return; }
+  var cs = cloneCarSave(real);
+  cs.livery = lv.id;
+  startPreview({
+    kind:'livery', item:lv.id, carId:carId, current:carId, cs:cs, cost:0,
+    name:'LIVERY → ' + lv.name, note:'Decals are free. Try a few before you settle.'
+  });
+}
+
+function previewCar(def){
+  var real = save.cars[def.id];
+  if(real.owned) return;
+  var cs = cloneCarSave(real);
+  cs.owned = true;
+  startPreview({
+    kind:'car', item:def.id, carId:def.id, current:def.id, cs:cs,
+    cost: def.price, name: def.name, note: def.blurb + ' Starts stock.'
+  });
+}
+
+/* the bar under the bay: what is being previewed, what it costs, and the
+   two ways out of it */
+function renderPreviewBar(){
+  var bar = document.getElementById('preview-bar');
+  if(!preview){ bar.classList.add('hidden'); bar.classList.remove('short'); return; }
+  var afford = previewAffordable();
+  bar.classList.remove('hidden');
+  bar.classList.toggle('short', !afford);
+  document.getElementById('pv-name').textContent = preview.name;
+  document.getElementById('pv-note').textContent = preview.note || '';
+  document.getElementById('pv-cost').textContent = preview.cost > 0 ? fmtMoney(preview.cost) : 'FREE';
+  var foot = document.getElementById('pv-after');
+  foot.textContent = afford
+    ? 'BALANCE AFTER ' + fmtMoney(save.money - preview.cost)
+    : 'NOT ENOUGH CREDITS · ' + fmtMoney(preview.cost - save.money) + ' SHORT';
+  var buy = document.getElementById('pv-buy');
+  buy.disabled = !afford;
+  buy.classList.toggle('primary', afford);
+  buy.textContent = !afford ? 'CAN’T AFFORD' : (preview.cost > 0 ? 'PURCHASE' : 'APPLY');
+}
+
+function statRow(label, val, pct, green, delta){
+  var d = '';
+  if(delta){
+    var up = delta > 0;
+    d = '<i class="dl'+(up?'':' dn')+'">'+(up?'+':'−')+Math.abs(delta)+'</i>';
+  }
   return '<div class="stat"><span class="lab">'+label+'</span>'+
          '<span class="bar"><i class="'+(green?'g':'')+'" style="width:'+clamp(pct,0,100)+'%"></i></span>'+
-         '<span class="val">'+val+'</span></div>';
+         '<span class="val">'+val+d+'</span></div>';
 }
 function renderGarage(){
   refreshMoney();
-  var def = curCarDef(), cs = curCarSave(), s = computeStats(save.current);
-  document.getElementById('car-name').textContent = def.name + '  ·  ' + def.cls;
+  var carId = shopCarId(), def = carDef(carId), cs = shopCarSave(carId);
+  var s = computeStats(carId, cs);
+  /* what the preview would change, against the same car as it is paid for.
+     A car preview has no like-for-like baseline, so it shows plain stats. */
+  var b = (preview && preview.kind !== 'car') ? computeStats(carId, save.cars[carId]) : null;
+  var dl = function(get){ return b ? get(s) - get(b) : 0; };
+
+  var nameEl = document.getElementById('car-name');
+  nameEl.textContent = def.name + '  ·  ' + def.cls + ' ';
+  if(preview){
+    var tag = document.createElement('span');
+    tag.className = 'pv-tag';
+    tag.textContent = 'PREVIEW';
+    nameEl.appendChild(tag);
+  }
 
   document.getElementById('car-stats').innerHTML =
-    statRow('SPEED', s.kmh+' KM/H', s.kmh/240*100) +
-    statRow('ACCEL', s.accelScore, s.accelScore) +
-    statRow('HANDLING', s.handlingScore, s.handlingScore) +
-    statRow('G/GRAVEL', s.gripScore('gravel'), s.gripScore('gravel'), true) +
-    statRow('G/TARMAC', s.gripScore('tarmac'), s.gripScore('tarmac'), true) +
-    statRow('G/SNOW', s.gripScore('snow'), s.gripScore('snow'), true) +
+    statRow('SPEED', s.kmh+' KM/H', s.kmh/240*100, false, dl(function(x){ return x.kmh; })) +
+    statRow('ACCEL', s.accelScore, s.accelScore, false, dl(function(x){ return x.accelScore; })) +
+    statRow('HANDLING', s.handlingScore, s.handlingScore, false, dl(function(x){ return x.handlingScore; })) +
+    statRow('G/GRAVEL', s.gripScore('gravel'), s.gripScore('gravel'), true, dl(function(x){ return x.gripScore('gravel'); })) +
+    statRow('G/TARMAC', s.gripScore('tarmac'), s.gripScore('tarmac'), true, dl(function(x){ return x.gripScore('tarmac'); })) +
+    statRow('G/SNOW', s.gripScore('snow'), s.gripScore('snow'), true, dl(function(x){ return x.gripScore('snow'); })) +
     '<div class="stat" style="margin-top:3px"><span class="lab">TYRES</span><span style="color:var(--text)">'+s.tire.name+' T'+s.tireLvl+'</span></div>';
 
   var tabs = document.querySelectorAll('#tabs .tab');
@@ -3348,6 +3792,7 @@ function renderGarage(){
   else if(garageTab==='tires') renderTires(body);
   else if(garageTab==='paint') renderPaint(body);
   else renderCars(body);
+  renderPreviewBar();
 }
 
 function pips(level, max){
@@ -3356,27 +3801,32 @@ function pips(level, max){
   return h + '</span>';
 }
 function renderUpgrades(body){
-  var cs = curCarSave(), ci = carIndex(save.current);
+  var carId = shopCarId(), real = save.cars[carId], cs = shopCarSave(carId), ci = carIndex(carId);
   for(var i=0;i<UPGRADES.length;i++){
     (function(up){
-      var lvl = cs.up[up.id];
+      var lvl = real.up[up.id];              /* paid-for level: sets the price */
+      var shown = cs.up[up.id];              /* previewed level: sets the pips */
+      var on = isPreviewing('upgrade', up.id);
+      var maxed = lvl >= up.max;
       var row = document.createElement('div');
-      row.className = 'up-row';
+      row.className = 'up-row' + (maxed ? '' : ' shoppable') + (on ? ' pv' : '');
       var cost = upgradeCost(up, lvl, ci);
-      row.innerHTML = '<span class="up-name">'+up.name+'</span>' + pips(lvl, up.max) +
+      row.innerHTML = '<span class="up-name">'+up.name+'</span>' + pips(shown, up.max) +
                       '<span class="up-desc">'+up.desc+'</span>';
       var btn = document.createElement('button');
       btn.className = 'btn small';
-      if(lvl >= up.max){ btn.textContent = 'MAX'; btn.disabled = true; }
+      if(maxed){ btn.textContent = 'MAX'; btn.disabled = true; }
       else {
-        btn.textContent = fmtMoney(cost);
-        btn.disabled = save.money < cost;
-        if(!btn.disabled) btn.classList.add('primary');
-        btn.onclick = function(){
-          if(save.money < cost) return;
-          save.money -= cost; cs.up[up.id]++;
-          persist(); audioBeep(880,0.09); renderGarage();
-        };
+        var tap = function(e){ if(e && e.stopPropagation) e.stopPropagation(); previewUpgrade(up); };
+        if(on){ btn.textContent = 'FITTED'; btn.classList.add('pv'); }
+        else {
+          btn.textContent = fmtMoney(cost);
+          /* still tappable when it is out of reach — you can look at it,
+             the PURCHASE button in the bar is what locks out */
+          if(save.money < cost) btn.classList.add('cant'); else btn.classList.add('primary');
+        }
+        btn.onclick = tap;
+        row.onclick = tap;
       }
       row.appendChild(btn);
       body.appendChild(row);
@@ -3387,7 +3837,7 @@ function renderUpgrades(body){
   var hint = document.createElement('div');
   hint.className = 'up-desc';
   hint.style.padding = '8px';
-  hint.textContent = 'Stage 2 needs handling 44+. Stage 3 needs handling 58+ and 170 km/h+. Upgrades apply to the currently selected car only.';
+  hint.textContent = 'Tap an upgrade to fit it on the car and see it before you pay. Stage 2 needs handling 44+. Stage 3 needs handling 58+ and 170 km/h+. Upgrades apply to the currently selected car only.';
   body.appendChild(hint);
 }
 
@@ -3396,7 +3846,9 @@ function renderUpgrades(body){
    gearbox setting: it does not touch the upgrade tree, prices, or the
    stats used for stage gating. */
 function renderGearing(body){
-  var cs = curCarSave(), st = computeStats(save.current);
+  /* ratios are a free setting, written straight to the save, so this reads
+     the real entry — the steppers cancel any preview before they write */
+  var carId = shopCarId(), cs = save.cars[carId], st = computeStats(carId, shopCarSave(carId));
 
   var head = document.createElement('div');
   head.className = 'up-row gear-head';
@@ -3422,10 +3874,10 @@ function renderGearing(body){
     plus.className = 'btn small'; plus.textContent = '+';
     plus.disabled = val >= max - 1e-6;
     var bump = function(d){
-      return function(){
+      return shopAction(function(){
         cs.gearing[key] = Math.round(clamp(cs.gearing[key] + d, min, max) * 100) / 100;
         persist(); audioBeep(700, 0.05); renderGarage();
-      };
+      });
     };
     minus.onclick = bump(-GEAR_STEP);
     plus.onclick = bump(GEAR_STEP);
@@ -3446,43 +3898,47 @@ function renderGearing(body){
     function(v){ return v.toFixed(2); });
 
   /* what the current ratios actually give you */
-  var spans = carSpans(save.current);
+  var spans = carSpans(carId);
   var topKmh = Math.round(st.topSpeed * cs.gearing.final * 0.42);
   var firstKmh = Math.round(st.topSpeed * spans[0] * 0.42);
   var out = document.createElement('div');
   out.className = 'up-row';
   out.innerHTML = '<span class="up-name">AT REDLINE</span>' +
     '<span class="up-desc">1st runs to <b>' + firstKmh + ' KM/H</b>, top gear to <b>' + topKmh + ' KM/H</b>. ' +
-    (gearingIsStock(save.current) ? 'Currently stock.' : 'Tuned away from stock.') + '</span>';
+    (gearingIsStock(carId) ? 'Currently stock.' : 'Tuned away from stock.') + '</span>';
   var reset = document.createElement('button');
   reset.className = 'btn small';
   reset.textContent = 'RESET';
-  reset.disabled = gearingIsStock(save.current);
+  reset.disabled = gearingIsStock(carId);
   if(!reset.disabled) reset.classList.add('primary');
-  reset.onclick = function(){
+  reset.onclick = shopAction(function(){
     cs.gearing = { final:1, spread:1 };
     persist(); audioBeep(520, 0.09); renderGarage();
-  };
+  });
   out.appendChild(reset);
   body.appendChild(out);
 }
 
 function renderTires(body){
-  var cs = curCarSave(), ci = carIndex(save.current);
+  var carId = shopCarId(), real = save.cars[carId], cs = shopCarSave(carId), ci = carIndex(carId);
   for(var i=0;i<TIRES.length;i++){
     (function(t){
-      var lvl = cs.tires[t.id];
+      var lvl = real.tires[t.id];            /* paid-for tier: sets the price */
+      var shown = cs.tires[t.id];            /* previewed tier: sets the pips */
+      var on = isPreviewing('tire', t.id);
       var row = document.createElement('div');
-      row.className = 'up-row';
-      row.innerHTML = '<span class="up-name">'+t.name+'</span>' + pips(lvl,3) +
+      row.className = 'up-row' + (lvl<3 ? ' shoppable' : '') + (on ? ' pv' : '');
+      row.innerHTML = '<span class="up-name">'+t.name+'</span>' + pips(shown,3) +
         '<span class="up-desc">'+t.desc+'<br>GRAVEL '+t.mul.gravel.toFixed(2)+
         ' · TARMAC '+t.mul.tarmac.toFixed(2)+' · SNOW '+t.mul.snow.toFixed(2)+'</span>';
-      if(lvl>0){
+      if(lvl>0){                             /* only paid-for rubber can be fitted */
         var fit = document.createElement('button');
         fit.className = 'btn small' + (cs.fitted===t.id ? ' primary' : '');
         fit.textContent = cs.fitted===t.id ? 'FITTED' : 'FIT';
         fit.disabled = cs.fitted===t.id;
-        fit.onclick = function(){ cs.fitted = t.id; persist(); audioBeep(700,0.08); renderGarage(); };
+        fit.onclick = shopAction(function(){
+          real.fitted = t.id; persist(); audioBeep(700,0.08); renderGarage();
+        });
         row.appendChild(fit);
       }
       var buy = document.createElement('button');
@@ -3490,24 +3946,29 @@ function renderTires(body){
       if(lvl>=3){ buy.textContent = 'MAX'; buy.disabled = true; }
       else {
         var cost = tireCost(t, lvl, ci);
-        buy.textContent = (lvl===0?'BUY ':'') + fmtMoney(cost);
-        buy.disabled = save.money < cost;
-        if(!buy.disabled) buy.classList.add('primary');
-        buy.onclick = function(){
-          if(save.money < cost) return;
-          save.money -= cost; cs.tires[t.id]++;
-          if(cs.tires[t.id]===1) cs.fitted = t.id;
-          persist(); audioBeep(880,0.09); renderGarage();
-        };
+        var tap = function(e){ if(e && e.stopPropagation) e.stopPropagation(); previewTire(t); };
+        if(on){ buy.textContent = 'FITTED'; buy.classList.add('pv'); }
+        else {
+          buy.textContent = (lvl===0?'BUY ':'') + fmtMoney(cost);
+          if(save.money < cost) buy.classList.add('cant'); else buy.classList.add('primary');
+        }
+        buy.onclick = tap;
+        row.onclick = tap;
       }
       row.appendChild(buy);
       body.appendChild(row);
     })(TIRES[i]);
   }
+
+  var hint = document.createElement('div');
+  hint.className = 'up-desc';
+  hint.style.padding = '8px';
+  hint.textContent = 'Tap a compound to see the tread and rims on the car before you pay. FIT is free and swaps between the tyres you already own.';
+  body.appendChild(hint);
 }
 
 function renderPaint(body){
-  var cs = curCarSave();
+  var cs = shopCarSave(shopCarId());
   var wrap = document.createElement('div');
   wrap.style.padding = '8px';
   wrap.innerHTML = '<div class="up-name" style="width:auto;margin-bottom:6px">PAINT</div>';
@@ -3516,9 +3977,10 @@ function renderPaint(body){
   for(var i=0;i<PAINTS.length;i++){
     (function(col){
       var d = document.createElement('div');
-      d.className = 'sw' + (cs.paint===col?' sel':'');
+      /* 'sel' follows the preview, so the swatch matches the car in the bay */
+      d.className = 'sw' + (cs.paint===col?' sel':'') + (isPreviewing('paint',col)?' pv':'');
       d.style.background = col;
-      d.onclick = function(){ cs.paint = col; persist(); audioBeep(660,0.06); renderGarage(); };
+      d.onclick = function(){ previewPaint(col); };
       sw.appendChild(d);
     })(PAINTS[i]);
   }
@@ -3533,22 +3995,29 @@ function renderPaint(body){
   for(var j=0;j<LIVERIES.length;j++){
     (function(lv){
       var b = document.createElement('button');
-      b.className = 'btn small' + (cs.livery===lv.id?' primary':'');
+      b.className = 'btn small' + (cs.livery===lv.id?' primary':'') + (isPreviewing('livery',lv.id)?' pv':'');
       b.textContent = lv.name;
-      b.onclick = function(){ cs.livery = lv.id; persist(); audioBeep(660,0.06); renderGarage(); };
+      b.onclick = function(){ previewLivery(lv); };
       ll.appendChild(b);
     })(LIVERIES[j]);
   }
   wrap.appendChild(ll);
+  var hint = document.createElement('div');
+  hint.className = 'up-desc';
+  hint.style.marginTop = '10px';
+  hint.textContent = 'Paint and decals are free, but they still go on as a preview — try them on the car, then APPLY to keep it or CANCEL to go back.';
+  wrap.appendChild(hint);
   body.appendChild(wrap);
 }
 
 function renderCars(body){
   for(var i=0;i<CARS.length;i++){
     (function(def, idx){
-      var cs = save.cars[def.id];
+      var real = save.cars[def.id];          /* ownership is never previewed */
+      var cs = shopCarSave(def.id);          /* but the sprite follows one */
+      var on = isPreviewing('car', def.id);
       var row = document.createElement('div');
-      row.className = 'car-row';
+      row.className = 'car-row' + (!real.owned ? ' shoppable' : '') + (on ? ' pv' : '');
       var cvs = document.createElement('canvas');
       cvs.width = 40; cvs.height = 70;
       cvs.style.width = '40px'; cvs.style.height = '70px';
@@ -3562,20 +4031,22 @@ function renderCars(body){
       row.appendChild(info);
       var btn = document.createElement('button');
       btn.className = 'btn small';
-      if(!cs.owned){
-        btn.textContent = fmtMoney(def.price);
-        btn.disabled = save.money < def.price;
-        if(!btn.disabled) btn.classList.add('primary');
-        btn.onclick = function(){
-          if(save.money < def.price) return;
-          save.money -= def.price; cs.owned = true; save.current = def.id;
-          persist(); audioBeep(1000,0.16); renderGarage();
-        };
+      if(!real.owned){
+        var tap = function(e){ if(e && e.stopPropagation) e.stopPropagation(); previewCar(def); };
+        if(on){ btn.textContent = 'IN THE BAY'; btn.classList.add('pv'); }
+        else {
+          btn.textContent = fmtMoney(def.price);
+          if(save.money < def.price) btn.classList.add('cant'); else btn.classList.add('primary');
+        }
+        btn.onclick = tap;
+        row.onclick = tap;
       } else if(save.current === def.id){
         btn.textContent = 'IN USE'; btn.disabled = true;
       } else {
         btn.textContent = 'SELECT'; btn.classList.add('primary');
-        btn.onclick = function(){ save.current = def.id; persist(); audioBeep(760,0.08); renderGarage(); };
+        btn.onclick = shopAction(function(){
+          save.current = def.id; persist(); audioBeep(760,0.08); renderGarage();
+        });
       }
       row.appendChild(btn);
       body.appendChild(row);
@@ -3833,9 +4304,15 @@ for(var n=0;n<navs.length;n++){
 var tabEls = document.querySelectorAll('#tabs .tab');
 for(var t=0;t<tabEls.length;t++){
   (function(el){
-    el.addEventListener('click', function(){ garageTab = el.getAttribute('data-tab'); audioKick(); renderGarage(); });
+    el.addEventListener('click', function(){
+      /* leaving a category is backing out of whatever was being previewed */
+      clearPreview();
+      garageTab = el.getAttribute('data-tab'); audioKick(); renderGarage();
+    });
   })(tabEls[t]);
 }
+document.getElementById('pv-buy').addEventListener('click', function(){ commitPreview(); });
+document.getElementById('pv-cancel').addEventListener('click', function(){ cancelPreview(); });
 document.addEventListener('touchstart', function(){ audioKick(); }, {passive:true, once:true});
 document.addEventListener('gesturestart', function(e){ e.preventDefault(); });
 document.addEventListener('dblclick', function(e){ e.preventDefault(); });

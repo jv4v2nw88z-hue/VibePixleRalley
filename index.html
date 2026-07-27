@@ -79,6 +79,20 @@
         <button class="btn small" data-go="menu">BACK</button>
       </div>
     </div>
+    <!-- equip-to-preview confirm bar: shown only while something unpaid is on
+         the car. It sits above the bay so the stats card below stays put. -->
+    <div id="preview-bar" class="hidden">
+      <div class="pv-txt">
+        <div class="pv-name" id="pv-name">ITEM</div>
+        <div class="pv-note" id="pv-note"></div>
+      </div>
+      <div class="pv-price">
+        <div class="pv-cost"><span>COST</span><b id="pv-cost">CR 0</b></div>
+        <div class="pv-after" id="pv-after"></div>
+      </div>
+      <button class="btn small primary" id="pv-buy">PURCHASE</button>
+      <button class="btn small" id="pv-cancel">CANCEL</button>
+    </div>
     <div id="garage-body">
       <div id="garage-stage">
         <div id="car-name">CAR</div>

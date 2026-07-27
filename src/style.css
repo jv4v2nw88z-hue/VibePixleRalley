@@ -90,7 +90,7 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 .stat .bar{flex:1;height:7px;background:#0d110c;border:1px solid var(--line);border-radius:2px;overflow:hidden;}
 .stat .bar i{display:block;height:100%;background:linear-gradient(90deg,#b7791b,var(--amber));}
 .stat .bar i.g{background:linear-gradient(90deg,#2f7a3c,var(--green));}
-.stat .val{width:62px;text-align:right;color:var(--text);flex:none;white-space:nowrap;}
+.stat .val{min-width:62px;text-align:right;color:var(--text);flex:none;white-space:nowrap;}
 #tabs{display:flex;gap:4px;}
 .tab{flex:1;text-align:center;}
 .tab.active{color:#1a1200;background:linear-gradient(180deg,#ffc457,#e0921a);border-color:#7c5310;}
@@ -112,6 +112,36 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 .sw.sel{border-color:#fff;box-shadow:0 0 0 2px rgba(255,180,50,.7);}
 .livery-list{display:flex;flex-wrap:wrap;gap:6px;}
 .livery-list .btn{min-width:78px;}
+
+/* ---------- garage: equip-to-preview shop ---------- */
+.up-row.shoppable,.car-row.shoppable{cursor:pointer;}
+.up-row.shoppable:active,.car-row.shoppable:active{background:rgba(255,180,50,.07);}
+/* the row / swatch whose item is currently sitting on the car unpaid */
+.up-row.pv,.car-row.pv{background:rgba(255,180,50,.13);box-shadow:inset 3px 0 0 var(--amber);}
+.sw.pv{border-color:var(--amber);box-shadow:0 0 0 2px rgba(255,180,50,.9);}
+.btn.pv{color:#1a1200;background:linear-gradient(180deg,#ffe3a6,#e8b45c);border-color:#7c5310;}
+/* out of reach, but still tappable so it can be previewed */
+.btn.cant{color:var(--red);border-color:#5d3a33;opacity:.85;}
+.stat .dl{font-style:normal;margin-left:5px;color:var(--green);}
+.stat .dl.dn{color:var(--red);}
+#car-name .pv-tag{margin-left:6px;padding:1px 5px;border:1px solid #1a1200;border-radius:3px;
+  font-size:9px;letter-spacing:1px;color:#1a1200;background:var(--amber);vertical-align:middle;}
+#preview-bar{display:flex;align-items:center;gap:8px;margin:0 0 6px;padding:5px 8px;
+  background:linear-gradient(180deg,rgba(56,42,14,.96),rgba(28,22,10,.96));
+  border:2px solid var(--amber);border-radius:5px;}
+#preview-bar.short{border-color:var(--red);background:linear-gradient(180deg,rgba(56,20,14,.96),rgba(28,12,10,.96));}
+#preview-bar .pv-txt{flex:1;min-width:0;}
+#preview-bar .pv-name{font-size:11.5px;letter-spacing:1px;color:var(--amber);font-weight:700;}
+#preview-bar.short .pv-name{color:var(--red);}
+#preview-bar .pv-note{font-size:9px;color:var(--muted);line-height:1.35;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#preview-bar .pv-price{flex:none;text-align:right;}
+#preview-bar .pv-cost{font-size:9px;letter-spacing:1px;color:var(--muted);white-space:nowrap;}
+#preview-bar .pv-cost b{margin-left:5px;font-size:12.5px;color:var(--amber);}
+#preview-bar .pv-after{font-size:8.5px;letter-spacing:.5px;color:var(--muted);white-space:nowrap;}
+#preview-bar.short .pv-after{color:var(--red);}
+#preview-bar .btn{flex:none;}
+
 .car-row{display:flex;gap:8px;align-items:center;padding:7px;border-bottom:1px solid rgba(60,74,56,.5);}
 .car-row canvas{image-rendering:pixelated;flex:none;}
 .car-row .info{flex:1;min-width:0;}

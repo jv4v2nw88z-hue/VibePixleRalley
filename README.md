@@ -101,6 +101,13 @@ hit `CALIBRATE`. Sensitivity is adjustable.
 
 ## Garage
 
+Nothing is bought on the first tap. Tapping anything in the shop **fits it to the car as a
+preview** — the sprite in the bay updates immediately, the stat bars show what would change,
+and a bar above the bay names the item and its price with `PURCHASE` and `CANCEL`. Only
+`PURCHASE` charges you and writes to the save; `CANCEL`, switching tabs or leaving the garage
+puts the car back to its last paid-for state for free. Items you can't afford still go on the
+car to look at — the purchase button greys out and says how far short you are.
+
 - **Upgrades** — engine, turbo, suspension, gearbox, weight reduction. Three tiers each,
   per car, feeding top speed, acceleration, handling and mechanical grip.
 - **Tyres** — all-terrain, gravel, tarmac slick and studded snow, three tiers each. Every
