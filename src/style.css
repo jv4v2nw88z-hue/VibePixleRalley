@@ -131,6 +131,12 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 #hud-speed{right:calc(8px + env(safe-area-inset-right));bottom:calc(78px + env(safe-area-inset-bottom));text-align:right;}
 #hud-speed .v{font-size:clamp(20px,5vh,36px);font-weight:700;color:var(--green);letter-spacing:1px;line-height:1;}
 #hud-speed .u{font-size:9px;color:var(--muted);letter-spacing:2px;}
+#hud-speed .u #h-gear.perfect{color:var(--green);}
+#hud-speed .revbar{height:5px;background:#0d110c;border:1px solid var(--line);border-radius:2px;
+  margin-top:3px;overflow:hidden;width:74px;margin-left:auto;}
+#hud-speed .revbar i{display:block;height:100%;width:0%;background:var(--green);}
+#hud-speed .revbar i.warn{background:var(--amber);}
+#hud-speed .revbar i.red{background:var(--red);}
 #hud-left{top:calc(6px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));min-width:118px;}
 #hud-left .nm{font-size:10px;color:var(--muted);letter-spacing:1px;}
 .meter{height:6px;background:#0d110c;border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-top:3px;}
@@ -165,6 +171,12 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 #p-gas{right:calc(10px + env(safe-area-inset-right));bottom:calc(10px + env(safe-area-inset-bottom));width:84px;height:70px;}
 #p-hbrake{right:calc(102px + env(safe-area-inset-right));bottom:calc(10px + env(safe-area-inset-bottom));width:80px;height:70px;font-size:clamp(9px,1.9vh,13px);}
 #p-pause{right:calc(8px + env(safe-area-inset-right));top:calc(6px + env(safe-area-inset-top));width:44px;height:34px;font-size:12px;}
+/* placeholder shift inputs — the dedicated paddle UI in a later pass wires
+   to the same shiftUp()/shiftDown() calls these fire */
+.pad.shift{flex-direction:column;gap:0;line-height:1;bottom:calc(86px + env(safe-area-inset-bottom));height:46px;}
+.pad.shift small{font-size:8px;letter-spacing:1px;opacity:.8;}
+#p-shiftup{right:calc(10px + env(safe-area-inset-right));width:84px;}
+#p-shiftdn{right:calc(102px + env(safe-area-inset-right));width:80px;}
 #tilt-bar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom));
   width:150px;height:8px;background:rgba(8,11,7,.6);border:2px solid rgba(140,160,130,.5);border-radius:4px;pointer-events:none;}
 #tilt-bar i{position:absolute;top:0;bottom:0;left:50%;width:6px;margin-left:-3px;background:var(--amber);border-radius:3px;}

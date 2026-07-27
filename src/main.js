@@ -164,7 +164,7 @@ function freshCarSave(def){
   };
 }
 function freshSave(){
-  var s = { v:1, money:1200, current:'hatch', cars:{}, stages:{}, settings:{ control:'buttons', audio:true, autoGas:false, tiltSens:1 } };
+  var s = { v:1, money:1200, current:'hatch', cars:{}, stages:{}, settings:{ control:'buttons', audio:true, autoGas:false, tiltSens:1, transmission:'auto' } };
   for(var i=0;i<CARS.length;i++) s.cars[CARS[i].id] = freshCarSave(CARS[i]);
   for(var j=0;j<STAGES.length;j++) s.stages[STAGES[j].id] = { best:null, done:false };
   return s;
@@ -198,6 +198,9 @@ function loadSave(){
     if(typeof s.settings.audio === 'boolean') save.settings.audio = s.settings.audio;
     if(typeof s.settings.autoGas === 'boolean') save.settings.autoGas = s.settings.autoGas;
     if(typeof s.settings.tiltSens === 'number') save.settings.tiltSens = clamp(s.settings.tiltSens,0.5,2);
+    /* saves written before manual existed simply stay on automatic */
+    if(s.settings.transmission === 'manual' || s.settings.transmission === 'auto')
+      save.settings.transmission = s.settings.transmission;
   }
 }
 function persist(){
@@ -1148,7 +1151,24 @@ bindPad(document.getElementById('p-right'),'right');
 bindPad(document.getElementById('p-gas'),'gas');
 bindPad(document.getElementById('p-hbrake'),'hbrake');
 
+/* the shift pads are taps, not holds, so they get their own binding */
+function bindTap(el, fn){
+  var fire = function(e){
+    e.preventDefault();
+    el.classList.add('act');
+    setTimeout(function(){ el.classList.remove('act'); }, 90);
+    audioKick(); fn();
+  };
+  el.addEventListener('touchstart', fire, {passive:false});
+  el.addEventListener('mousedown', fire);
+}
+bindTap(document.getElementById('p-shiftup'), function(){ shiftUp(); });
+bindTap(document.getElementById('p-shiftdn'), function(){ shiftDown(); });
+
 document.addEventListener('keydown', function(e){
+  if(e.repeat) return;
+  if(e.key==='e'||e.key==='E'||e.key==='x'||e.key==='X'){ shiftUp(); return; }
+  if(e.key==='q'||e.key==='Q'||e.key==='z'||e.key==='Z'){ shiftDown(); return; }
   if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A') input.left = true;
   else if(e.key==='ArrowRight'||e.key==='d'||e.key==='D') input.right = true;
   else if(e.key==='ArrowUp'||e.key==='w'||e.key==='W'||e.key===' ') { input.gas = true; e.preventDefault(); }
@@ -1190,8 +1210,27 @@ function enableTilt(cb){
 }
 function calibrateTilt(){ input.tiltZero = input.tiltRaw; }
 
-/* ------------------------------------------------------------------ audio */
-var actx = null, engineOsc = null, engineOsc2 = null, engineGain = null, noiseSrc = null, noiseGain = null, masterGain = null;
+/* ------------------------------------------------------------------ audio
+   The engine is three layered oscillators rather than one thin tone:
+
+     sub    square  at f/2        the rumble you feel
+     body   sawtooth at f         the main note, rich in harmonics so it
+                                  survives a phone speaker's bass rolloff
+     whine  sawtooth at f*3.02    mechanical/gear whine, rises with load
+
+   sub+body run through a resonant lowpass that opens with revs, which is
+   what turns a flat drone into a growl. On top of that sits induction
+   noise (bandpass, tracks the fundamental) and the existing tyre noise.
+
+   Gain staging: engineBus -> engineGain (per-frame level) -> shiftGain
+   (only ever touched by the shift cut) -> tone filter -> master. Keeping
+   the shift cut on its own node stops it fighting the per-frame ramps.
+   ---------------------------------------------------------------------- */
+var actx = null, masterGain = null;
+var oscSub = null, oscBody = null, oscWhine = null;
+var whineGain = null, engineGain = null, shiftGain = null, toneFilter = null;
+var noiseSrc = null, noiseBuf = null, noiseGain = null, indGain = null, indFilter = null;
+
 function audioKick(){
   if(!save.settings.audio) return;
   if(actx){ if(actx.state==='suspended') actx.resume(); return; }
@@ -1199,31 +1238,111 @@ function audioKick(){
     var AC = window.AudioContext || window.webkitAudioContext;
     if(!AC) return;
     actx = new AC();
-    masterGain = actx.createGain(); masterGain.gain.value = 0.5; masterGain.connect(actx.destination);
-    engineGain = actx.createGain(); engineGain.gain.value = 0; engineGain.connect(masterGain);
-    engineOsc = actx.createOscillator(); engineOsc.type = 'sawtooth'; engineOsc.frequency.value = 60;
-    engineOsc2 = actx.createOscillator(); engineOsc2.type = 'square'; engineOsc2.frequency.value = 30;
-    var g2 = actx.createGain(); g2.gain.value = 0.35;
-    engineOsc.connect(engineGain); engineOsc2.connect(g2); g2.connect(engineGain);
-    engineOsc.start(); engineOsc2.start();
+    masterGain = actx.createGain(); masterGain.gain.value = 0.5;
+    masterGain.connect(actx.destination);
 
-    var len = actx.sampleRate*2, buf = actx.createBuffer(1,len,actx.sampleRate), dat = buf.getChannelData(0);
+    /* --- engine tone chain --- */
+    toneFilter = actx.createBiquadFilter();
+    toneFilter.type = 'lowpass'; toneFilter.frequency.value = 500; toneFilter.Q.value = 3.2;
+    toneFilter.connect(masterGain);
+
+    shiftGain = actx.createGain(); shiftGain.gain.value = 1;
+    shiftGain.connect(toneFilter);
+
+    engineGain = actx.createGain(); engineGain.gain.value = 0;
+    engineGain.connect(shiftGain);
+
+    oscBody = actx.createOscillator(); oscBody.type = 'sawtooth'; oscBody.frequency.value = 60;
+    oscBody.connect(engineGain);
+
+    oscSub = actx.createOscillator(); oscSub.type = 'square'; oscSub.frequency.value = 30;
+    var subGain = actx.createGain(); subGain.gain.value = 0.55;
+    oscSub.connect(subGain); subGain.connect(engineGain);
+
+    oscWhine = actx.createOscillator(); oscWhine.type = 'sawtooth'; oscWhine.frequency.value = 180;
+    whineGain = actx.createGain(); whineGain.gain.value = 0.08;
+    oscWhine.connect(whineGain); whineGain.connect(engineGain);
+
+    oscBody.start(); oscSub.start(); oscWhine.start();
+
+    /* --- noise: one buffer, fanned out to induction and tyre chains --- */
+    var len = actx.sampleRate*2;
+    noiseBuf = actx.createBuffer(1, len, actx.sampleRate);
+    var dat = noiseBuf.getChannelData(0);
     for(var i=0;i<len;i++) dat[i] = (Math.random()*2-1)*0.5;
-    noiseSrc = actx.createBufferSource(); noiseSrc.buffer = buf; noiseSrc.loop = true;
+    noiseSrc = actx.createBufferSource(); noiseSrc.buffer = noiseBuf; noiseSrc.loop = true;
+
+    indFilter = actx.createBiquadFilter();
+    indFilter.type = 'bandpass'; indFilter.frequency.value = 600; indFilter.Q.value = 1.1;
+    indGain = actx.createGain(); indGain.gain.value = 0;
+    noiseSrc.connect(indFilter); indFilter.connect(indGain); indGain.connect(masterGain);
+
+    var tyreFilter = actx.createBiquadFilter();
+    tyreFilter.type = 'bandpass'; tyreFilter.frequency.value = 900; tyreFilter.Q.value = 0.7;
     noiseGain = actx.createGain(); noiseGain.gain.value = 0;
-    var flt = actx.createBiquadFilter(); flt.type = 'bandpass'; flt.frequency.value = 900; flt.Q.value = 0.7;
-    noiseSrc.connect(flt); flt.connect(noiseGain); noiseGain.connect(masterGain);
+    noiseSrc.connect(tyreFilter); tyreFilter.connect(noiseGain); noiseGain.connect(masterGain);
+
     noiseSrc.start();
   }catch(e){ actx = null; }
 }
+
+/* rpm is 0..1+ of redline, load is 0..1 throttle */
 function audioEngine(rpm, load, slip, running){
-  if(!actx || !save.settings.audio){ if(engineGain) engineGain.gain.value = 0; if(noiseGain) noiseGain.gain.value = 0; return; }
-  var f = 42 + rpm*150;
+  if(!actx || !save.settings.audio){
+    if(engineGain) engineGain.gain.value = 0;
+    if(noiseGain) noiseGain.gain.value = 0;
+    if(indGain) indGain.gain.value = 0;
+    return;
+  }
+  var r = clamp(rpm, 0, 1.25);
+  var f = 48 + r*178;                       /* fundamental, ~48..270 Hz */
+  var t = actx.currentTime;
   try{
-    engineOsc.frequency.setTargetAtTime(f, actx.currentTime, 0.05);
-    engineOsc2.frequency.setTargetAtTime(f*0.5, actx.currentTime, 0.05);
-    engineGain.gain.setTargetAtTime(running ? 0.055 + load*0.075 : 0, actx.currentTime, 0.08);
-    noiseGain.gain.setTargetAtTime(running ? Math.min(0.16, slip*0.16) : 0, actx.currentTime, 0.06);
+    oscBody.frequency.setTargetAtTime(f, t, 0.035);
+    oscSub.frequency.setTargetAtTime(f*0.5, t, 0.035);
+    oscWhine.frequency.setTargetAtTime(f*3.02, t, 0.035);
+    /* filter opens with revs — flat drone at idle, growl at the top */
+    toneFilter.frequency.setTargetAtTime(260 + r*r*2600, t, 0.05);
+    whineGain.gain.setTargetAtTime(0.05 + load*0.11 + r*0.05, t, 0.06);
+    /* volume rises with both throttle and revs, weighted to revs */
+    engineGain.gain.setTargetAtTime(running ? (0.045 + load*0.075 + r*r*0.055) : 0, t, 0.07);
+    indFilter.frequency.setTargetAtTime(380 + r*1500, t, 0.05);
+    indGain.gain.setTargetAtTime(running ? load*(0.018 + r*0.030) : 0, t, 0.06);
+    noiseGain.gain.setTargetAtTime(running ? Math.min(0.16, slip*0.16) : 0, t, 0.06);
+  }catch(e){}
+}
+
+/* punchy gear change: a hard cut in the engine plus a mechanical clunk */
+function audioShift(up){
+  if(!actx || !save.settings.audio) return;
+  var t = actx.currentTime;
+  try{
+    shiftGain.gain.cancelScheduledValues(t);
+    shiftGain.gain.setValueAtTime(shiftGain.gain.value, t);
+    shiftGain.gain.linearRampToValueAtTime(0.14, t + 0.014);
+    shiftGain.gain.linearRampToValueAtTime(1.0,  t + (up ? 0.14 : 0.11));
+
+    /* clunk: a short noise burst through a low bandpass */
+    var src = actx.createBufferSource();
+    src.buffer = noiseBuf;
+    var bp = actx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = up ? 300 : 240; bp.Q.value = 1.6;
+    var cg = actx.createGain();
+    cg.gain.setValueAtTime(0.0001, t);
+    cg.gain.exponentialRampToValueAtTime(0.34, t + 0.007);
+    cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.10);
+    src.connect(bp); bp.connect(cg); cg.connect(masterGain);
+    src.start(t, Math.random()*1.5, 0.14); src.stop(t + 0.14);
+
+    /* and a low mechanical thunk so it lands with some weight */
+    var o = actx.createOscillator(), og = actx.createGain();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(up ? 150 : 120, t);
+    o.frequency.exponentialRampToValueAtTime(58, t + 0.09);
+    og.gain.setValueAtTime(0.20, t);
+    og.gain.exponentialRampToValueAtTime(0.0006, t + 0.11);
+    o.connect(og); og.connect(masterGain);
+    o.start(t); o.stop(t + 0.12);
   }catch(e){}
 }
 function audioThud(power){
@@ -1249,6 +1368,95 @@ function audioBeep(freq, dur){
 }
 function audioStopAll(){ audioEngine(0,0,0,false); }
 
+/* ------------------------------------------------------------- gearbox
+   Six speeds. GEAR_SPANS is the fraction of the car's top speed reached at
+   the redline in each gear, so engine revs are speed/(top*span) — revs fall
+   on an upshift and climb on a downshift, the way they should.
+
+   The spans are exactly the bands the automatic box has always used, so
+   AUTOMATIC is unchanged: it picks the same gear at the same speed as
+   before and always makes full torque (torque = 1). Only MANUAL asks the
+   torque curve what the current gear is worth.
+   ---------------------------------------------------------------------- */
+var GEAR_SPANS = [1/6, 2/6, 3/6, 4/6, 5/6, 1.0];
+var TOP_GEAR = GEAR_SPANS.length;
+
+/* Torque multiplier for a given fraction of redline. Lugging below the
+   power band and hanging off the limiter above it both cost real drive.
+   Lugging means being in too high a gear for the speed, which is not
+   possible in first, so first is exempt from the low-rev penalty. */
+function gearTorque(rpm, gear){
+  if(gear <= 1 && rpm < 0.55) return 1.00;
+  if(rpm < 0.30) return 0.42 + (rpm/0.30)*0.50;                          /* lugging  0.42 -> 0.92 */
+  if(rpm < 0.55) return 0.92 + (rpm-0.30)/0.25*0.08;                     /*          0.92 -> 1.00 */
+  if(rpm < 0.90) return 1.00 + Math.sin((rpm-0.55)/0.35*Math.PI)*0.03;   /* on the cam, peak 1.03 */
+  if(rpm < 1.02) return 1.00 - (rpm-0.90)/0.12*0.14;                     /*          1.00 -> 0.86 */
+  if(rpm < 1.15) return 0.86 - (rpm-1.02)/0.13*0.56;                     /* over-rev 0.86 -> 0.30 */
+  return 0.06;                                                           /* against the limiter */
+}
+
+/* The one place race.gear is allowed to change. */
+function setGear(r, g, manual){
+  g = clamp(g, 1, TOP_GEAR);
+  if(g === r.gear) return false;
+  var up = g > r.gear, prev = r.rpm;
+  if(manual && !up){
+    /* refuse a downshift that would bounce the engine off the limiter */
+    var frac = Math.abs(r.car.fwd) / Math.max(1, r.stats.topSpeed);
+    if(frac / GEAR_SPANS[g-1] > 1.14){ audioBeep(150, 0.07); return false; }
+  }
+  r.gear = g;
+  if(manual){
+    r.shiftT = 0.07;                                   /* drive interrupted */
+    if(up && prev >= 0.80 && prev <= 1.06){            /* shifted on the cam */
+      r.perfectT = 0.85; r.perfectFlash = 0.85;
+    }
+  }
+  audioShift(up);
+  return true;
+}
+
+function updateGearbox(r, spd, topSpeed, dt){
+  var manual = save.settings.transmission === 'manual';
+  var frac = topSpeed > 0 ? spd/topSpeed : 0;
+
+  if(!manual){
+    var want = 1;
+    while(want < TOP_GEAR && frac > GEAR_SPANS[want-1]) want++;
+    if(want !== r.gear) setGear(r, want, false);
+  }
+
+  var hi = GEAR_SPANS[r.gear-1];
+  var rpm = hi > 0 ? frac/hi : 0;
+  if(spd < 4) rpm = Math.max(rpm, 0.11);               /* idle */
+  r.rpm = clamp(rpm, 0, 1.35);
+
+  r.shiftT     = Math.max(0, r.shiftT - dt);
+  r.perfectT   = Math.max(0, r.perfectT - dt);
+  r.perfectFlash = Math.max(0, r.perfectFlash - dt);
+
+  if(!manual){ r.torque = 1; return; }                 /* automatic: unchanged */
+
+  var tq = gearTorque(r.rpm, r.gear);
+  if(r.shiftT > 0) tq *= 0.35;
+  if(r.perfectT > 0) tq *= 1.14;                       /* reward for a clean change */
+  r.torque = tq;
+}
+
+/* ---- public shift triggers ------------------------------------------------
+   The dedicated paddle-shifter UI in a later pass wires straight to these.
+   Nothing outside the gearbox should touch race.gear.                       */
+function shiftUp(){
+  if(!race || race.state === 'done' || paused) return false;
+  if(save.settings.transmission !== 'manual') return false;
+  return setGear(race, race.gear + 1, true);
+}
+function shiftDown(){
+  if(!race || race.state === 'done' || paused) return false;
+  if(save.settings.transmission !== 'manual') return false;
+  return setGear(race, race.gear - 1, true);
+}
+
 /* ------------------------------------------------------------------ race */
 var race = null;
 var paused = false;
@@ -1270,6 +1478,7 @@ function startRace(stageId){
       getCarSprite(save.current, cs.paint, cs.livery, 1, 3),
       getCarSprite(save.current, cs.paint, cs.livery, 2, 3)
     ],
+    gear:1, rpm:0, torque:1, shiftT:0, perfectT:0, perfectFlash:0,
     t:0, state:'countdown', countdown:3.2, collisions:0, hardHits:0,
     noteIdx:0, note:null, noteTimer:0,
     particles:[], skids:[], shake:0,
@@ -1286,6 +1495,9 @@ function startRace(stageId){
   document.getElementById('controls').classList.remove('hidden');
   document.getElementById('tilt-bar').classList.toggle('hidden', save.settings.control !== 'tilt');
   document.getElementById('p-gas').classList.toggle('hidden', save.settings.autoGas);
+  var manual = save.settings.transmission === 'manual';
+  document.getElementById('p-shiftup').classList.toggle('hidden', !manual);
+  document.getElementById('p-shiftdn').classList.toggle('hidden', !manual);
   audioKick();
   bigMsg('3');
 }
@@ -1351,12 +1563,14 @@ function stepRace(dt){
   var gas = driving && (save.settings.autoGas ? !input.hbrake : input.gas);
   var hb = driving && input.hbrake;
 
+  updateGearbox(r, Math.abs(c.fwd), topSpeed, dt);
+
   if(gas && !hb){
     /* the power curve runs out above the rated top speed, so rolling
        resistance settles the car right around its quoted figure */
     var head = 1 - c.fwd/(topSpeed*1.35);
     if(head < 0) head = 0;
-    c.fwd += accel * head * dt * (offtrack ? 0.70 : 1);
+    c.fwd += accel * head * dt * (offtrack ? 0.70 : 1) * r.torque;
     c.wheelSpin = clamp(c.wheelSpin + (1.2 - grip)*dt*2.2, 0, 1);
   } else {
     c.wheelSpin *= Math.pow(0.05, dt);
@@ -1462,10 +1676,7 @@ function stepRace(dt){
   if(r.shake > 0) r.shake = Math.max(0, r.shake - dt*2.6);
 
   /* ---- audio ---- */
-  var rpmFrac = clamp(spd/topSpeed, 0, 1);
-  var gear = Math.min(6, 1 + Math.floor(rpmFrac*5.999));
-  var rpm = (rpmFrac*6 - (gear-1));
-  audioEngine(clamp(rpm,0.05,1), gas?1:0.25, slip*(spd>25?1:0), driving||r.state==='countdown');
+  audioEngine(r.rpm, gas?1:0.25, slip*(spd>25?1:0), driving || r.state==='countdown');
 
   /* ---- finish ---- */
   if(driving && q.d >= r.track.len - 24){
@@ -1475,7 +1686,7 @@ function stepRace(dt){
     setTimeout(finishRace, 900);
   }
 
-  updateHUD(spd, gear);
+  updateHUD(spd, r.gear, r);
 }
 
 function respawn(r, q){
@@ -1485,6 +1696,7 @@ function respawn(r, q){
   c.fwd = 48; c.lat = 0;
   c.vx = Math.sin(nd.a)*48; c.vy = -Math.cos(nd.a)*48;
   c.stuck = 0; c.steer = 0;
+  r.gear = 1; r.shiftT = 0; r.perfectT = 0;
   r.camX = nd.x; r.camY = nd.y; r.camA = nd.a;
   r.recoveries = (r.recoveries||0) + 1;
   bigMsg('RECOVERED');
@@ -1819,11 +2031,16 @@ function drawMinimap(g, r, W, H){
 }
 
 /* ------------------------------------------------------------------ HUD */
-function updateHUD(spd, gear){
-  var r = race;
+function updateHUD(spd, gear, r){
+  r = r || race;
   document.getElementById('t-time').textContent = fmtTime(r.state==='countdown'?0:r.t);
   document.getElementById('h-kmh').textContent = Math.round(Math.abs(spd)*0.42);
-  document.getElementById('h-gear').textContent = spd < 2 ? 'N' : gear;
+  var gearEl = document.getElementById('h-gear');
+  gearEl.textContent = spd < 2 ? 'N' : gear;
+  gearEl.classList.toggle('perfect', r.perfectFlash > 0);
+  var rev = document.getElementById('h-rev');
+  rev.style.width = Math.min(100, r.rpm*100).toFixed(0)+'%';
+  rev.className = r.rpm > 1.0 ? 'red' : (r.rpm > 0.85 ? 'warn' : '');
   document.getElementById('h-prog').style.width = (r.progress*100).toFixed(1)+'%';
   document.getElementById('h-dmg').style.width = r.car.damage.toFixed(0)+'%';
   document.getElementById('h-surf').textContent = r.surface;
@@ -2580,6 +2797,14 @@ function renderSettings(){
     b.appendChild(cal);
   }
 
+  b.appendChild(segRow('TRANSMISSION',
+    'Automatic changes gear for you. Manual makes you shift: revs matter, ' +
+    'a clean change on the power band pays, lugging or bouncing off the limiter costs you drive. ' +
+    'On screen use the UP / DN pads; on a keyboard use E and Q.',
+    [['auto','AUTOMATIC'],['manual','MANUAL']], save.settings.transmission, function(v){
+      save.settings.transmission = v; persist(); renderSettings();
+    }));
+
   b.appendChild(segRow('THROTTLE',
     'Auto throttle holds the gas for you so you only steer and brake.',
     [['manual','GAS BUTTON'],['auto','AUTO']], save.settings.autoGas?'auto':'manual', function(v){
@@ -2611,7 +2836,7 @@ function renderSettings(){
 
   var about = document.createElement('div');
   about.className = 'set-row';
-  about.innerHTML = '<div class="hint">RALLY PIXEL — keyboard: arrows / WASD to steer and accelerate, SHIFT or DOWN for handbrake, ESC to pause.</div>';
+  about.innerHTML = '<div class="hint">RALLY PIXEL — keyboard: arrows / WASD to steer and accelerate, SHIFT or DOWN for handbrake, E / Q to change gear in manual, ESC to pause.</div>';
   b.appendChild(about);
 }
 function segRow(label, hint, opts, value, onPick){
