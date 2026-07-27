@@ -177,19 +177,20 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
   bottom:calc(4px + env(safe-area-inset-bottom));line-height:0;
   filter:drop-shadow(0 2px 5px rgba(0,0,0,.6));}
 #hud-cluster canvas{display:block;}
-/* the rail ties the binnacle, pedals, paddles and lever into one dash
-   instead of separate boxes floating at the screen edges. Purely a
-   backdrop — it fades out upwards so the road still reads through it.
-   Its height is the FLAT BAR only, not the whole cluster: the dials and
-   the steering buttons stand above this line and break it, which is what
-   gives the dash its silhouette instead of one full-width rectangle. */
+/* The dash itself: one solid moulding running the full width of the screen,
+   with every control sitting ON it. This is what makes the band read as a
+   single dashboard rather than a row of islands floating over the road.
+   Its height is the FLAT BAR only, not the whole cluster: the dials and the
+   steering buttons stand above this line and break it, which is what gives
+   the dash its silhouette instead of one full-width rectangle. */
 #dash-rail{position:absolute;left:0;right:0;pointer-events:none;
   bottom:0;height:calc(var(--dash-bar-h, 52px) + 4px + env(safe-area-inset-bottom));
-  background:
-    linear-gradient(180deg, rgba(176,196,224,.16) 0 1px, rgba(176,196,224,0) 1px),
-    linear-gradient(180deg, rgba(6,9,13,.10) 0%, rgba(6,9,13,.36) 45%, rgba(4,6,9,.62) 100%);
-  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 9%,#000 91%,transparent 100%);
-  mask-image:linear-gradient(90deg,transparent 0,#000 9%,#000 91%,transparent 100%);}
+  background:linear-gradient(180deg,
+    #8f9dad 0 1px,          /* chrome catch along the lip */
+    #2a323c 1px 3px,
+    #141a21 3px 34%,
+    #0b0f14 34% 100%);
+  box-shadow:0 -3px 7px rgba(0,0,0,.55);}
 #hud-left{top:calc(6px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));min-width:118px;}
 #hud-left .nm{font-size:10px;color:var(--muted);letter-spacing:1px;}
 .meter{height:6px;background:#0d110c;border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-top:3px;}
@@ -224,34 +225,20 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 }
 .pad.act{background:linear-gradient(180deg,rgba(255,196,87,.55),rgba(224,146,26,.5));
   border-color:#ffd487;color:#1a1200;}
-/* left thumb: shifter blade outboard, then the two steering buttons.
-   The buttons carry their own raised chrome mount on canvas, so the pad
-   itself is just the tap target — no border, no fill, and no size of its
-   own: it shrink-wraps the canvas, which is cut tall enough for the button
-   head to stand clear of the bar. */
-#p-shiftdn{left:calc(6px + env(safe-area-inset-left));}
-#p-left{left:calc(50px + env(safe-area-inset-left));}
-#p-right{left:calc(126px + env(safe-area-inset-left));}
-.pad.rocker{background:none;border:none;box-shadow:none;padding:0;}
-.pad.rocker canvas{image-rendering:pixelated;display:block;}
-.pad.rocker.act{background:none;border:none;}
-/* right thumb: lever, throttle at the corner, shifter blade outboard */
-#p-gas{right:calc(50px + env(safe-area-inset-right));width:88px;height:62px;}
-#p-hbrake{right:calc(142px + env(safe-area-inset-right));
-  width:46px;height:77px;flex-direction:column;gap:0;padding:0;overflow:hidden;}
-#p-shiftup{right:calc(6px + env(safe-area-inset-right));}
-#p-left,#p-right,#p-gas,#p-hbrake,.pad.paddle{bottom:calc(4px + env(safe-area-inset-bottom));}
-#p-hbrake canvas{image-rendering:pixelated;display:block;}
-#p-hbrake small{font-size:7px;letter-spacing:.5px;opacity:.75;margin-top:-1px;}
-#p-hbrake.act{background:linear-gradient(180deg,rgba(255,196,87,.26),rgba(4,6,9,.72));
-  border-color:#ffd487;}
+/* Canvas-drawn controls. Each paints its own housing, pressed state and all,
+   so the pad element is nothing but a tap target: no border, no fill, and no
+   size of its own — it shrink-wraps the canvas. */
+.pad.art{background:none;border:none;box-shadow:none;padding:0;}
+.pad.art.act{background:none;border:none;}
+.pad.art canvas{image-rendering:pixelated;display:block;}
+.pad.art.auto{opacity:.45;}
+/* Docked controls sit against the cluster, not the screen edge, so the dash
+   reads as one unit. Centred in the safe area exactly like #hud-cluster,
+   then shifted outboard by JS (transform) using the cluster's real width. */
+.dock{left:env(safe-area-inset-left);right:env(safe-area-inset-right);
+  width:-moz-fit-content;width:fit-content;margin-left:auto;margin-right:auto;
+  bottom:calc(4px + env(safe-area-inset-bottom));}
 #p-pause{right:calc(8px + env(safe-area-inset-right));top:calc(6px + env(safe-area-inset-top));width:44px;height:34px;font-size:12px;}
-/* paddle shifters — dark chrome blades on the outer ends of the dash band,
-   each sitting immediately outboard of the thumb that works it. */
-.pad.paddle{height:48px;width:40px;padding:0;background:none;border:none;box-shadow:none;}
-.pad.paddle canvas{image-rendering:pixelated;display:block;}
-.pad.paddle.act{background:none;}
-.pad.paddle.auto{opacity:.45;}
 /* the tilt strip parks above the cluster, whatever height the cluster took */
 #tilt-bar{position:absolute;left:50%;transform:translateX(-50%);
   bottom:calc(var(--cluster-h, 76px) + 12px + env(safe-area-inset-bottom));

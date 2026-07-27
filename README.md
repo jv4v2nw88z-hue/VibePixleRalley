@@ -67,10 +67,10 @@ corner. Red notes are the ones that will hurt.
 
 | Action | Control |
 |---|---|
-| Steer | on-screen ◀ / ▶ |
-| Throttle | `GAS` (or switch to auto throttle in Settings) |
-| Handbrake | the lever on the right — locks the rears for hairpins, and reverses when stopped |
-| Shift | the paddles on the outer edges of the dash: `−` bottom left drops a gear, `+` bottom right takes one (manual gearbox only) |
+| Steer | the ◀ / ▶ buttons on the left of the dash |
+| Throttle | the checker-tread pedal on the right of the dash (or switch to auto throttle in Settings) |
+| Handbrake | the lever beside it — locks the rears for hairpins, and reverses when stopped |
+| Shift | the tabs either side of the instruments: `−` drops a gear, `+` takes one (manual gearbox only) |
 | Pause | `II`, top right |
 
 ## The dash
@@ -87,12 +87,17 @@ The dash is not a rectangle. It is a flat bar across the bottom of the screen wi
 dials standing proud of it: the bar's top edge runs *below* the tops of the dials, so the
 circles break its outline rather than sitting inset inside it. The steering buttons get the
 same treatment — round, domed heads on raised chrome mounts rooted in the bar, clear of its
-edge — while the shifter blades and handbrake stay flush in the band.
+edge — while the shift tabs, lever and throttle stay flush in the band.
 
-The dash is held to under a fifth of the screen height and pinned to the bottom edge, and
-the steering mounts, shifter blades and handbrake line up on the same baseline so the whole
-band reads as one dashboard. It has to stay small: this is a chase cam, and the camera aims
-at a point *ahead* of the car, which means the car itself is drawn that far down the screen
+Every touch control docks against the cluster rather than the screen edge, and each is drawn
+on its own canvas in the same pixel-art metal as the binnacle — no text-label boxes. Left to
+right: steering buttons, `−`, the instruments, `+`, handbrake lever, throttle pedal. JS
+positions them from the panel's measured width, so the whole run stays one dashboard at any
+screen size instead of a row of islands floating over the road.
+
+The dash is held to under a fifth of the screen height and pinned to the bottom edge. It has
+to stay small: this is a chase cam, and the camera aims at a point *ahead* of the car, which
+means the car itself is drawn that far down the screen
 and rides lower the faster you go. So the camera also watches where the car will land and
 lifts its focal point only as far as it takes to keep it above the dash — at low speed the
 framing is untouched.

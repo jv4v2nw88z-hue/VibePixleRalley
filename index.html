@@ -32,15 +32,18 @@
   </div>
 
   <!-- ============ touch controls ============ -->
+  <!-- Every control here docks against the instrument cluster rather than the
+       screen edge, so the whole dash reads as one unit. JS positions them from
+       the cluster's measured width; each is drawn on its own small canvas in
+       the same pixel-art metal as the binnacle — no text-label boxes. -->
   <div id="controls" class="hidden">
-    <!-- steering rockers, drawn as chrome-housed buttons like the dash -->
-    <div class="pad rocker" id="p-left"><canvas id="steer-l-cv"></canvas></div>
-    <div class="pad rocker" id="p-right"><canvas id="steer-r-cv"></canvas></div>
-    <div class="pad lever" id="p-hbrake"><canvas id="hbrake-cv"></canvas><small>HANDBRAKE</small></div>
-    <div class="pad" id="p-gas">GAS</div>
-    <!-- paddles sit on the outer edges of the dash: left drops a gear, right takes one -->
-    <div class="pad paddle" id="p-shiftdn"><canvas id="pad-dn-cv"></canvas></div>
-    <div class="pad paddle" id="p-shiftup"><canvas id="pad-up-cv"></canvas></div>
+    <div class="pad art dock" id="p-left"><canvas id="steer-l-cv"></canvas></div>
+    <div class="pad art dock" id="p-right"><canvas id="steer-r-cv"></canvas></div>
+    <div class="pad art dock" id="p-hbrake"><canvas id="hbrake-cv"></canvas></div>
+    <div class="pad art dock" id="p-gas"><canvas id="gas-cv"></canvas></div>
+    <!-- paddles flank the cluster: left drops a gear, right takes one -->
+    <div class="pad art dock" id="p-shiftdn"><canvas id="pad-dn-cv"></canvas></div>
+    <div class="pad art dock" id="p-shiftup"><canvas id="pad-up-cv"></canvas></div>
     <div class="pad" id="p-pause">II</div>
     <div id="tilt-bar" class="hidden"><i id="tilt-ind"></i></div>
   </div>
