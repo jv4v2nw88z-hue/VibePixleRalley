@@ -1,7 +1,9 @@
 import { defineConfig } from 'vite';
 
+import { cloudflare } from "@cloudflare/vite-plugin";
+
 export default defineConfig({
-  plugins: [],
+  plugins: [cloudflare()],
   // Relative base so the build works from a domain root, a project
   // subpath, or straight off the filesystem.
   base: './',
