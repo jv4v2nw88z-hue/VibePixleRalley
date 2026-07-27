@@ -77,17 +77,27 @@ corner. Red notes are the ones that will hurt.
 
 The instrument binnacle along the bottom of the screen is one canvas, drawn from scratch
 every frame: a bay of chunky checker-tread brake and throttle pedals, an analog tachometer
-reading in thousands of rpm with the redline banded in red at 7, a gear panel with a
-vertical shift-light ladder, and an analog speedometer with a digital km/h readout. Chrome
-bezels, near-black glass and thin red pointers. The speedometer scales itself to the car you
-are driving. Three warning lamps — coolant, check-engine, brake — pick up on a cooked
-engine, a battered car and the handbrake, purely for atmosphere.
+reading 0-9 in thousands of rpm with the redline banded in red at 7, a gear widget, a
+console module, and an analog speedometer reading 0-240 with a digital km/h readout.
+
+None of it is vector art. Everything on the cluster — bezels, tick marks, numerals,
+captions, needles, lamps — is laid down a whole pixel at a time through a small pixel
+toolkit (`pxDisc`, `pxRay`, `pxArcBand`, `pxPanel`, and a 3x5 bitmap font), so nothing is
+gradient-filled, hinted or antialiased. One art pixel is one CSS pixel; the canvas is scaled
+underneath by an integer device ratio, so every rect lands on exact device pixels. Blocky
+grey bezels, matte black glass, chunky white ticks and three-pixel-wide red pointers.
+
+The gear widget is the reference's: a vertical shift-light ladder running blue through green
+to red as the revs climb, with a GEAR caption and an `N R <gear>` row beside it, the live
+position lit. The console module houses its caption, the pair of shift tell-tales and the
+knob inside one bordered panel. Three warning lamps under it — coolant, check-engine, brake
+— pick up on a cooked engine, a battered car and the handbrake, purely for atmosphere.
 
 The dash is not a rectangle. It is a flat bar across the bottom of the screen with the two
 dials standing proud of it: the bar's top edge runs *below* the tops of the dials, so the
 circles break its outline rather than sitting inset inside it. The steering buttons get the
-same treatment — round, domed heads on raised chrome mounts rooted in the bar, clear of its
-edge — while the shift tabs, lever and throttle stay flush in the band.
+bar. The steering buttons, the shift tabs, the lever and the throttle all stay flush in the
+band, cast as the same flat moulded pixel tabs the reference uses for its minus and plus.
 
 Every touch control docks against the cluster rather than the screen edge, and each is drawn
 on its own canvas in the same pixel-art metal as the binnacle — no text-label boxes. Left to
