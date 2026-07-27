@@ -1817,7 +1817,8 @@ function audioStopAll(){ audioEngine(0,0,0,false); }
    ========================================================================= */
 
 var hudCtl = { gas:0, brake:0, hb:0, padUp:0, padDn:0,
-               drawnHb:-1, drawnUp:-1, drawnDn:-1, drawnMode:null };
+               drawnHb:-1, drawnUp:-1, drawnDn:-1, drawnMode:null,
+               drawnL:null, drawnR:null };
 
 /* integer-scaled pixel painter for a small HUD canvas */
 function hudPainter(cv, gw, gh, cssScale){
@@ -1933,30 +1934,45 @@ function clusterLayout(){
      deeper of the two — hence the full width less twice that reach. */
   var SIDE_REACH = 198;
   var maxW = Math.max(140, vw - safeInsetX() - 2*SIDE_REACH - 8);
-  /* W = 2*pad + wp + 2D + wc + 3*gap with wp = 0.44D and wc = 0.58D, so
-     W = 3.02D + 18. Invert it to get the largest dial the width allows. */
+  /* Columns run left to right exactly as on the reference cluster: footwell,
+     gear barrel, tacho, the little auxiliary stack, speedo. As fractions of
+     the dial diameter that is 0.46 + 0.50 + 1 + 0.34 + 1 = 3.30 D, plus the
+     padding and four gaps. Invert it for the largest dial the width allows —
+     though on any real phone it is the HEIGHT cap that binds, not this. */
   var D = Math.min(clamp(Math.round(vh*0.185), 54, 88) - 2*pad,
-                   Math.floor((maxW - 2*pad - 3*gap)/3.02));
-  var wp = Math.round(D*0.44);                /* pedal bay */
-  var wc = Math.round(D*0.58);                /* centre column */
-  var W = 2*pad + wp + 2*D + wc + 3*gap;
+                   Math.floor((maxW - 2*pad - 4*gap)/3.40));
+  var wp = Math.round(D*0.46);                /* footwell */
+  var wg = Math.round(D*0.56);                /* gear barrel */
+  var wa = Math.round(D*0.38);                /* auxiliary stack */
+  var W = 2*pad + wp + wg + 2*D + wa + 4*gap;
   var H = D + 2*pad;
   var ps = Math.max(1, Math.floor(wp/24));    /* pedal-art pixel size */
 
-  var L = {
-    W:W, H:H, pad:pad, gap:gap, D:D, R:D/2,
-    bayX:pad, bayY:pad, wp:wp,
-    ps:ps, pgw:Math.floor(wp/ps), pgh:Math.floor(D/ps),
-    tachX:pad + wp + gap + D/2,
-    colX:pad + wp + gap + D + gap, wc:wc,
-    spdX:pad + wp + gap + D + gap + wc + gap + D/2,
-    dialY:pad + D/2
-  };
-  L.gearH = Math.round(D*0.50);
-  L.barY  = pad + L.gearH + 2;
-  L.barH  = Math.max(4, Math.round(D*0.08));
-  L.lampY = L.barY + L.barH + 2;
-  L.lampH = Math.max(7, pad + D - L.lampY);
+  var x = pad;
+  var L = { W:W, H:H, pad:pad, gap:gap, D:D, R:D/2, dialY:pad + D/2 };
+  L.bayX = x; L.bayY = pad; L.wp = wp;
+  L.ps = ps; L.pgw = Math.floor(wp/ps); L.pgh = Math.floor(D/ps);
+  x += wp + gap;
+  L.gearX = x; L.wg = wg;
+  x += wg + gap;
+  L.tachX = x + D/2;
+  x += D + gap;
+  L.auxX = x; L.wa = wa;
+  x += wa + gap;
+  L.spdX = x + D/2;
+
+  /* gear barrel: label, big numeral, then the rev-range bar under it. The
+     barrel takes whatever height the bar leaves, so the numeral fills it. */
+  L.barH  = Math.max(5, Math.round(D*0.15));
+  L.gearH = D - L.barH - 3;
+  L.barY  = pad + L.gearH + 3;
+
+  /* auxiliary stack: paddle tell-tales, knob, then the warning lamps */
+  L.triH  = Math.max(5, Math.round(D*0.13));
+  L.knobY = pad + L.triH + 2;
+  L.knobR = Math.max(4, Math.round(D*0.13));
+  L.lampY = L.knobY + L.knobR*2 + 2;
+  L.lampH = Math.max(6, pad + D - L.lampY);
   return L;
 }
 
@@ -1971,27 +1987,34 @@ function drawDialFace(g, cx, cy, R, o){
   var i, v, a, maj, red, r0, r1, len;
   var num = o.num || HUDC.numSpd;
 
-  /* --- chrome bezel: lit from the top left, falling away to the bottom
-     right, with a bright rim catch along the top of the ring --- */
-  var bw = Math.max(2, R*0.10);
-  var bez = g.createLinearGradient(cx - R*0.72, cy - R*0.72, cx + R*0.62, cy + R*0.78);
-  bez.addColorStop(0.00, HUDC.bezelHi);
-  bez.addColorStop(0.20, '#c3cdd8');
-  bez.addColorStop(0.42, HUDC.bezel);
-  bez.addColorStop(0.60, '#4c555f');
-  bez.addColorStop(0.80, '#98a3b0');
+  /* --- chrome bezel. A polished ring reads as a sweep of light around the
+     circumference, not a flat tint: bright at the top left where the sky
+     catches it, dark through the middle, picking up a second, weaker
+     highlight at the bottom right as it turns back up. --- */
+  var bw = Math.max(2.4, R*0.13);
+  var bez = g.createLinearGradient(cx - R*0.75, cy - R*0.85, cx + R*0.68, cy + R*0.82);
+  bez.addColorStop(0.00, '#ffffff');
+  bez.addColorStop(0.13, HUDC.bezelHi);
+  bez.addColorStop(0.30, '#b0bcc8');
+  bez.addColorStop(0.47, '#6d7884');
+  bez.addColorStop(0.62, '#414a55');
+  bez.addColorStop(0.79, '#98a4b1');
+  bez.addColorStop(0.92, '#5c6672');
   bez.addColorStop(1.00, HUDC.bezelLo);
   g.beginPath(); g.arc(cx,cy,R,0,TAU); g.fillStyle = bez; g.fill();
-  g.beginPath(); g.arc(cx,cy,R-bw*0.45,Math.PI*1.04,Math.PI*1.78);
-  g.lineWidth = Math.max(0.8, bw*0.34); g.strokeStyle = 'rgba(255,255,255,.55)'; g.stroke();
-  g.beginPath(); g.arc(cx,cy,R-bw,0,TAU); g.fillStyle = '#020406'; g.fill();
+  /* crisp rim catch just inside the outer edge, and a dark inner shoulder */
+  g.beginPath(); g.arc(cx,cy,R-bw*0.22,Math.PI*1.02,Math.PI*1.82);
+  g.lineWidth = Math.max(0.7, bw*0.20); g.strokeStyle = 'rgba(255,255,255,.72)'; g.stroke();
+  g.beginPath(); g.arc(cx,cy,R-bw*0.80,0,TAU);
+  g.lineWidth = Math.max(0.8, bw*0.30); g.strokeStyle = 'rgba(10,14,20,.75)'; g.stroke();
+  g.beginPath(); g.arc(cx,cy,R-bw,0,TAU); g.fillStyle = '#010204'; g.fill();
 
   /* --- near-black glass, vignetted so the middle lifts slightly --- */
-  var fr = R - bw - 0.6;
-  var face = g.createRadialGradient(cx - R*0.28, cy - R*0.34, R*0.04, cx, cy, R);
-  face.addColorStop(0.00, '#1b212a');
-  face.addColorStop(0.45, '#0c1015');
-  face.addColorStop(1.00, '#04060a');
+  var fr = R - bw - 0.5;
+  var face = g.createRadialGradient(cx - R*0.30, cy - R*0.36, R*0.03, cx, cy, R*1.05);
+  face.addColorStop(0.00, '#1d242e');
+  face.addColorStop(0.42, '#0b0f15');
+  face.addColorStop(1.00, '#020406');
   g.beginPath(); g.arc(cx,cy,fr,0,TAU); g.fillStyle = face; g.fill();
 
   /* Both dials reserve the same outer ring so they read as a matched pair;
@@ -2025,8 +2048,8 @@ function drawDialFace(g, cx, cy, R, o){
     g.strokeStyle = red ? (maj ? HUDC.needle : HUDC.tickRed) : (maj ? HUDC.tick : HUDC.tickDim);
     g.stroke();
     if(maj && (i % Math.round(o.major*o.labelEvery/o.minor)) === 0){
-      var lr = r0 - R*0.13;
-      hudFont(g, Math.max(6.5, R*0.25));
+      var lr = r0 - R*0.15;
+      hudFont(g, Math.max(7, R*0.29));
       g.fillStyle = red ? '#ff8b78' : num;
       g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(String(Math.round(v)), cx+Math.cos(a)*lr, cy+Math.sin(a)*lr);
@@ -2085,7 +2108,8 @@ function buildClusterBase(L, S){
 
   drawDialFace(g, L.tachX, L.dialY, L.R, {
     min:0, max:TACH_MAX, major:1, minor:0.5, redFrom:TACH_RED,
-    labelEvery: L.R >= 44 ? 1 : 3, label:'RPM', sub:'x1000',
+    /* no "x1000" caption: at this dial size it lands on the 0 and the 9 */
+    labelEvery: L.R >= 44 ? 1 : 3, label:'RPM',
     num: HUDC.numTach
   });
   /* three-digit numbers need room: thin the labelling out once the dial
@@ -2098,20 +2122,25 @@ function buildClusterBase(L, S){
     label:'KMH', num: HUDC.numSpd
   });
 
-  /* gear panel housing */
-  roundPath(g, L.colX, L.pad, L.wc, L.gearH, 3);
+  /* --- gear barrel, to the left of the tacho as on the reference --- */
+  roundPath(g, L.gearX, L.pad, L.wg, L.gearH, 3);
   var gp = g.createLinearGradient(0, L.pad, 0, L.pad+L.gearH);
-  gp.addColorStop(0,'#141920'); gp.addColorStop(1,'#04060a');
+  gp.addColorStop(0,'#161c24'); gp.addColorStop(0.5,'#080c11'); gp.addColorStop(1,'#020407');
   g.fillStyle = gp; g.fill();
-  g.lineWidth = 1; g.strokeStyle = 'rgba(150,170,196,.34)'; g.stroke();
-  hudFont(g, Math.max(4.5, L.wc*0.17));
-  g.fillStyle = 'rgba(196,212,234,.62)'; g.textAlign = 'center'; g.textBaseline = 'top';
-  g.fillText('GEAR', L.colX + L.wc/2, L.pad + 1.5);
+  g.lineWidth = 1; g.strokeStyle = 'rgba(168,186,210,.45)'; g.stroke();
+  g.save(); roundPath(g, L.gearX, L.pad, L.wg, L.gearH, 3); g.clip();
+  var gtop = g.createLinearGradient(0, L.pad, 0, L.pad+2.5);
+  gtop.addColorStop(0,'rgba(255,255,255,.30)'); gtop.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle = gtop; g.fillRect(L.gearX, L.pad, L.wg, 2.5);
+  g.restore();
+  hudFont(g, Math.max(4.5, L.wg*0.20));
+  g.fillStyle = 'rgba(196,212,234,.66)'; g.textAlign = 'center'; g.textBaseline = 'top';
+  g.fillText('GEAR', L.gearX + L.wg/2, L.pad + 1.5);
 
-  /* shift-bar trough */
-  roundPath(g, L.colX, L.barY, L.wc, L.barH, 2);
-  g.fillStyle = '#04060a'; g.fill();
-  g.lineWidth = 1; g.strokeStyle = 'rgba(150,170,196,.24)'; g.stroke();
+  /* rev-range bar trough, directly under the numeral */
+  roundPath(g, L.gearX, L.barY, L.wg, L.barH, 2);
+  g.fillStyle = '#020407'; g.fill();
+  g.lineWidth = 1; g.strokeStyle = 'rgba(150,170,196,.28)'; g.stroke();
 
   return c;
 }
@@ -2353,34 +2382,116 @@ function drawCluster(r){
   var spd = r ? Math.abs(r.car.fwd) : 0;
   var gearTxt = spd < 2 ? 'N' : String(r ? r.gear : 1);
   var flash = r && r.perfectFlash > 0;
-  hudFont(g, Math.min(L.gearH*0.70, L.wc*0.78));
+  hudFont(g, Math.min(L.gearH*0.72, L.wg*0.86));
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillStyle = flash ? HUDC.green : (hot ? HUDC.red : HUDC.amber);
-  g.fillText(gearTxt, L.colX + L.wc/2, L.pad + L.gearH*0.64);
+  g.fillText(gearTxt, L.gearX + L.wg/2, L.pad + L.gearH*0.60);
 
-  /* ---- shift bar ---- */
+  /* ---- rev-range bar, green through amber to red ---- */
   var frac = clamp(rpm/1.12, 0, 1);
-  var segs = L.wc >= 46 ? 8 : 6, sgap = 1;
-  var sw = (L.wc - 2 - (segs-1)*sgap)/segs;
+  var segs = L.wg >= 34 ? 7 : 5, sgap = 1;
+  var sw = (L.wg - 3 - (segs-1)*sgap)/segs;
   for(i=0;i<segs;i++){
     if((i+1)/segs > frac + 1e-6) break;
     g.fillStyle = i < segs-3 ? HUDC.green : (i < segs-1 ? HUDC.amber : HUDC.red);
-    g.fillRect(L.colX + 1 + i*(sw+sgap), L.barY + 1.5, sw, L.barH - 3);
+    g.fillRect(L.gearX + 1.5 + i*(sw+sgap), L.barY + 1.5, sw, L.barH - 3);
   }
 
-  /* ---- warning lamps ---- */
-  var lampSz = Math.min(L.lampH, (L.wc - 4)/3);
-  var lx0 = L.colX + (L.wc - (lampSz*3 + 4))/2;
+  /* ---- auxiliary stack: paddle tell-tales, knob, warning lamps ---- */
+  var ax = L.auxX, aw = L.wa;
+  var tw = (aw - 3)/2, th = L.triH;
+  drawAuxTri(g, ax, L.pad, tw, th, false, hudCtl.padDn > 0.15);
+  drawAuxTri(g, ax + tw + 3, L.pad, tw, th, true, hudCtl.padUp > 0.15);
+
+  var kr = L.knobR, kcx = ax + aw/2, kcy = L.knobY + kr;
+  var kg = g.createLinearGradient(kcx - kr, kcy - kr, kcx + kr, kcy + kr);
+  kg.addColorStop(0,'#8f9aa7'); kg.addColorStop(0.45,'#39424e'); kg.addColorStop(1,'#0d1116');
+  g.beginPath(); g.arc(kcx, kcy, kr, 0, TAU); g.fillStyle = kg; g.fill();
+  g.beginPath(); g.arc(kcx, kcy, Math.max(1.2, kr*0.62), 0, TAU);
+  g.fillStyle = '#0a0e13'; g.fill();
+  g.beginPath(); g.arc(kcx, kcy, kr, Math.PI*1.05, Math.PI*1.72);
+  g.lineWidth = Math.max(0.7, kr*0.22); g.strokeStyle = 'rgba(255,255,255,.5)'; g.stroke();
+
+  var lampSz = Math.min(L.lampH, (aw - 2)/3);
+  var lx0 = ax + (aw - (lampSz*3 + 2))/2;
   var ly0 = L.lampY + (L.lampH - lampSz)/2;
   var dmg = r ? r.car.damage : 0;
-  drawLamp(g, lx0,               ly0, lampSz, 'temp',   cluster.heat > 0.55, HUDC.red);
-  drawLamp(g, lx0 + lampSz + 2,  ly0, lampSz, 'engine', dmg > 45,            HUDC.amber);
-  drawLamp(g, lx0 + lampSz*2 + 4,ly0, lampSz, 'brake',  hudCtl.hb > 0.5,     HUDC.red);
+  drawLamp(g, lx0,                ly0, lampSz, 'temp',   cluster.heat > 0.55, HUDC.red);
+  drawLamp(g, lx0 + lampSz + 1,   ly0, lampSz, 'engine', dmg > 45,            HUDC.amber);
+  drawLamp(g, lx0 + lampSz*2 + 2, ly0, lampSz, 'brake',  hudCtl.hb > 0.5,     HUDC.red);
+}
+
+/* the pair of little blue triangles above the knob, which wink when the
+   matching paddle is tapped — the reference's shift tell-tales */
+function drawAuxTri(g, x, y, w, h, up, lit){
+  roundPath(g, x, y, w, h, 1.5);
+  g.fillStyle = lit ? 'rgba(120,150,255,.30)' : '#080c12'; g.fill();
+  g.lineWidth = 0.8; g.strokeStyle = lit ? 'rgba(170,195,255,.85)' : 'rgba(120,140,170,.30)';
+  g.stroke();
+  var m = Math.min(w,h)*0.26, cx = x + w/2;
+  g.beginPath();
+  if(up){ g.moveTo(cx, y + h*0.30); g.lineTo(cx + m, y + h*0.68); g.lineTo(cx - m, y + h*0.68); }
+  else  { g.moveTo(cx, y + h*0.70); g.lineTo(cx + m, y + h*0.32); g.lineTo(cx - m, y + h*0.32); }
+  g.closePath();
+  g.fillStyle = lit ? '#dce7ff' : HUDC.numTach; g.fill();
+}
+
+/* A chrome housing, drawn straight into a control's own canvas so every
+   physical control on the dash is cast from the same material as the
+   instrument bezels: dark inset face, bright top edge, shaded foot. */
+function drawHousing(px, w, h, lit){
+  var y, x, t, c;
+  px(0, 0, w, h, '#05070a');                            /* outer edge */
+  for(y=1; y<h-1; y++){                                 /* rolled chrome */
+    t = y/(h-1);
+    c = t < 0.07 ? '#e6edf4' : t < 0.16 ? '#b4bfcb' :
+        t < 0.42 ? '#6f7a87' : t < 0.70 ? '#4a5560' :
+        t < 0.88 ? '#333c46' : '#1a2028';
+    px(1, y, w-2, 1, c);
+  }
+  for(x=3; x<w-3; x+=3)                                 /* brushed grain */
+    px(x, 2, 1, h-4, 'rgba(255,255,255,.055)');
+  px(1, 1, 1, h-2, '#cdd6de');                          /* left bevel */
+  px(w-2, 1, 1, h-2, '#131920');                        /* right shade */
+  px(3, 4, w-6, h-8, lit ? '#3d3111' : '#070b10');      /* inset face */
+  px(3, 4, w-6, 1, lit ? '#7a6420' : '#020407');
+  px(3, h-5, w-6, 1, lit ? '#241d0a' : '#121a23');
+}
+
+/* ------------------------------------------------- steering rockers
+   Where the reference cluster carries its NOS button, Rally Pixel needs
+   its steering instead — so the arrows get the same treatment as the
+   rest of the dash: a chrome housing with a rocker that lights and
+   sinks a pixel when pressed. */
+function drawSteer(id, right, pressed){
+  var cv = document.getElementById(id);
+  if(!cv) return;
+  var px = hudPainter(cv, 34, 30, 2);
+  var drop = pressed ? 1 : 0;
+  drawHousing(px, 34, 30, pressed);
+
+  /* the rocker itself: a raised pad carrying the arrow */
+  var rx = 6, ry = 7 + drop, rw = 22, rh = 16;
+  px(rx-1, ry-1, rw+2, rh+2, '#04060a');
+  px(rx, ry, rw, rh, pressed ? '#e0921a' : '#525c68');
+  px(rx, ry, rw, 1, pressed ? '#ffd487' : '#8b96a3');
+  px(rx, ry+rh-1, rw, 1, pressed ? '#8a6416' : '#242c35');
+  px(rx, ry, 1, rh, pressed ? '#ffc457' : '#78838f');
+  px(rx+rw-1, ry, 1, rh, '#1d242c');
+
+  /* solid arrowhead: a column-by-column triangle pointing outboard */
+  var ink = pressed ? '#241800' : '#e8eef6';
+  var n = 8, acy = ry + rh/2, ax0 = rx + rw/2 + (right ? -4 : 4), i;
+  for(i=0;i<n;i++){
+    var hh = n - i;                                     /* 8,7,...,1 */
+    px(right ? ax0 + i : ax0 - i, acy - hh/2, 1, hh, ink);
+  }
 }
 
 /* ------------------------------------------------------ handbrake lever
-   A console-mounted fly-off lever: base, gaiter, angled arm and a grip
-   with a release button. Engaging swings the arm up towards vertical. */
+   A console-mounted fly-off lever in a chrome housing to match the rest
+   of the dash: base, gaiter, angled arm and a grip with a release
+   button. Engaging swings the arm up towards vertical. */
 function drawHandbrake(v){
   var cv = document.getElementById('hbrake-cv');
   if(!cv) return;
@@ -2388,9 +2499,9 @@ function drawHandbrake(v){
   var pivotX = 5, pivotY = 24;
   var on = v > 0.5;
 
-  px(1, 26, 18, 5, HUDC.dark);                          /* console base */
-  px(1, 26, 18, 1, on ? HUDC.amber : HUDC.steelLo);
-  px(2, 30, 16, 1, HUDC.black);
+  drawHousing(px, 20, 32, on);                          /* chrome surround */
+  px(2, 26, 16, 4, HUDC.dark);                          /* console base */
+  px(2, 26, 16, 1, on ? HUDC.amber : HUDC.steelLo);
   px(pivotX-2, 21, 7, 5, HUDC.black);                   /* rubber gaiter */
   px(pivotX-1, 21, 5, 1, HUDC.rubberHi);
 
@@ -2413,47 +2524,53 @@ function drawHandbrake(v){
 }
 
 /* --------------------------------------------------------- shift paddles
-   Dark chrome-edged blades on the outer ends of the dash, matching the
-   instrument housings: the left-hand blade drops a gear, the right-hand
-   one takes one. The arrowhead is the same periwinkle as the tacho
-   numbering so the whole dash reads as one instrument set. */
+   Cast alloy blades in the reference's style: a raked plate, drilled
+   checker-plate face, chrome edge highlight and a stamped +/- at the
+   bottom. The rake runs outward — the left blade leans left, the right
+   blade leans right — so the pair frames the dash. */
 function drawPaddle(id, up, press, active){
   var cv = document.getElementById(id);
   if(!cv) return;
   var px = hudPainter(cv, 20, 24, 2);
   var down = press > 0.5;
   var drop = down ? 1 : 0;
-  var body   = down ? '#4a3a17' : (active ? '#151a21' : '#10141a');
-  var bodyHi = down ? '#ffc457' : (active ? '#5d6b7c' : '#39424e');
-  var bodyLo = down ? '#8a6416' : (active ? '#0a0d12' : '#080a0e');
-  var i;
+  var y, x, lean;
 
-  /* stalk: on the screen-inward side, so the blade reads as wheel-mounted */
+  /* mounting stalk on the screen-inward side */
   var sx = up ? 0 : 17;
-  px(sx, 8, 3, 8, '#05070a');
-  px(sx, 9, 3, 6, '#2a323c');
-  px(sx + (up?0:2), 9, 1, 6, '#4d5866');
+  px(sx, 9, 3, 7, '#05070a');
+  px(sx, 10, 3, 5, '#2a323c');
+  px(sx + (up?0:2), 10, 1, 5, '#4d5866');
 
-  px(2, 1+drop, 16, 22, '#05070a');                     /* blade outline */
-  px(3, 2+drop, 14, 20, body);
-  px(3, 2+drop, 1, 1, '#05070a');                       /* clipped corners */
-  px(16, 2+drop, 1, 1, '#05070a');
-  px(3, 21+drop, 1, 1, '#05070a');
-  px(16, 21+drop, 1, 1, '#05070a');
-
-  px(4, 2+drop, 12, 1, bodyHi);                         /* chrome top catch */
-  px(3, 3+drop, 1, 18, bodyHi);                         /* bevels */
-  px(16, 3+drop, 1, 18, bodyLo);
-  px(4, 21+drop, 12, 1, bodyLo);
-
-  /* arrowhead, then the +/- sign under it with a clear gap between */
-  var ink = down ? '#1a1200' : (active ? HUDC.numTach : '#3d4757');
-  for(i=0;i<5;i++){
-    var w = up ? 2 + i*2 : 10 - i*2;
-    px(10 - w/2, 5+i+drop, w, 1, ink);
+  /* Raked plate: each row steps sideways, giving the blade its diagonal
+     lean. Rows run 1..22, the face is 11 wide. */
+  var faceW = 11;
+  for(y=1; y<23; y++){
+    lean = Math.round((y - 12) * 0.22) * (up ? 1 : -1);
+    var x0 = (up ? 5 : 4) + lean;
+    px(x0-1, y+drop, faceW+2, 1, '#05070a');            /* cast edge */
+    for(x=0; x<faceW; x++){
+      var col;
+      if(down)                       col = ((x + y) & 2) ? '#ffd487' : '#e2a53c';
+      else if(!active)               col = ((x>>1) + (y>>1)) & 1 ? '#6e757c' : '#585f66';
+      else if(x === 0)               col = '#ffffff';   /* lit outer edge */
+      else if(x >= faceW-2)          col = '#7d858d';   /* shaded inner edge */
+      else if(((x>>1) + (y>>1)) & 1) col = '#f2f5f8';   /* checker plate */
+      else                           col = '#c3cbd2';
+      px(x0+x, y+drop, 1, 1, col);
+    }
+    /* drilled grip holes, in staggered rows down the plate */
+    if(y > 3 && y < 21 && ((y-4) % 4) === 0){
+      px(x0+2, y+drop, 2, 1, down ? '#8a6416' : '#4a525a');
+      px(x0+7, y+drop, 2, 1, down ? '#8a6416' : '#4a525a');
+    }
   }
-  px(7, 15+drop, 6, 2, ink);                            /* the bar of +/- */
-  if(up) px(9, 13+drop, 2, 6, ink);                     /* upright, making a + */
+
+  /* stamped +/- at the foot of the blade */
+  var ink = down ? '#3a2a06' : (active ? '#2b323a' : '#3d4757');
+  var bx = (up ? 5 : 4) + Math.round((21 - 12) * 0.22) * (up ? 1 : -1);
+  px(bx+3, 19+drop, 5, 1, ink);
+  if(up) px(bx+5, 17+drop, 1, 5, ink);
 }
 
 /* ------------------------------------------------------------- per frame */
@@ -2496,6 +2613,16 @@ function updateHudControls(dt){
     drawPaddle('pad-dn-cv', false, hudCtl.padDn, manual);
   }
   hudCtl.drawnMode = manual;
+
+  /* the steering rockers are on/off, so they only ever repaint on a press */
+  if(input.left !== hudCtl.drawnL){
+    hudCtl.drawnL = input.left;
+    drawSteer('steer-l-cv', false, input.left);
+  }
+  if(input.right !== hudCtl.drawnR){
+    hudCtl.drawnR = input.right;
+    drawSteer('steer-r-cv', true, input.right);
+  }
 }
 
 /* force a full repaint, e.g. when a race starts or the viewport changes */
@@ -2503,6 +2630,9 @@ function resetHudControls(){
   hudCtl.gas = hudCtl.brake = hudCtl.hb = hudCtl.padUp = hudCtl.padDn = 0;
   hudCtl.drawnHb = -1;
   hudCtl.drawnUp = hudCtl.drawnDn = -1; hudCtl.drawnMode = null;
+  hudCtl.drawnL = hudCtl.drawnR = null;
+  drawSteer('steer-l-cv', false, false);
+  drawSteer('steer-r-cv', true, false);
   cluster.nRpm = cluster.nKmh = cluster.heat = 0;
   /* size the speedo to the car actually being driven, rounded up to a
      whole major division so the numbering stays tidy */

@@ -221,10 +221,15 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 }
 .pad.act{background:linear-gradient(180deg,rgba(255,196,87,.55),rgba(224,146,26,.5));
   border-color:#ffd487;color:#1a1200;}
-/* left thumb: shifter blade outboard, then the two steering pads */
+/* left thumb: shifter blade outboard, then the two steering rockers.
+   The rockers carry their own chrome housing on canvas, so the pad itself
+   is just the tap target — no border, no fill of its own. */
 #p-shiftdn{left:calc(6px + env(safe-area-inset-left));}
 #p-left{left:calc(50px + env(safe-area-inset-left));width:72px;height:62px;}
 #p-right{left:calc(126px + env(safe-area-inset-left));width:72px;height:62px;}
+.pad.rocker{background:none;border:none;box-shadow:none;padding:0;}
+.pad.rocker canvas{image-rendering:pixelated;display:block;}
+.pad.rocker.act{background:none;border:none;}
 /* right thumb: lever, throttle at the corner, shifter blade outboard */
 #p-gas{right:calc(50px + env(safe-area-inset-right));width:88px;height:62px;}
 #p-hbrake{right:calc(142px + env(safe-area-inset-right));
