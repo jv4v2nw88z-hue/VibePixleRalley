@@ -230,9 +230,41 @@ function curCarSave(){ return save.cars[save.current]; }
 function curCarDef(){ return carDef(save.current); }
 function carIndex(id){ for(var i=0;i<CARS.length;i++) if(CARS[i].id===id) return i; return 0; }
 
-/* ---------------------------------------------------------------- stats */
-function computeStats(carId){
-  var def = carDef(carId), cs = save.cars[carId], u = cs.up;
+/* ------------------------------------------------------- shop preview
+   Tapping something in the garage equips it as a preview instead of buying
+   it: a shadow copy of that car's save entry with the one item already
+   applied. Nothing reaches `save` — or localStorage — until PURCHASE is
+   confirmed, so CANCEL and backing out of the garage both just drop the
+   copy and the car snaps back to its last paid-for state.
+
+     { kind, item, carId, current, cs, cost, name, note }
+
+   `cs` is the shadow car entry and `current` is which car would be in use,
+   which is how an unowned car can stand in the bay before it is bought.
+   Because the preview IS the post-purchase state, committing is a straight
+   hand-over of the copy — the preview and the thing you pay for can never
+   drift apart. */
+var preview = null;
+
+function cloneCarSave(cs){ return JSON.parse(JSON.stringify(cs)); }
+
+/* the car the garage should show — previewed if there is one, else in use */
+function shopCarId(){ return preview ? preview.current : save.current; }
+/* a car's entry as the garage should show it, preview folded in */
+function shopCarSave(carId){
+  return (preview && preview.carId === carId) ? preview.cs : save.cars[carId];
+}
+function isPreviewing(kind, item){
+  return !!preview && preview.kind === kind && preview.item === item;
+}
+function previewAffordable(){ return !preview || save.money >= preview.cost; }
+
+/* ---------------------------------------------------------------- stats
+   `csOverride` lets the garage cost out a shop preview without touching the
+   save. Everything that gates progression calls this with one argument, so
+   gating always reads the paid-for car. */
+function computeStats(carId, csOverride){
+  var def = carDef(carId), cs = csOverride || save.cars[carId], u = cs.up;
   var topSpeed = def.topSpeed * (1 + 0.050*u.engine + 0.060*u.turbo + 0.035*u.trans + 0.022*u.weight);
   var accel    = def.accel    * (1 + 0.075*u.engine + 0.105*u.turbo + 0.075*u.trans + 0.065*u.weight);
   var handling = def.handling * (1 + 0.105*u.susp + 0.048*u.weight);
@@ -1146,7 +1178,9 @@ var TYRE_RIMS   = ['steel','steel','alloy','race'];       /* by tyre tier 0..3 *
 var STRIP_ORDER = [null, 'mirror', 'handle', 'spoiler'];  /* by weight tier */
 
 function carSideOpts(carId, extra){
-  var def = carDef(carId), cs = save.cars[carId], u = cs.up;
+  /* shopCarSave, not save.cars, so an unpaid shop preview shows on the car
+     through this same renderer — there is no second preview sprite path */
+  var def = carDef(carId), cs = shopCarSave(carId), u = cs.up;
   var spec = CAR_SIDE[def.sprite];
   var tyreLvl = clamp(cs.tires[cs.fitted]|0, 0, 3);
 
@@ -2673,7 +2707,7 @@ function drawSceneBackdrop(kind, paint){
 /* the car stands in the service bay, on the painted floor */
 function garageCarBox(){
   var px = scenePx(), sh = Math.ceil(view.h/px);
-  var def = curCarDef(), spec = CAR_SIDE[def.sprite];
+  var def = carDef(shopCarId()), spec = CAR_SIDE[def.sprite];
   var floorPx = Math.round(sh*0.66)*px;
   var w = spec.gw*px, h = spec.gh*px;
   var cx = Math.round(view.w*0.235);
@@ -2685,9 +2719,12 @@ function drawGarageScene(dt){
   var s = drawSceneBackdrop('garage', paintGarage);
   sceneT += dt;
 
-  /* the car itself, from the Pass 1 side-view sprite */
+  /* the car itself, from the Pass 1 side-view sprite. Sprites are cached by
+     their option key, so a preview costs one render on the tap and nothing
+     per frame after that. */
   var box = garageCarBox();
-  var sp = getCarSide(save.current, carSideOpts(save.current, { scale:box.px }));
+  var carId = shopCarId();
+  var sp = getCarSide(carId, carSideOpts(carId, { scale:box.px }));
   ctx.drawImage(sp.canvas, box.x, box.y);
 
   /* strip light flicker over the bay, and slow dust in the light */
@@ -2720,6 +2757,9 @@ var currentScreen = 'menu';
 
 var screenTimers = {};
 function showScreen(name){
+  /* leaving the garage at all — BACK, parking lot, starting a stage — counts
+     as cancelling: the preview is dropped and nothing was ever charged */
+  if(name !== 'garage') clearPreview();
   for(var i=0;i<SCREENS.length;i++){
     var id = SCREENS[i], el = document.getElementById('screen-'+id);
     clearTimeout(screenTimers[id]);
@@ -2863,23 +2903,167 @@ function renderStages(){
 /* ------------------------------------------------------------- garage */
 var garageTab = 'upgrades';
 
-function statRow(label, val, pct, green){
+/* --------------------------------------------------- preview lifecycle */
+
+/* Equip a shop item as an unpaid preview. Only one runs at a time, so
+   picking something else silently drops the previous one — still no charge. */
+function startPreview(pv){
+  preview = pv;
+  audioBeep(620, 0.05);
+  renderGarage();
+}
+/* drop the preview without a sound — used when the screen changes under us */
+function clearPreview(){ preview = null; }
+
+function cancelPreview(){
+  if(!preview) return;
+  preview = null;
+  audioBeep(330, 0.07);
+  renderGarage();
+}
+
+/* The preview already IS the post-purchase car entry, so buying is a
+   hand-over plus the debit. This is the only place the garage writes. */
+function commitPreview(){
+  if(!preview) return;
+  if(save.money < preview.cost) return;        /* can't afford: nothing happens */
+  var pv = preview;
+  preview = null;
+  save.money -= pv.cost;
+  save.cars[pv.carId] = pv.cs;
+  save.current = pv.current;
+  persist();
+  audioBeep(940, 0.14);
+  renderGarage();
+}
+
+/* Free, instantly reversible actions — fitting tyres, taking another car
+   out, gear ratios — drop any preview first, so a pending purchase can
+   never be committed on top of a car entry that moved underneath it. */
+function shopAction(fn){
+  return function(e){
+    if(e && e.stopPropagation) e.stopPropagation();
+    clearPreview();
+    fn();
+  };
+}
+
+function previewUpgrade(up){
+  var carId = save.current, real = save.cars[carId], lvl = real.up[up.id];
+  if(lvl >= up.max) return;
+  var cs = cloneCarSave(real);
+  cs.up[up.id] = lvl + 1;
+  startPreview({
+    kind:'upgrade', item:up.id, carId:carId, current:carId, cs:cs,
+    cost: upgradeCost(up, lvl, carIndex(carId)),          /* unchanged pricing */
+    name: up.name + ' → T' + (lvl+1),
+    note: up.desc
+  });
+}
+
+function previewTire(t){
+  var carId = save.current, real = save.cars[carId], lvl = real.tires[t.id];
+  if(lvl >= 3) return;
+  var cs = cloneCarSave(real);
+  cs.tires[t.id] = lvl + 1;
+  if(cs.tires[t.id] === 1) cs.fitted = t.id;              /* as buying does */
+  startPreview({
+    kind:'tire', item:t.id, carId:carId, current:carId, cs:cs,
+    cost: tireCost(t, lvl, carIndex(carId)),
+    name: t.name + ' → T' + (lvl+1),
+    note: lvl===0 ? t.desc + ' Fitted on purchase.' : t.desc
+  });
+}
+
+function previewPaint(col){
+  var carId = save.current, real = save.cars[carId];
+  if(real.paint === col){ clearPreview(); renderGarage(); return; }
+  var cs = cloneCarSave(real);
+  cs.paint = col;
+  startPreview({
+    kind:'paint', item:col, carId:carId, current:carId, cs:cs, cost:0,
+    name:'RESPRAY', note:'A fresh coat, on the house. Applied to the sprite you drive.'
+  });
+}
+
+function previewLivery(lv){
+  var carId = save.current, real = save.cars[carId];
+  if(real.livery === lv.id){ clearPreview(); renderGarage(); return; }
+  var cs = cloneCarSave(real);
+  cs.livery = lv.id;
+  startPreview({
+    kind:'livery', item:lv.id, carId:carId, current:carId, cs:cs, cost:0,
+    name:'LIVERY → ' + lv.name, note:'Decals are free. Try a few before you settle.'
+  });
+}
+
+function previewCar(def){
+  var real = save.cars[def.id];
+  if(real.owned) return;
+  var cs = cloneCarSave(real);
+  cs.owned = true;
+  startPreview({
+    kind:'car', item:def.id, carId:def.id, current:def.id, cs:cs,
+    cost: def.price, name: def.name, note: def.blurb + ' Starts stock.'
+  });
+}
+
+/* the bar under the bay: what is being previewed, what it costs, and the
+   two ways out of it */
+function renderPreviewBar(){
+  var bar = document.getElementById('preview-bar');
+  if(!preview){ bar.classList.add('hidden'); bar.classList.remove('short'); return; }
+  var afford = previewAffordable();
+  bar.classList.remove('hidden');
+  bar.classList.toggle('short', !afford);
+  document.getElementById('pv-name').textContent = preview.name;
+  document.getElementById('pv-note').textContent = preview.note || '';
+  document.getElementById('pv-cost').textContent = preview.cost > 0 ? fmtMoney(preview.cost) : 'FREE';
+  var foot = document.getElementById('pv-after');
+  foot.textContent = afford
+    ? 'BALANCE AFTER ' + fmtMoney(save.money - preview.cost)
+    : 'NOT ENOUGH CREDITS · ' + fmtMoney(preview.cost - save.money) + ' SHORT';
+  var buy = document.getElementById('pv-buy');
+  buy.disabled = !afford;
+  buy.classList.toggle('primary', afford);
+  buy.textContent = !afford ? 'CAN’T AFFORD' : (preview.cost > 0 ? 'PURCHASE' : 'APPLY');
+}
+
+function statRow(label, val, pct, green, delta){
+  var d = '';
+  if(delta){
+    var up = delta > 0;
+    d = '<i class="dl'+(up?'':' dn')+'">'+(up?'+':'−')+Math.abs(delta)+'</i>';
+  }
   return '<div class="stat"><span class="lab">'+label+'</span>'+
          '<span class="bar"><i class="'+(green?'g':'')+'" style="width:'+clamp(pct,0,100)+'%"></i></span>'+
-         '<span class="val">'+val+'</span></div>';
+         '<span class="val">'+val+d+'</span></div>';
 }
 function renderGarage(){
   refreshMoney();
-  var def = curCarDef(), cs = curCarSave(), s = computeStats(save.current);
-  document.getElementById('car-name').textContent = def.name + '  ·  ' + def.cls;
+  var carId = shopCarId(), def = carDef(carId), cs = shopCarSave(carId);
+  var s = computeStats(carId, cs);
+  /* what the preview would change, against the same car as it is paid for.
+     A car preview has no like-for-like baseline, so it shows plain stats. */
+  var b = (preview && preview.kind !== 'car') ? computeStats(carId, save.cars[carId]) : null;
+  var dl = function(get){ return b ? get(s) - get(b) : 0; };
+
+  var nameEl = document.getElementById('car-name');
+  nameEl.textContent = def.name + '  ·  ' + def.cls + ' ';
+  if(preview){
+    var tag = document.createElement('span');
+    tag.className = 'pv-tag';
+    tag.textContent = 'PREVIEW';
+    nameEl.appendChild(tag);
+  }
 
   document.getElementById('car-stats').innerHTML =
-    statRow('SPEED', s.kmh+' KM/H', s.kmh/240*100) +
-    statRow('ACCEL', s.accelScore, s.accelScore) +
-    statRow('HANDLING', s.handlingScore, s.handlingScore) +
-    statRow('G/GRAVEL', s.gripScore('gravel'), s.gripScore('gravel'), true) +
-    statRow('G/TARMAC', s.gripScore('tarmac'), s.gripScore('tarmac'), true) +
-    statRow('G/SNOW', s.gripScore('snow'), s.gripScore('snow'), true) +
+    statRow('SPEED', s.kmh+' KM/H', s.kmh/240*100, false, dl(function(x){ return x.kmh; })) +
+    statRow('ACCEL', s.accelScore, s.accelScore, false, dl(function(x){ return x.accelScore; })) +
+    statRow('HANDLING', s.handlingScore, s.handlingScore, false, dl(function(x){ return x.handlingScore; })) +
+    statRow('G/GRAVEL', s.gripScore('gravel'), s.gripScore('gravel'), true, dl(function(x){ return x.gripScore('gravel'); })) +
+    statRow('G/TARMAC', s.gripScore('tarmac'), s.gripScore('tarmac'), true, dl(function(x){ return x.gripScore('tarmac'); })) +
+    statRow('G/SNOW', s.gripScore('snow'), s.gripScore('snow'), true, dl(function(x){ return x.gripScore('snow'); })) +
     '<div class="stat" style="margin-top:3px"><span class="lab">TYRES</span><span style="color:var(--text)">'+s.tire.name+' T'+s.tireLvl+'</span></div>';
 
   var tabs = document.querySelectorAll('#tabs .tab');
@@ -2891,6 +3075,7 @@ function renderGarage(){
   else if(garageTab==='tires') renderTires(body);
   else if(garageTab==='paint') renderPaint(body);
   else renderCars(body);
+  renderPreviewBar();
 }
 
 function pips(level, max){
@@ -2899,27 +3084,32 @@ function pips(level, max){
   return h + '</span>';
 }
 function renderUpgrades(body){
-  var cs = curCarSave(), ci = carIndex(save.current);
+  var carId = shopCarId(), real = save.cars[carId], cs = shopCarSave(carId), ci = carIndex(carId);
   for(var i=0;i<UPGRADES.length;i++){
     (function(up){
-      var lvl = cs.up[up.id];
+      var lvl = real.up[up.id];              /* paid-for level: sets the price */
+      var shown = cs.up[up.id];              /* previewed level: sets the pips */
+      var on = isPreviewing('upgrade', up.id);
+      var maxed = lvl >= up.max;
       var row = document.createElement('div');
-      row.className = 'up-row';
+      row.className = 'up-row' + (maxed ? '' : ' shoppable') + (on ? ' pv' : '');
       var cost = upgradeCost(up, lvl, ci);
-      row.innerHTML = '<span class="up-name">'+up.name+'</span>' + pips(lvl, up.max) +
+      row.innerHTML = '<span class="up-name">'+up.name+'</span>' + pips(shown, up.max) +
                       '<span class="up-desc">'+up.desc+'</span>';
       var btn = document.createElement('button');
       btn.className = 'btn small';
-      if(lvl >= up.max){ btn.textContent = 'MAX'; btn.disabled = true; }
+      if(maxed){ btn.textContent = 'MAX'; btn.disabled = true; }
       else {
-        btn.textContent = fmtMoney(cost);
-        btn.disabled = save.money < cost;
-        if(!btn.disabled) btn.classList.add('primary');
-        btn.onclick = function(){
-          if(save.money < cost) return;
-          save.money -= cost; cs.up[up.id]++;
-          persist(); audioBeep(880,0.09); renderGarage();
-        };
+        var tap = function(e){ if(e && e.stopPropagation) e.stopPropagation(); previewUpgrade(up); };
+        if(on){ btn.textContent = 'FITTED'; btn.classList.add('pv'); }
+        else {
+          btn.textContent = fmtMoney(cost);
+          /* still tappable when it is out of reach — you can look at it,
+             the PURCHASE button in the bar is what locks out */
+          if(save.money < cost) btn.classList.add('cant'); else btn.classList.add('primary');
+        }
+        btn.onclick = tap;
+        row.onclick = tap;
       }
       row.appendChild(btn);
       body.appendChild(row);
@@ -2930,7 +3120,7 @@ function renderUpgrades(body){
   var hint = document.createElement('div');
   hint.className = 'up-desc';
   hint.style.padding = '8px';
-  hint.textContent = 'Stage 2 needs handling 44+. Stage 3 needs handling 58+ and 170 km/h+. Upgrades apply to the currently selected car only.';
+  hint.textContent = 'Tap an upgrade to fit it on the car and see it before you pay. Stage 2 needs handling 44+. Stage 3 needs handling 58+ and 170 km/h+. Upgrades apply to the currently selected car only.';
   body.appendChild(hint);
 }
 
@@ -2939,7 +3129,9 @@ function renderUpgrades(body){
    gearbox setting: it does not touch the upgrade tree, prices, or the
    stats used for stage gating. */
 function renderGearing(body){
-  var cs = curCarSave(), st = computeStats(save.current);
+  /* ratios are a free setting, written straight to the save, so this reads
+     the real entry — the steppers cancel any preview before they write */
+  var carId = shopCarId(), cs = save.cars[carId], st = computeStats(carId, shopCarSave(carId));
 
   var head = document.createElement('div');
   head.className = 'up-row gear-head';
@@ -2965,10 +3157,10 @@ function renderGearing(body){
     plus.className = 'btn small'; plus.textContent = '+';
     plus.disabled = val >= max - 1e-6;
     var bump = function(d){
-      return function(){
+      return shopAction(function(){
         cs.gearing[key] = Math.round(clamp(cs.gearing[key] + d, min, max) * 100) / 100;
         persist(); audioBeep(700, 0.05); renderGarage();
-      };
+      });
     };
     minus.onclick = bump(-GEAR_STEP);
     plus.onclick = bump(GEAR_STEP);
@@ -2989,43 +3181,47 @@ function renderGearing(body){
     function(v){ return v.toFixed(2); });
 
   /* what the current ratios actually give you */
-  var spans = carSpans(save.current);
+  var spans = carSpans(carId);
   var topKmh = Math.round(st.topSpeed * cs.gearing.final * 0.42);
   var firstKmh = Math.round(st.topSpeed * spans[0] * 0.42);
   var out = document.createElement('div');
   out.className = 'up-row';
   out.innerHTML = '<span class="up-name">AT REDLINE</span>' +
     '<span class="up-desc">1st runs to <b>' + firstKmh + ' KM/H</b>, top gear to <b>' + topKmh + ' KM/H</b>. ' +
-    (gearingIsStock(save.current) ? 'Currently stock.' : 'Tuned away from stock.') + '</span>';
+    (gearingIsStock(carId) ? 'Currently stock.' : 'Tuned away from stock.') + '</span>';
   var reset = document.createElement('button');
   reset.className = 'btn small';
   reset.textContent = 'RESET';
-  reset.disabled = gearingIsStock(save.current);
+  reset.disabled = gearingIsStock(carId);
   if(!reset.disabled) reset.classList.add('primary');
-  reset.onclick = function(){
+  reset.onclick = shopAction(function(){
     cs.gearing = { final:1, spread:1 };
     persist(); audioBeep(520, 0.09); renderGarage();
-  };
+  });
   out.appendChild(reset);
   body.appendChild(out);
 }
 
 function renderTires(body){
-  var cs = curCarSave(), ci = carIndex(save.current);
+  var carId = shopCarId(), real = save.cars[carId], cs = shopCarSave(carId), ci = carIndex(carId);
   for(var i=0;i<TIRES.length;i++){
     (function(t){
-      var lvl = cs.tires[t.id];
+      var lvl = real.tires[t.id];            /* paid-for tier: sets the price */
+      var shown = cs.tires[t.id];            /* previewed tier: sets the pips */
+      var on = isPreviewing('tire', t.id);
       var row = document.createElement('div');
-      row.className = 'up-row';
-      row.innerHTML = '<span class="up-name">'+t.name+'</span>' + pips(lvl,3) +
+      row.className = 'up-row' + (lvl<3 ? ' shoppable' : '') + (on ? ' pv' : '');
+      row.innerHTML = '<span class="up-name">'+t.name+'</span>' + pips(shown,3) +
         '<span class="up-desc">'+t.desc+'<br>GRAVEL '+t.mul.gravel.toFixed(2)+
         ' · TARMAC '+t.mul.tarmac.toFixed(2)+' · SNOW '+t.mul.snow.toFixed(2)+'</span>';
-      if(lvl>0){
+      if(lvl>0){                             /* only paid-for rubber can be fitted */
         var fit = document.createElement('button');
         fit.className = 'btn small' + (cs.fitted===t.id ? ' primary' : '');
         fit.textContent = cs.fitted===t.id ? 'FITTED' : 'FIT';
         fit.disabled = cs.fitted===t.id;
-        fit.onclick = function(){ cs.fitted = t.id; persist(); audioBeep(700,0.08); renderGarage(); };
+        fit.onclick = shopAction(function(){
+          real.fitted = t.id; persist(); audioBeep(700,0.08); renderGarage();
+        });
         row.appendChild(fit);
       }
       var buy = document.createElement('button');
@@ -3033,24 +3229,29 @@ function renderTires(body){
       if(lvl>=3){ buy.textContent = 'MAX'; buy.disabled = true; }
       else {
         var cost = tireCost(t, lvl, ci);
-        buy.textContent = (lvl===0?'BUY ':'') + fmtMoney(cost);
-        buy.disabled = save.money < cost;
-        if(!buy.disabled) buy.classList.add('primary');
-        buy.onclick = function(){
-          if(save.money < cost) return;
-          save.money -= cost; cs.tires[t.id]++;
-          if(cs.tires[t.id]===1) cs.fitted = t.id;
-          persist(); audioBeep(880,0.09); renderGarage();
-        };
+        var tap = function(e){ if(e && e.stopPropagation) e.stopPropagation(); previewTire(t); };
+        if(on){ buy.textContent = 'FITTED'; buy.classList.add('pv'); }
+        else {
+          buy.textContent = (lvl===0?'BUY ':'') + fmtMoney(cost);
+          if(save.money < cost) buy.classList.add('cant'); else buy.classList.add('primary');
+        }
+        buy.onclick = tap;
+        row.onclick = tap;
       }
       row.appendChild(buy);
       body.appendChild(row);
     })(TIRES[i]);
   }
+
+  var hint = document.createElement('div');
+  hint.className = 'up-desc';
+  hint.style.padding = '8px';
+  hint.textContent = 'Tap a compound to see the tread and rims on the car before you pay. FIT is free and swaps between the tyres you already own.';
+  body.appendChild(hint);
 }
 
 function renderPaint(body){
-  var cs = curCarSave();
+  var cs = shopCarSave(shopCarId());
   var wrap = document.createElement('div');
   wrap.style.padding = '8px';
   wrap.innerHTML = '<div class="up-name" style="width:auto;margin-bottom:6px">PAINT</div>';
@@ -3059,9 +3260,10 @@ function renderPaint(body){
   for(var i=0;i<PAINTS.length;i++){
     (function(col){
       var d = document.createElement('div');
-      d.className = 'sw' + (cs.paint===col?' sel':'');
+      /* 'sel' follows the preview, so the swatch matches the car in the bay */
+      d.className = 'sw' + (cs.paint===col?' sel':'') + (isPreviewing('paint',col)?' pv':'');
       d.style.background = col;
-      d.onclick = function(){ cs.paint = col; persist(); audioBeep(660,0.06); renderGarage(); };
+      d.onclick = function(){ previewPaint(col); };
       sw.appendChild(d);
     })(PAINTS[i]);
   }
@@ -3076,22 +3278,29 @@ function renderPaint(body){
   for(var j=0;j<LIVERIES.length;j++){
     (function(lv){
       var b = document.createElement('button');
-      b.className = 'btn small' + (cs.livery===lv.id?' primary':'');
+      b.className = 'btn small' + (cs.livery===lv.id?' primary':'') + (isPreviewing('livery',lv.id)?' pv':'');
       b.textContent = lv.name;
-      b.onclick = function(){ cs.livery = lv.id; persist(); audioBeep(660,0.06); renderGarage(); };
+      b.onclick = function(){ previewLivery(lv); };
       ll.appendChild(b);
     })(LIVERIES[j]);
   }
   wrap.appendChild(ll);
+  var hint = document.createElement('div');
+  hint.className = 'up-desc';
+  hint.style.marginTop = '10px';
+  hint.textContent = 'Paint and decals are free, but they still go on as a preview — try them on the car, then APPLY to keep it or CANCEL to go back.';
+  wrap.appendChild(hint);
   body.appendChild(wrap);
 }
 
 function renderCars(body){
   for(var i=0;i<CARS.length;i++){
     (function(def, idx){
-      var cs = save.cars[def.id];
+      var real = save.cars[def.id];          /* ownership is never previewed */
+      var cs = shopCarSave(def.id);          /* but the sprite follows one */
+      var on = isPreviewing('car', def.id);
       var row = document.createElement('div');
-      row.className = 'car-row';
+      row.className = 'car-row' + (!real.owned ? ' shoppable' : '') + (on ? ' pv' : '');
       var cvs = document.createElement('canvas');
       cvs.width = 40; cvs.height = 70;
       cvs.style.width = '40px'; cvs.style.height = '70px';
@@ -3105,20 +3314,22 @@ function renderCars(body){
       row.appendChild(info);
       var btn = document.createElement('button');
       btn.className = 'btn small';
-      if(!cs.owned){
-        btn.textContent = fmtMoney(def.price);
-        btn.disabled = save.money < def.price;
-        if(!btn.disabled) btn.classList.add('primary');
-        btn.onclick = function(){
-          if(save.money < def.price) return;
-          save.money -= def.price; cs.owned = true; save.current = def.id;
-          persist(); audioBeep(1000,0.16); renderGarage();
-        };
+      if(!real.owned){
+        var tap = function(e){ if(e && e.stopPropagation) e.stopPropagation(); previewCar(def); };
+        if(on){ btn.textContent = 'IN THE BAY'; btn.classList.add('pv'); }
+        else {
+          btn.textContent = fmtMoney(def.price);
+          if(save.money < def.price) btn.classList.add('cant'); else btn.classList.add('primary');
+        }
+        btn.onclick = tap;
+        row.onclick = tap;
       } else if(save.current === def.id){
         btn.textContent = 'IN USE'; btn.disabled = true;
       } else {
         btn.textContent = 'SELECT'; btn.classList.add('primary');
-        btn.onclick = function(){ save.current = def.id; persist(); audioBeep(760,0.08); renderGarage(); };
+        btn.onclick = shopAction(function(){
+          save.current = def.id; persist(); audioBeep(760,0.08); renderGarage();
+        });
       }
       row.appendChild(btn);
       body.appendChild(row);
@@ -3376,9 +3587,15 @@ for(var n=0;n<navs.length;n++){
 var tabEls = document.querySelectorAll('#tabs .tab');
 for(var t=0;t<tabEls.length;t++){
   (function(el){
-    el.addEventListener('click', function(){ garageTab = el.getAttribute('data-tab'); audioKick(); renderGarage(); });
+    el.addEventListener('click', function(){
+      /* leaving a category is backing out of whatever was being previewed */
+      clearPreview();
+      garageTab = el.getAttribute('data-tab'); audioKick(); renderGarage();
+    });
   })(tabEls[t]);
 }
+document.getElementById('pv-buy').addEventListener('click', function(){ commitPreview(); });
+document.getElementById('pv-cancel').addEventListener('click', function(){ cancelPreview(); });
 document.addEventListener('touchstart', function(){ audioKick(); }, {passive:true, once:true});
 document.addEventListener('gesturestart', function(e){ e.preventDefault(); });
 document.addEventListener('dblclick', function(e){ e.preventDefault(); });
