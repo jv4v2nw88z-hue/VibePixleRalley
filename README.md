@@ -75,12 +75,21 @@ corner. Red notes are the ones that will hurt.
 
 ## The dash
 
-The instrument cluster along the bottom of the screen is one canvas, drawn from scratch
+The instrument binnacle along the bottom of the screen is one canvas, drawn from scratch
 every frame: a footwell with live brake and throttle pedals, an analog tachometer reading
 in thousands of rpm with the redline banded in red at 7, a gear panel with a shift bar, and
-an analog speedometer with a digital km/h readout. The speedometer scales itself to the car
-you are driving. Three warning lamps — coolant, check-engine, brake — pick up on a cooked
-engine, a battered car and the handbrake, purely for atmosphere.
+an analog speedometer with a digital km/h readout. Chrome bezels, near-black glass and thin
+red pointers. The speedometer scales itself to the car you are driving. Three warning lamps
+— coolant, check-engine, brake — pick up on a cooked engine, a battered car and the
+handbrake, purely for atmosphere.
+
+The dash is held to under a fifth of the screen height and pinned to the bottom edge, and
+the steering pads, shifter blades and handbrake line up on the same baseline so the whole
+band reads as one dashboard. It has to stay small: this is a chase cam, and the camera aims
+at a point *ahead* of the car, which means the car itself is drawn that far down the screen
+and rides lower the faster you go. So the camera also watches where the car will land and
+lifts its focal point only as far as it takes to keep it above the dash — at low speed the
+framing is untouched.
 
 **Tilt** — enable in Settings (iOS asks for motion permission). Steering comes from the
 phone's tilt; gas and handbrake stay on screen. Hold the phone how you want to drive, then
