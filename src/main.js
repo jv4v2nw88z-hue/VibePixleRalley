@@ -454,90 +454,118 @@ function angDiff(a,b){
   return d;
 }
 /* =========================================================================
-   PIXEL SPRITES — every sprite is drawn from a character map into an
-   offscreen canvas, so there are no external asset files.
-   Legend:  B body  D dark body trim  G glass  K black  T tyre  Y headlight
-            R taillight  W white  S spoiler  . transparent
+   PIXEL SPRITES — everything is drawn with canvas primitives, so there are
+   still no external asset files.
+
+   Each car has TWO sprite sets:
+
+     1. TOP-DOWN  — a flat character map, used for in-race rendering. Kept
+        deliberately simple: it is only ever seen small and rotating.
+
+     2. SIDE VIEW — built from independent, individually swappable layers
+        (chassis / wheels / hood / livery / glass / trim). A later pass can
+        replace one layer — say WHEEL_STYLES.rally or SIDE_LAYERS.hood —
+        or nudge opts.rideHeight, without touching any of the others.
+
+   Top-down legend:
+     B body      H body highlight   S shaded body panel   D dark trim
+     G glass     K black            T tyre                C chrome
+     Y headlight R taillight        W white               . transparent
    ========================================================================= */
 
 var CAR_SPRITES = {
+  /* KESTREL 1.6 GTI — narrow track, tall glasshouse, short overhangs */
   hatch: [
-    '..............',
-    '...KKKKKKKK...',
-    '..KYYKKKKYYK..',
-    '..BBBBBBBBBB..',
-    '.TBBBBBBBBBBT.',
-    '.TBBBBBBBBBBT.',
-    '.TBBBBBBBBBBT.',
-    '..BBBBBBBBBB..',
-    '..BGGGGGGGGB..',
-    '..BGGGGGGGGB..',
-    '.DBBBBBBBBBBD.',
-    '..BBBBBBBBBB..',
-    '..BBBBBBBBBB..',
-    '..BBBBBBBBBB..',
-    '..BBBBBBBBBB..',
-    '..BGGGGGGGGB..',
-    '..BGGGGGGGGB..',
-    '.TBBBBBBBBBBT.',
-    '.TBBBBBBBBBBT.',
-    '.TBBBBBBBBBBT.',
-    '..BBBBBBBBBB..',
-    '..KRRKKKKRRK..',
-    '...KKKKKKKK...',
-    '..............'
+    '................',
+    '....KKKKKKKK....',
+    '...KYYKKKKYYK...',
+    '...CBBBBBBBBC...',
+    '..TBBBBBBBBBBT..',
+    '..TBBBHHHHBBBT..',
+    '..TBBBHHHHBBBT..',
+    '..TBBBBBBBBBBT..',
+    '...BBBBBBBBBB...',
+    '...BSSSSSSSSB...',
+    '...BGGGGGGGGB...',
+    '...BGGGGGGGGB...',
+    '..DBGGGGGGGGBD..',
+    '...BBBBBBBBBB...',
+    '...BBBBBBBBBB...',
+    '...BBBBBBBBBB...',
+    '...BBBBBBBBBB...',
+    '...BGGGGGGGGB...',
+    '...BGGGGGGGGB...',
+    '...BSSSSSSSSB...',
+    '..TBBBBBBBBBBT..',
+    '..TBBBBBBBBBBT..',
+    '..TBBBBBBBBBBT..',
+    '...BBBBBBBBBB...',
+    '...CBBBBBBBBC...',
+    '...KRRKKKKRRK...',
+    '....KKKKKKKK....',
+    '................'
   ],
+  /* FALCON RS EVO — wider track, bonnet vents, boot spoiler */
   rally: [
-    '..............',
-    '..KKKKKKKKKK..',
-    '..KYYKDDKYYK..',
-    '..BBBBBBBBBB..',
-    'TTBBBBBBBBBBTT',
-    'TTBBBBBBBBBBTT',
-    'TTBBBBDDBBBBTT',
-    '..BBBBBBBBBB..',
-    '.BBGGGGGGGGBB.',
-    '.BBGGGGGGGGBB.',
-    'DBBBBBBBBBBBBD',
-    '.BBBBBBBBBBBB.',
-    '.BBBBBBBBBBBB.',
-    '.BBBBBBBBBBBB.',
-    '.BBBBBBBBBBBB.',
-    '.BBGGGGGGGGBB.',
-    '..BGGGGGGGGB..',
-    'TTBBBBBBBBBBTT',
-    'TTBBBBBBBBBBTT',
-    'TTBBBBBBBBBBTT',
-    '..BBBBBBBBBB..',
-    '..KRRKKKKRRK..',
-    '.SSSSSSSSSSSS.',
-    '..............'
+    '................',
+    '...KKKKKKKKKK...',
+    '..KYYKKKKKKYYK..',
+    '..CBBBBBBBBBBC..',
+    '.TTBBBBBBBBBBTT.',
+    '.TTBBBSSSSBBBTT.',
+    '.TTBBBSSSSBBBTT.',
+    '.TTBBBBBBBBBBTT.',
+    '..BBBBBBBBBBBB..',
+    '..BSSSSSSSSSSB..',
+    '..BGGGGGGGGGGB..',
+    '..BGGGGGGGGGGB..',
+    '.DBBGGGGGGGGBBD.',
+    '..BBBBBBBBBBBB..',
+    '..BBBHHHHHHBBB..',
+    '..BBBHHHHHHBBB..',
+    '..BBBBBBBBBBBB..',
+    '..BGGGGGGGGGGB..',
+    '..BGGGGGGGGGGB..',
+    '..BSSSSSSSSSSB..',
+    '.TTBBBBBBBBBBTT.',
+    '.TTBBBBBBBBBBTT.',
+    '.TTBBBBBBBBBBTT.',
+    '..BBBBBBBBBBBB..',
+    '..CBBBBBBBBBBC..',
+    '..KRRKKKKKKRRK..',
+    '.SSSSSSSSSSSSSS.',
+    '.SS..........SS.'
   ],
+  /* VANTOR WRC-X — box arches, roof scoop, full-width wing */
   wrc: [
-    '..KKKKKKKKKK..',
-    '.KKKKKKKKKKKK.',
-    '.KYYKDDDDKYYK.',
-    '.BBBBBBBBBBBB.',
-    'TTBBBBBBBBBBTT',
-    'TTBBBDDDDBBBTT',
-    'TTBBBDDDDBBBTT',
-    '.BBBBBBBBBBBB.',
-    'BBBGGGGGGGGBBB',
-    'BBBGGGGGGGGBBB',
-    'DBBBBBBBBBBBBD',
-    'BBBBBBBBBBBBBB',
-    'BBBBBBBBBBBBBB',
-    'BBBBBBBBBBBBBB',
-    'BBBBBBBBBBBBBB',
-    'BBBGGGGGGGGBBB',
-    '.BBGGGGGGGGBB.',
-    'TTBBBBBBBBBBTT',
-    'TTBBBBBBBBBBTT',
-    'TTBBBBBBBBBBTT',
-    '.BBBBBBBBBBBB.',
-    '.KRRKKKKKKRRK.',
-    'SSSSSSSSSSSSSS',
-    'SS..........SS'
+    '..KKKKKKKKKKKK..',
+    '.KKKKKKKKKKKKKK.',
+    '.KYYKKSSSSKKYYK.',
+    '.CBBBBBBBBBBBBC.',
+    'TTBBBBBBBBBBBBTT',
+    'TTBBBBDDDDBBBBTT',
+    'TTBBBBDDDDBBBBTT',
+    'TTBBBBBBBBBBBBTT',
+    '.BBBBBBBBBBBBBB.',
+    '.BSSSSSSSSSSSSB.',
+    'BBBGGGGGGGGGGBBB',
+    'BBBGGGGGGGGGGBBB',
+    'DBBBGGGGGGGGBBBD',
+    'BBBBBBBBBBBBBBBB',
+    'BBBBBBDDDDBBBBBB',
+    'BBBBBBDDDDBBBBBB',
+    'BBBBBBBBBBBBBBBB',
+    'BBBGGGGGGGGGGBBB',
+    '.BBGGGGGGGGGGBB.',
+    '.BSSSSSSSSSSSSB.',
+    'TTBBBBBBBBBBBBTT',
+    'TTBBBBBBBBBBBBTT',
+    'TTBBBBBBBBBBBBTT',
+    '.BBBBBBBBBBBBBB.',
+    '.CBBBBBBBBBBBBC.',
+    '.KRRKKKKKKKKRRK.',
+    'SSSSSSSSSSSSSSSS',
+    'SS...SSSSSS...SS'
   ]
 };
 
@@ -551,19 +579,39 @@ function shade(hex, amt){
   return 'rgb('+r+','+g+','+b+')';
 }
 
-/* livery predicates operate in sprite-pixel space */
+/* One palette derived from the chosen paint, shared by both sprite sets. */
+function carPalette(paint, damageTier){
+  return {
+    body:   paint,
+    lite:   shade(paint, 0.13),
+    hi:     shade(paint, 0.26),
+    dark:   shade(paint,-0.15),
+    darker: shade(paint,-0.28),
+    deep:   shade(paint,-0.44),
+    accent: ACCENTS[paint] || '#ffffff',
+    glass:      damageTier>=1 ? '#8ba0af' : '#4d6b86',
+    glassLite:  damageTier>=1 ? '#a9bcc9' : '#6d8ba6',
+    tyre:'#141516', tyreLite:'#26292c',
+    chrome:'#b9bec4', chromeDark:'#767b82',
+    lamp:'#ffe9a8', tail:'#e8352a', black:'#171a1c', white:'#f2f2ea'
+  };
+}
+
+/* livery predicates operate in top-down sprite-pixel space */
 function liveryColorAt(livery, px, py, w, h, accent){
-  if(livery===1){                                   /* twin stripes */
-    var c = w/2;
-    if(Math.abs(px - (c-2.5)) < 1.2 || Math.abs(px - (c+1.5)) < 1.2) return accent;
-  } else if(livery===2){                            /* rally #7 side panels + roundel */
-    if(px<=2 || px>=w-3) return accent;
-    if(py>=10 && py<=14 && px>=5 && px<=8) return accent;
+  var mid = w/2 - 0.5;
+  if(livery===1){                                   /* twin bonnet-to-boot stripes */
+    var d = Math.abs(px - mid);
+    if(d >= 1 && d <= 2.5) return accent;
+  } else if(livery===2){                            /* rally #7 — side panels + door roundel */
+    if(px <= 3 || px >= w-4) return accent;
+    if(py >= 12 && py <= 16 && (px <= 5 || px >= w-6)) return accent;
   } else if(livery===3){                            /* chevron */
-    var mid = w/2, k = Math.abs(px-mid);
-    var band = (py - k*1.15);
-    if(band>3.2 && band<6.4) return accent;
-    if(band>10.5 && band<13.7) return accent;
+    var k = Math.abs(px - mid);
+    var band = py - k*1.25;
+    if(band > 2.5 && band < 5.5) return accent;
+    if(band > 11 && band < 14) return accent;
+    if(band > 19.5 && band < 22.5) return accent;
   }
   return null;
 }
@@ -577,9 +625,7 @@ function renderCarSprite(carId, paint, livery, damageTier, scale){
   cv.width = w*scale; cv.height = h*scale;
   var g = cv.getContext('2d');
   g.imageSmoothingEnabled = false;
-
-  var accent = ACCENTS[paint] || '#ffffff';
-  var body = paint, bodyDark = shade(paint,-0.16), bodyLite = shade(paint,0.11);
+  var c = carPalette(paint, damageTier);
 
   for(var y=0;y<h;y++){
     var row = map[y];
@@ -587,21 +633,22 @@ function renderCarSprite(carId, paint, livery, damageTier, scale){
       var ch = row[x];
       if(ch === '.') continue;
       var col = null;
-      if(ch==='B'){
-        col = liveryColorAt(livery,x,y,w,h,accent);
+      if(ch==='B' || ch==='H'){
+        col = liveryColorAt(livery,x,y,w,h,c.accent);
         if(!col){
-          /* fake a light source from the top-left for a bit of 16-bit shading */
-          col = (x < 3) ? bodyLite : (x > w-4 ? bodyDark : body);
+          /* light source from the top-left, for a bit of 16-bit modelling */
+          col = ch==='H' ? c.hi : (x < 3 ? c.lite : (x > w-4 ? c.dark : c.body));
         }
       }
-      else if(ch==='D') col = shade(paint,-0.34);
-      else if(ch==='G') col = damageTier>=1 ? '#7f93a2' : '#4d6b86';
-      else if(ch==='K') col = '#171a1c';
-      else if(ch==='T') col = '#101112';
-      else if(ch==='Y') col = '#ffe9a8';
-      else if(ch==='R') col = '#e8352a';
-      else if(ch==='S') col = shade(paint,-0.42);
-      else if(ch==='W') col = '#f2f2ea';
+      else if(ch==='S') col = c.darker;
+      else if(ch==='D') col = c.deep;
+      else if(ch==='G') col = c.glass;
+      else if(ch==='K') col = c.black;
+      else if(ch==='T') col = c.tyre;
+      else if(ch==='C') col = c.chromeDark;
+      else if(ch==='Y') col = c.lamp;
+      else if(ch==='R') col = c.tail;
+      else if(ch==='W') col = c.white;
       g.fillStyle = col;
       g.fillRect(x*scale, y*scale, scale, scale);
     }
@@ -610,19 +657,18 @@ function renderCarSprite(carId, paint, livery, damageTier, scale){
   /* damage: cracked screen, then dents & scorch */
   if(damageTier>=1){
     g.fillStyle = 'rgba(20,24,28,.85)';
-    var cx0 = (w/2)*scale;
+    var cx0 = Math.floor(w/2)*scale;
     for(var i=0;i<7;i++){
-      var yy = (8 + i*0.34)*scale;
-      g.fillRect(cx0 - (i-3)*scale*0.9, yy, scale, scale);
+      g.fillRect(cx0 - Math.round((i-3)*0.9)*scale, (10 + Math.floor(i*0.3))*scale, scale, scale);
     }
   }
   if(damageTier>=2){
     g.fillStyle = 'rgba(30,26,22,.72)';
-    g.fillRect(1*scale, 5*scale, scale*2, scale*3);
-    g.fillRect((w-3)*scale, 17*scale, scale*2, scale*3);
-    g.fillRect(3*scale, 20*scale, scale*3, scale);
+    g.fillRect(2*scale, 6*scale, scale*2, scale*3);
+    g.fillRect((w-4)*scale, 20*scale, scale*2, scale*3);
+    g.fillRect(4*scale, 23*scale, scale*3, scale);
     g.fillStyle = 'rgba(0,0,0,.5)';
-    g.fillRect(4*scale, 2*scale, scale*3, scale*2);
+    g.fillRect(5*scale, 3*scale, scale*3, scale*2);
   }
   return { canvas:cv, w:cv.width, h:cv.height, scale:scale, pw:w, ph:h };
 }
@@ -632,6 +678,372 @@ function getCarSprite(carId, paint, livery, damageTier, scale){
   var key = carId+'|'+paint+'|'+livery+'|'+damageTier+'|'+scale;
   if(!spriteCache[key]) spriteCache[key] = renderCarSprite(carId,paint,livery,damageTier,scale);
   return spriteCache[key];
+}
+
+/* =========================================================================
+   SIDE VIEW — modular, layered, nose to the right.
+
+   Geometry lives in CAR_SIDE as a pixel grid: a roofline profile, a sill,
+   wheel positions and a few named regions. Layers read that spec, so a part
+   can be swapped without anything else being redrawn:
+
+     SIDE_LAYERS.<name>   whole layers (chassis, wheels, hood, livery, ...)
+     WHEEL_STYLES.<name>  wheel designs        -> opts.wheels
+     HOOD_PARTS.<name>    bonnet furniture     -> opts.hood  (turbo scoop etc.)
+     TRIM_PARTS.<name>    small removable bits -> opts.trim  (array)
+     opts.rideHeight      lifts the body off the wheels, wheels stay planted
+   ========================================================================= */
+
+var CAR_SIDE = {
+  hatch: {
+    gw:60, gh:32, ground:28, x0:3, x1:56, sill:23, belt:14,
+    wheels:[ {cx:14, axleY:22, r:6, archR:7}, {cx:45, axleY:22, r:6, archR:7} ],
+    top:[ [3,19],[4,16],[6,13],[11,8],[17,6],[31,6],[37,9],[47,12],[52,14],[55,16],[56,18] ],
+    windows:[ {x:12,y:8,w:9,h:5,rakeL:0.9,rakeR:0},
+              {x:23,y:8,w:11,h:5,rakeL:0,rakeR:0.7} ],
+    shuts:[22, 35],
+    hood:{ x0:38, x1:52, y:11 },
+    spoiler:null,
+    trim:['lights','handle','mirror','exhaust'],
+    wheelStyle:'steel'
+  },
+  rally: {
+    gw:68, gh:32, ground:28, x0:3, x1:64, sill:23, belt:14,
+    wheels:[ {cx:16, axleY:22, r:6, archR:7}, {cx:52, axleY:22, r:6, archR:7} ],
+    top:[ [3,18],[4,15],[7,12],[14,8],[20,6],[36,6],[42,9],[54,12],[60,14],[63,16],[64,18] ],
+    windows:[ {x:15,y:8,w:10,h:5,rakeL:0.8,rakeR:0},
+              {x:27,y:8,w:12,h:5,rakeL:0,rakeR:0.7} ],
+    shuts:[26, 40],
+    hood:{ x0:43, x1:58, y:11 },
+    spoiler:{ x:5, w:11, h:2, standX:11, standH:4 },
+    trim:['lights','handle','mirror','exhaust','splitter','spoiler'],
+    wheelStyle:'alloy'
+  },
+  wrc: {
+    gw:72, gh:32, ground:28, x0:2, x1:69, sill:22, belt:13,
+    wheels:[ {cx:17, axleY:21, r:7, archR:8}, {cx:55, axleY:21, r:7, archR:8} ],
+    top:[ [2,17],[3,14],[6,11],[15,7],[22,5],[40,5],[46,8],[58,11],[65,13],[68,15],[69,17] ],
+    windows:[ {x:17,y:7,w:11,h:5,rakeL:0.8,rakeR:0},
+              {x:30,y:7,w:13,h:5,rakeL:0,rakeR:0.7} ],
+    shuts:[29, 44],
+    hood:{ x0:47, x1:62, y:10 },
+    spoiler:{ x:4, w:14, h:2, standX:13, standH:5 },
+    trim:['lights','handle','mirror','exhaust','splitter','spoiler'],
+    wheelStyle:'rallyWheel'
+  }
+};
+
+/* linear roofline profile, rounded to whole pixels so edges stair-step */
+function sideProfileY(pts, x){
+  if(x <= pts[0][0]) return pts[0][1];
+  for(var i=1;i<pts.length;i++){
+    if(x <= pts[i][0]){
+      var a = pts[i-1], b = pts[i];
+      var t = (b[0]===a[0]) ? 0 : (x-a[0])/(b[0]-a[0]);
+      return Math.round(a[1] + (b[1]-a[1])*t);
+    }
+  }
+  return pts[pts.length-1][1];
+}
+
+function buildSideModel(spec, o, sg){
+  var prof = [];
+  for(var x=spec.x0;x<=spec.x1;x++) prof[x] = sideProfileY(spec.top, x);
+  return {
+    spec: spec, opts: o, colors: carPalette(o.paint, o.damage>=1?1:0),
+    dy: -(o.rideHeight||0),                     /* chassis Y-offset: suspension */
+    topAt: function(x){ return prof[x]; },
+    bottomAt: function(x){                      /* sill, cut away by wheel arches */
+      var b = spec.sill;
+      for(var i=0;i<spec.wheels.length;i++){
+        var w = spec.wheels[i], dx = x - w.cx;
+        var t = w.archR*w.archR - dx*dx;
+        if(t > 0){
+          var y = w.axleY - Math.round(Math.sqrt(t));
+          if(y < b) b = y;
+        }
+      }
+      return b;
+    },
+    px: function(x,y,w,h,col){
+      sg.fillStyle = col;
+      sg.fillRect(Math.round(x), Math.round(y), Math.max(1,Math.round(w)), Math.max(1,Math.round(h)));
+    },
+    disc: function(cx,cy,r,col){
+      for(var dy=-r; dy<=r; dy++){
+        var dx = Math.floor(Math.sqrt(Math.max(0, r*r - dy*dy)) + 0.5);
+        if(dx>0) this.px(cx-dx, cy+dy, dx*2+1, 1, col);
+      }
+    }
+  };
+}
+
+/* ---------------------------------------------------- wheels (swappable) */
+var WHEEL_STYLES = {
+  steel: function(g, m, w){
+    var c = m.colors;
+    m.disc(w.cx, w.axleY, w.r, c.black);
+    m.disc(w.cx, w.axleY, w.r-1, c.tyreLite);
+    m.disc(w.cx, w.axleY, w.r-3, c.chromeDark);
+    m.disc(w.cx, w.axleY, w.r-4, c.chrome);
+    m.px(w.cx-1, w.axleY-1, 2, 2, c.chromeDark);
+  },
+  alloy: function(g, m, w){
+    var c = m.colors;
+    m.disc(w.cx, w.axleY, w.r, c.black);
+    m.disc(w.cx, w.axleY, w.r-1, c.tyreLite);
+    m.disc(w.cx, w.axleY, w.r-3, c.chrome);
+    /* cross spokes */
+    m.px(w.cx-1, w.axleY-w.r+3, 2, w.r*2-6, c.chromeDark);
+    m.px(w.cx-w.r+3, w.axleY-1, w.r*2-6, 2, c.chromeDark);
+    m.px(w.cx-1, w.axleY-1, 2, 2, c.black);
+  },
+  rallyWheel: function(g, m, w){
+    var c = m.colors;
+    m.disc(w.cx, w.axleY, w.r, c.black);
+    m.disc(w.cx, w.axleY, w.r-1, c.tyre);
+    /* blocky tread notches around the carcass */
+    for(var a=0;a<8;a++){
+      var th = a*Math.PI/4;
+      m.px(w.cx + Math.round(Math.cos(th)*(w.r-0.5)) - 1,
+           w.axleY + Math.round(Math.sin(th)*(w.r-0.5)) - 1, 2, 2, c.tyreLite);
+    }
+    m.disc(w.cx, w.axleY, w.r-3, c.chromeDark);
+    m.disc(w.cx, w.axleY, w.r-5, c.accent);
+    m.px(w.cx-1, w.axleY-1, 2, 2, c.black);
+  }
+};
+function drawSideWheels(g, m){
+  var style = WHEEL_STYLES[m.opts.wheels] || WHEEL_STYLES.steel;
+  for(var i=0;i<m.spec.wheels.length;i++) style(g, m, m.spec.wheels[i], i);
+}
+
+/* ------------------------------------------------------------- chassis */
+function drawSideChassis(g, m){
+  var s = m.spec, c = m.colors, dy = m.dy, x;
+  /* 1px dark silhouette so the car reads against any backdrop */
+  for(x=s.x0-1;x<=s.x1+1;x++){
+    var ox = clamp(x, s.x0, s.x1);
+    var ot = m.topAt(ox), ob = m.bottomAt(ox);
+    if(ob - ot < 1) continue;
+    m.px(x, ot+dy-1, 1, (ob-ot)+2, c.black);
+  }
+  for(x=s.x0;x<=s.x1;x++){
+    var top = m.topAt(x), bot = m.bottomAt(x);
+    if(bot - top < 1) continue;
+    m.px(x, top+dy, 1, bot-top, c.body);
+    m.px(x, top+dy, 1, 1, c.lite);                       /* roof/bonnet highlight */
+    if(bot - top > 5){
+      m.px(x, bot+dy-2, 1, 2, c.dark);                   /* shaded lower flank */
+      m.px(x, bot+dy-1, 1, 1, c.darker);                 /* rocker */
+    }
+  }
+  /* belt-line crease across the doors */
+  for(x=s.x0+3;x<=s.x1-3;x++){
+    if(s.belt > m.topAt(x)+1 && s.belt < m.bottomAt(x)-1) m.px(x, s.belt+dy, 1, 1, c.dark);
+  }
+  /* panel shut lines — only below the glass, so they read as door gaps */
+  for(var k=0;k<s.shuts.length;k++){
+    var sx = s.shuts[k], t = Math.max(s.belt-1, m.topAt(sx)+1), b = m.bottomAt(sx);
+    if(b - t > 2) m.px(sx, t+dy, 1, b-t-2, c.dark);
+  }
+  /* wheel arch lips */
+  for(var i=0;i<s.wheels.length;i++){
+    var w = s.wheels[i];
+    for(var dx=-w.archR;dx<=w.archR;dx++){
+      var tt = w.archR*w.archR - dx*dx; if(tt <= 0) continue;
+      var xx = w.cx + dx;
+      if(xx < s.x0 || xx > s.x1) continue;
+      var y = w.axleY - Math.round(Math.sqrt(tt));
+      if(y - 1 > m.topAt(xx)) m.px(xx, y+dy-1, 1, 1, c.darker);
+    }
+  }
+  /* bumpers, darker than the flanks */
+  m.px(s.x0, m.topAt(s.x0)+dy, 2, m.bottomAt(s.x0)-m.topAt(s.x0), c.darker);
+  m.px(s.x1-1, m.topAt(s.x1)+dy, 2, m.bottomAt(s.x1)-m.topAt(s.x1), c.darker);
+}
+
+/* --------------------------------------------------------------- glass */
+function drawSideGlass(g, m){
+  var s = m.spec, c = m.colors, dy = m.dy;
+  for(var i=0;i<s.windows.length;i++){
+    var w = s.windows[i];
+    for(var r=0;r<w.h;r++){
+      var l  = w.x + Math.round((w.rakeL||0)*(w.h-1-r));
+      var rr = w.x + w.w - Math.round((w.rakeR||0)*(w.h-1-r));
+      if(rr <= l) continue;
+      m.px(l, w.y+r+dy, rr-l, 1, r===0 ? c.glassLite : c.glass);
+    }
+  }
+}
+
+/* ------------------------------- hood / engine bay (turbo scoop goes here) */
+var HOOD_PARTS = {
+  stock: function(g, m){
+    var h = m.spec.hood, c = m.colors, dy = m.dy;
+    m.px(h.x0, m.topAt(h.x0)+dy+1, 1, 2, c.darker);      /* bonnet shut line */
+  },
+  vents: function(g, m){
+    var h = m.spec.hood, c = m.colors, dy = m.dy;
+    HOOD_PARTS.stock(g, m);
+    for(var i=0;i<3;i++){
+      var x = h.x0 + 4 + i*3;
+      m.px(x, m.topAt(x)+dy+1, 2, 1, c.deep);
+    }
+  },
+  scoop: function(g, m){                                  /* reserved for the turbo pass */
+    var h = m.spec.hood, c = m.colors, dy = m.dy;
+    HOOD_PARTS.stock(g, m);
+    var x0 = h.x0 + 3, wdt = 7;
+    for(var x=x0;x<x0+wdt;x++){
+      var top = m.topAt(x) + dy;
+      m.px(x, top-3, 1, 3, c.dark);
+      m.px(x, top-3, 1, 1, c.lite);
+    }
+    m.px(x0+wdt-2, m.topAt(x0+wdt-2)+dy-2, 2, 2, c.black);
+  }
+};
+function drawSideHood(g, m){
+  var fn = HOOD_PARTS[m.opts.hood] || HOOD_PARTS.stock;
+  fn(g, m);
+}
+
+/* -------------------------------------------------------------- livery */
+function sideLiveryHit(lv, x, y, m){
+  var s = m.spec;
+  if(lv===1){                                             /* twin flank stripes */
+    return (y === s.belt+2 || y === s.belt+4);
+  }
+  if(lv===2){                                             /* door blade + roundel */
+    var d0 = s.shuts[0], d1 = s.shuts[1];
+    if(x > d0-9 && x < d1+2 && y >= s.belt+1 && y <= s.belt+3) return true;
+    var rx = d0 - 4, ry = s.belt + 6;                     /* number roundel */
+    if(Math.abs(x-rx) + Math.abs(y-ry)*1.6 < 4) return true;
+    return false;
+  }
+  if(lv===3){                                             /* chevron */
+    return ((x*0.6 + y) % 14) < 3;
+  }
+  return false;
+}
+function drawSideLivery(g, m){
+  var lv = m.opts.livery|0;
+  if(!lv) return;
+  var s = m.spec, dy = m.dy, acc = m.colors.accent;
+  for(var x=s.x0+2;x<=s.x1-2;x++){
+    var top = m.topAt(x), bot = m.bottomAt(x);
+    for(var y=top+1;y<bot-1;y++){
+      if(sideLiveryHit(lv, x, y, m)) m.px(x, y+dy, 1, 1, acc);
+    }
+  }
+}
+
+/* --------------------------------------------- trim (individually removable) */
+var TRIM_PARTS = {
+  lights: function(g, m){
+    var s = m.spec, c = m.colors, dy = m.dy;
+    var fx = s.x1-4, rx = s.x0+1;
+    m.px(fx, m.topAt(fx)+1+dy, 3, 2, c.lamp);
+    m.px(rx, m.topAt(rx)+1+dy, 2, 2, c.tail);
+  },
+  handle: function(g, m){
+    var s = m.spec;
+    m.px(s.shuts[0]+3, s.belt+2+m.dy, 3, 1, m.colors.chrome);
+  },
+  mirror: function(g, m){
+    var s = m.spec, c = m.colors, dy = m.dy;
+    var w = s.windows[s.windows.length-1];
+    var mx = w.x + w.w, my = w.y + w.h - 1;
+    m.px(mx, my+dy, 2, 2, c.darker);
+    m.px(mx, my+dy, 1, 1, c.dark);
+  },
+  exhaust: function(g, m){
+    var s = m.spec;
+    m.px(s.x0+1, m.bottomAt(s.x0+1)-2+m.dy, 3, 2, m.colors.chromeDark);
+  },
+  splitter: function(g, m){                               /* front lip */
+    var s = m.spec, x = s.x1-7;
+    m.px(x, m.bottomAt(x)-1+m.dy, 8, 2, m.colors.deep);
+  },
+  spoiler: function(g, m){
+    var t = m.spec.spoiler; if(!t) return;
+    var c = m.colors, dy = m.dy;
+    var deck = m.topAt(t.standX);                         /* stands reach the deck */
+    var y = deck - t.standH;
+    m.px(t.x, y+dy, t.w, t.h, c.deep);                    /* blade */
+    m.px(t.x, y+dy, t.w, 1, c.dark);                      /* lit top edge */
+    m.px(t.standX, y+dy+t.h, 2, deck-(y+t.h)+1, c.deep);
+    var xo = t.x + 1;                                     /* outer stand */
+    m.px(xo, y+dy+t.h, 2, Math.max(1, m.topAt(xo)-(y+t.h)+1), c.deep);
+  }
+};
+function drawSideTrim(g, m){
+  var list = m.opts.trim || [];
+  for(var i=0;i<list.length;i++){
+    var fn = TRIM_PARTS[list[i]];
+    if(fn) fn(g, m);
+  }
+}
+
+function drawSideShadow(g, m){
+  var s = m.spec;
+  m.px(s.x0+4, s.ground+1, s.x1-s.x0-7, 1, 'rgba(0,0,0,.26)');
+  m.px(s.x0+8, s.ground+2, s.x1-s.x0-15, 1, 'rgba(0,0,0,.14)');
+}
+
+/* Layer table and draw order — either can be re-pointed by a later pass. */
+var SIDE_LAYERS = {
+  shadow:  drawSideShadow,
+  wheels:  drawSideWheels,
+  chassis: drawSideChassis,
+  hood:    drawSideHood,
+  livery:  drawSideLivery,
+  glass:   drawSideGlass,
+  trim:    drawSideTrim
+};
+var SIDE_LAYER_ORDER = ['shadow','wheels','chassis','hood','livery','glass','trim'];
+
+/* Returns {canvas, w, h, pw, ph, spec, opts} — a side-on car facing RIGHT. */
+function renderCarSide(carId, opts){
+  var def = carDef(carId), spec = CAR_SIDE[def.sprite];
+  opts = opts || {};
+  var o = {
+    paint:      opts.paint || def.paint,
+    livery:     opts.livery || 0,
+    scale:      opts.scale || 4,
+    rideHeight: opts.rideHeight || 0,
+    wheels:     opts.wheels || spec.wheelStyle,
+    hood:       opts.hood || 'stock',
+    trim:       opts.trim || spec.trim,
+    damage:     opts.damage || 0
+  };
+
+  /* draw at 1:1 into a tiny canvas, then blow it up with smoothing off, so
+     every edge lands on a whole pixel the way hand-drawn sprite work does */
+  var small = document.createElement('canvas');
+  small.width = spec.gw; small.height = spec.gh;
+  var sg = small.getContext('2d');
+  var m = buildSideModel(spec, o, sg);
+  for(var i=0;i<SIDE_LAYER_ORDER.length;i++){
+    var fn = SIDE_LAYERS[SIDE_LAYER_ORDER[i]];
+    if(fn) fn(sg, m);
+  }
+
+  var cv = document.createElement('canvas');
+  cv.width = spec.gw*o.scale; cv.height = spec.gh*o.scale;
+  var g = cv.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.drawImage(small, 0, 0, cv.width, cv.height);
+  return { canvas:cv, w:cv.width, h:cv.height, scale:o.scale, pw:spec.gw, ph:spec.gh, spec:spec, opts:o };
+}
+
+var sideCache = {};
+function getCarSide(carId, opts){
+  opts = opts || {};
+  var key = [carId, opts.paint, opts.livery|0, opts.scale|0, opts.rideHeight|0,
+             opts.wheels, opts.hood, (opts.trim||[]).join(','), opts.damage|0].join('|');
+  if(!sideCache[key]) sideCache[key] = renderCarSide(carId, opts);
+  return sideCache[key];
 }
 
 /* --------------------------------------------------------- scenery draw */
@@ -698,6 +1110,10 @@ function drawProp(g, p, theme){
 /* =========================================================================
    ENGINE — canvas, input, physics, camera, rendering, race loop
    ========================================================================= */
+
+/* on-track car length in world units — held constant so sprite-grid
+   changes stay purely visual and never alter the driving footprint */
+var CAR_WORLD_LEN = 72;
 
 var cv = document.getElementById('game');
 var ctx = cv.getContext('2d', { alpha:false });
@@ -1353,12 +1769,15 @@ function drawCar(g, r){
   var c = r.car;
   var tier = c.damage>72 ? 2 : (c.damage>34 ? 1 : 0);
   var sp = r.sprites[tier];
+  /* the car occupies a fixed footprint in world units, so redrawing the
+     sprite on a different pixel grid never changes how big it drives */
+  var wh = CAR_WORLD_LEN, ww = wh * sp.pw / sp.ph;
   g.save();
   g.translate(c.x, c.y);
   g.rotate(c.a);
   g.fillStyle = 'rgba(0,0,0,.30)';
-  g.fillRect(-sp.w/2+6, -sp.h/2+7, sp.w-8, sp.h-10);
-  g.drawImage(sp.canvas, -sp.w/2, -sp.h/2);
+  g.fillRect(-ww/2+5, -wh/2+6, ww-7, wh-9);
+  g.drawImage(sp.canvas, -ww/2, -wh/2, ww, wh);
   g.restore();
 }
 
@@ -1604,8 +2023,9 @@ function renderGarage(){
   var g = cc.getContext('2d');
   g.imageSmoothingEnabled = false;
   g.clearRect(0,0,cc.width,cc.height);
-  var sc = Math.max(3, Math.min(7, Math.min(Math.floor(cc.width/20), Math.floor(cc.height/26))));
-  var sp = getCarSprite(save.current, cs.paint, cs.livery, 0, sc);
+  var side = CAR_SIDE[def.sprite];
+  var sc = Math.max(1, Math.min(6, Math.min(Math.floor(cc.width/side.gw), Math.floor(cc.height/side.gh))));
+  var sp = getCarSide(save.current, { paint:cs.paint, livery:cs.livery, scale:sc });
   g.drawImage(sp.canvas, Math.round((cc.width-sp.w)/2), Math.round((cc.height-sp.h)/2));
 
   document.getElementById('car-stats').innerHTML =
@@ -1750,8 +2170,8 @@ function renderCars(body){
       var row = document.createElement('div');
       row.className = 'car-row';
       var cvs = document.createElement('canvas');
-      cvs.width = 42; cvs.height = 72;
-      cvs.style.width = '42px'; cvs.style.height = '72px';
+      cvs.width = 40; cvs.height = 70;
+      cvs.style.width = '40px'; cvs.style.height = '70px';
       row.appendChild(cvs);
       var info = document.createElement('div');
       info.className = 'info';
@@ -1781,7 +2201,7 @@ function renderCars(body){
       body.appendChild(row);
       var g = cvs.getContext('2d');
       g.imageSmoothingEnabled = false;
-      var sp = getCarSprite(def.id, cs.paint, cs.livery, 0, 3);
+      var sp = getCarSprite(def.id, cs.paint, cs.livery, 0, 2);
       g.drawImage(sp.canvas, (cvs.width-sp.w)/2, (cvs.height-sp.h)/2);
     })(CARS[i], i);
   }
