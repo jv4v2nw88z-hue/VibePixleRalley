@@ -84,6 +84,20 @@ var TIRES = [
 function tireDef(id){ for(var i=0;i<TIRES.length;i++){ if(TIRES[i].id===id) return TIRES[i]; } return TIRES[0]; }
 function tireCost(t, level, carIdx){ return Math.round(t.base * Math.pow(1.7, level) * (1 + carIdx*0.4)); }
 
+/* ------------------------------------------------------------ gear tuning */
+var GEAR_FINAL_MIN = 0.80, GEAR_FINAL_MAX = 1.20;
+var GEAR_SPREAD_MIN = 0.80, GEAR_SPREAD_MAX = 1.25;
+var GEAR_STEP = 0.05;
+function gearingOf(carId){
+  var g = save.cars[carId] && save.cars[carId].gearing;
+  return { final: g && typeof g.final==='number' ? g.final : 1,
+           spread: g && typeof g.spread==='number' ? g.spread : 1 };
+}
+function gearingIsStock(carId){
+  var g = gearingOf(carId);
+  return Math.abs(g.final-1) < 1e-6 && Math.abs(g.spread-1) < 1e-6;
+}
+
 /* ---------------------------------------------------------------- liveries */
 var LIVERIES = [
   { id:0, name:'PLAIN' },
@@ -160,7 +174,8 @@ function freshCarSave(def){
     livery: 0,
     up: { engine:0, turbo:0, susp:0, trans:0, weight:0 },
     tires: { all:1, gravel:0, tarmac:0, snow:0 },
-    fitted: 'all'
+    fitted: 'all',
+    gearing: { final:1, spread:1 }            /* stock ratios */
   };
 }
 function freshSave(){
@@ -187,6 +202,11 @@ function loadSave(){
     if(src.up) for(var k in dst.up){ if(typeof src.up[k]==='number') dst.up[k] = clamp(src.up[k]|0,0,3); }
     if(src.tires) for(var t in dst.tires){ if(typeof src.tires[t]==='number') dst.tires[t] = clamp(src.tires[t]|0,0,3); }
     if(src.fitted && dst.tires[src.fitted] > 0) dst.fitted = src.fitted;
+    /* saves written before gear tuning existed simply keep stock ratios */
+    if(src.gearing){
+      if(typeof src.gearing.final === 'number')  dst.gearing.final  = clamp(src.gearing.final,  GEAR_FINAL_MIN, GEAR_FINAL_MAX);
+      if(typeof src.gearing.spread === 'number') dst.gearing.spread = clamp(src.gearing.spread, GEAR_SPREAD_MIN, GEAR_SPREAD_MAX);
+    }
   }
   for(var sid in save.stages){
     var ss = s.stages && s.stages[sid]; if(!ss) continue;
@@ -1682,8 +1702,19 @@ function resetHudControls(){
    before and always makes full torque (torque = 1). Only MANUAL asks the
    torque curve what the current gear is worth.
    ---------------------------------------------------------------------- */
-var GEAR_SPANS = [1/6, 2/6, 3/6, 4/6, 5/6, 1.0];
+var GEAR_SPANS = [1/6, 2/6, 3/6, 4/6, 5/6, 1.0];      /* stock reference */
 var TOP_GEAR = GEAR_SPANS.length;
+
+/* A car's actual spans, after any tuning. `final` scales the whole set, so
+   it alone decides where top gear runs out; `spread` bunches the lower
+   gears (>1) or stretches them (<1). Both at 1 reproduces GEAR_SPANS
+   exactly, so an untuned car is bit-identical to before. */
+function carSpans(carId){
+  var g = gearingOf(carId), out = [];
+  for(var i=0;i<TOP_GEAR;i++)
+    out.push(g.final * Math.pow((i+1)/TOP_GEAR, g.spread));
+  return out;
+}
 
 /* Torque multiplier for a given fraction of redline. Lugging below the
    power band and hanging off the limiter above it both cost real drive.
@@ -1707,7 +1738,7 @@ function setGear(r, g, manual){
   if(manual && !up){
     /* refuse a downshift that would bounce the engine off the limiter */
     var frac = Math.abs(r.car.fwd) / Math.max(1, r.stats.topSpeed);
-    if(frac / GEAR_SPANS[g-1] > 1.14){ audioBeep(150, 0.07); return false; }
+    if(frac / r.spans[g-1] > 1.14){ audioBeep(150, 0.07); return false; }
   }
   r.gear = g;
   if(manual){
@@ -1726,11 +1757,11 @@ function updateGearbox(r, spd, topSpeed, dt){
 
   if(!manual){
     var want = 1;
-    while(want < TOP_GEAR && frac > GEAR_SPANS[want-1]) want++;
+    while(want < TOP_GEAR && frac > r.spans[want-1]) want++;
     if(want !== r.gear) setGear(r, want, false);
   }
 
-  var hi = GEAR_SPANS[r.gear-1];
+  var hi = r.spans[r.gear-1];
   var rpm = hi > 0 ? frac/hi : 0;
   if(spd < 4) rpm = Math.max(rpm, 0.11);               /* idle */
   r.rpm = clamp(rpm, 0, 1.35);
@@ -1739,9 +1770,13 @@ function updateGearbox(r, spd, topSpeed, dt){
   r.perfectT   = Math.max(0, r.perfectT - dt);
   r.perfectFlash = Math.max(0, r.perfectFlash - dt);
 
-  if(!manual){ r.torque = 1; return; }                 /* automatic: unchanged */
+  /* shorter gearing multiplies torque at the wheels, taller gearing divides
+     it. Exactly 1 on stock ratios, so untuned cars are unaffected. */
+  var ratio = GEAR_SPANS[r.gear-1] / r.spans[r.gear-1];
 
-  var tq = gearTorque(r.rpm, r.gear);
+  if(!manual){ r.torque = ratio; return; }             /* automatic: stock => 1 */
+
+  var tq = gearTorque(r.rpm, r.gear) * ratio;
   if(r.shiftT > 0) tq *= 0.35;
   if(r.perfectT > 0) tq *= 1.14;                       /* reward for a clean change */
   r.torque = tq;
@@ -1783,6 +1818,7 @@ function startRace(stageId){
       getCarSprite(save.current, cs.paint, cs.livery, 2, 3)
     ],
     gear:1, rpm:0, torque:1, shiftT:0, perfectT:0, perfectFlash:0,
+    spans: carSpans(save.current), finalDrive: gearingOf(save.current).final,
     t:0, state:'countdown', countdown:3.2, collisions:0, hardHits:0,
     noteIdx:0, note:null, noteTimer:0,
     particles:[], skids:[], shake:0,
@@ -1870,7 +1906,9 @@ function stepRace(dt){
   if(gas && !hb){
     /* the power curve runs out above the rated top speed, so rolling
        resistance settles the car right around its quoted figure */
-    var head = 1 - c.fwd/(topSpeed*1.35);
+    /* top gear redlines at finalDrive x the car's rated speed, so taller
+       gearing raises the ceiling and shorter gearing lowers it */
+    var head = 1 - c.fwd/(topSpeed*r.finalDrive*1.35);
     if(head < 0) head = 0;
     c.fwd += accel * head * dt * (offtrack ? 0.70 : 1) * r.torque;
     c.wheelSpin = clamp(c.wheelSpin + (1.2 - grip)*dt*2.2, 0, 1);
@@ -2887,11 +2925,89 @@ function renderUpgrades(body){
       body.appendChild(row);
     })(UPGRADES[i]);
   }
+  renderGearing(body);
+
   var hint = document.createElement('div');
   hint.className = 'up-desc';
   hint.style.padding = '8px';
   hint.textContent = 'Stage 2 needs handling 44+. Stage 3 needs handling 58+ and 170 km/h+. Upgrades apply to the currently selected car only.';
   body.appendChild(hint);
+}
+
+/* --------------------------------------------------- gear ratio tuning
+   Steppers for final drive and gear spread, plus a reset. Purely a
+   gearbox setting: it does not touch the upgrade tree, prices, or the
+   stats used for stage gating. */
+function renderGearing(body){
+  var cs = curCarSave(), st = computeStats(save.current);
+
+  var head = document.createElement('div');
+  head.className = 'up-row gear-head';
+  head.innerHTML = '<span class="up-name">GEARING</span>' +
+    '<span class="up-desc">Shorter gearing pulls harder out of corners but runs out of road sooner. ' +
+    'Taller gearing does the opposite. Both transmission modes follow whatever you set here.</span>';
+  body.appendChild(head);
+
+  function stepper(label, key, min, max, desc, fmt){
+    var row = document.createElement('div');
+    row.className = 'up-row';
+    var val = cs.gearing[key];
+    row.innerHTML = '<span class="up-name">' + label + '</span>';
+
+    var wrap = document.createElement('div');
+    wrap.className = 'gear-step';
+    var minus = document.createElement('button');
+    minus.className = 'btn small'; minus.textContent = '\u2212';
+    minus.disabled = val <= min + 1e-6;
+    var read = document.createElement('span');
+    read.className = 'gear-val'; read.textContent = fmt(val);
+    var plus = document.createElement('button');
+    plus.className = 'btn small'; plus.textContent = '+';
+    plus.disabled = val >= max - 1e-6;
+    var bump = function(d){
+      return function(){
+        cs.gearing[key] = Math.round(clamp(cs.gearing[key] + d, min, max) * 100) / 100;
+        persist(); audioBeep(700, 0.05); renderGarage();
+      };
+    };
+    minus.onclick = bump(-GEAR_STEP);
+    plus.onclick = bump(GEAR_STEP);
+    wrap.appendChild(minus); wrap.appendChild(read); wrap.appendChild(plus);
+    row.appendChild(wrap);
+
+    var d = document.createElement('span');
+    d.className = 'up-desc'; d.innerHTML = desc;
+    row.appendChild(d);
+    body.appendChild(row);
+  }
+
+  stepper('FINAL DRIVE', 'final', GEAR_FINAL_MIN, GEAR_FINAL_MAX,
+    'Scales every ratio. Sets how fast top gear will pull.',
+    function(v){ return v.toFixed(2) + 'x'; });
+  stepper('SPREAD', 'spread', GEAR_SPREAD_MIN, GEAR_SPREAD_MAX,
+    'Above 1.00 stacks the lower gears close together for launch. Below 1.00 spaces them out.',
+    function(v){ return v.toFixed(2); });
+
+  /* what the current ratios actually give you */
+  var spans = carSpans(save.current);
+  var topKmh = Math.round(st.topSpeed * cs.gearing.final * 0.42);
+  var firstKmh = Math.round(st.topSpeed * spans[0] * 0.42);
+  var out = document.createElement('div');
+  out.className = 'up-row';
+  out.innerHTML = '<span class="up-name">AT REDLINE</span>' +
+    '<span class="up-desc">1st runs to <b>' + firstKmh + ' KM/H</b>, top gear to <b>' + topKmh + ' KM/H</b>. ' +
+    (gearingIsStock(save.current) ? 'Currently stock.' : 'Tuned away from stock.') + '</span>';
+  var reset = document.createElement('button');
+  reset.className = 'btn small';
+  reset.textContent = 'RESET';
+  reset.disabled = gearingIsStock(save.current);
+  if(!reset.disabled) reset.classList.add('primary');
+  reset.onclick = function(){
+    cs.gearing = { final:1, spread:1 };
+    persist(); audioBeep(520, 0.09); renderGarage();
+  };
+  out.appendChild(reset);
+  body.appendChild(out);
 }
 
 function renderTires(body){

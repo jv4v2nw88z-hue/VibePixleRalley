@@ -100,6 +100,11 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 .up-name{width:88px;flex:none;font-size:11px;letter-spacing:1px;color:var(--text);}
 .up-desc{flex:1;font-size:9.5px;color:var(--muted);line-height:1.4;}
 .pips{display:flex;gap:3px;flex:none;}
+.gear-head{border-bottom:1px solid rgba(60,74,56,.5);}
+.gear-head .up-name{color:var(--amber);}
+.gear-step{display:flex;align-items:center;gap:5px;flex:none;}
+.gear-step .btn{padding:3px 8px;min-width:26px;}
+.gear-val{min-width:44px;text-align:center;font-size:11px;letter-spacing:1px;color:var(--text);}
 .pip{width:11px;height:11px;border:1px solid var(--line);background:#0d110c;border-radius:2px;}
 .pip.on{background:linear-gradient(180deg,#ffc457,#c8820f);border-color:#7c5310;}
 .swatches{display:flex;flex-wrap:wrap;gap:6px;}
