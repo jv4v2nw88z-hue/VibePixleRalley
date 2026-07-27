@@ -22,7 +22,17 @@
       <div class="nm" style="margin-top:3px">DAMAGE</div><div class="meter"><i id="h-dmg" class="dmg"></i></div>
       <div class="nm" style="margin-top:3px">SURFACE <b id="h-surf" style="color:var(--text)">GRAVEL</b></div>
     </div>
-    <div id="hud-speed" class="hud-box"><div class="v" id="h-kmh">0</div><div class="u">KM/H · <span id="h-gear">1</span></div><div class="revbar"><i id="h-rev"></i></div></div>
+    <div id="hud-cluster" class="hud-box">
+      <div class="cl-pedals">
+        <canvas id="pedal-cv"></canvas>
+        <div class="lbl"><span>BRAKE</span><span>GAS</span></div>
+      </div>
+      <div class="cl-dash">
+        <div class="v" id="h-kmh">0</div>
+        <div class="u">KM/H &middot; <span id="h-gear">1</span></div>
+        <div class="revbar"><i id="h-rev"></i></div>
+      </div>
+    </div>
     <div id="hud-note"><div class="arrow" id="n-arrow">&#8598;</div><div class="txt" id="n-text">SHARP LEFT</div></div>
     <div id="hud-split"></div>
     <div id="big-msg"></div>
@@ -32,10 +42,10 @@
   <div id="controls" class="hidden">
     <div class="pad" id="p-left">&#9664;</div>
     <div class="pad" id="p-right">&#9654;</div>
-    <div class="pad" id="p-hbrake">H-BRAKE</div>
+    <div class="pad lever" id="p-hbrake"><canvas id="hbrake-cv"></canvas><small>HANDBRAKE</small></div>
     <div class="pad" id="p-gas">GAS</div>
-    <div class="pad shift hidden" id="p-shiftup">&#9650;<small>UP</small></div>
-    <div class="pad shift hidden" id="p-shiftdn">&#9660;<small>DN</small></div>
+    <div class="pad paddle" id="p-shiftdn"><canvas id="pad-dn-cv"></canvas></div>
+    <div class="pad paddle" id="p-shiftup"><canvas id="pad-up-cv"></canvas></div>
     <div class="pad" id="p-pause">II</div>
     <div id="tilt-bar" class="hidden"><i id="tilt-ind"></i></div>
   </div>

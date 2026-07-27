@@ -1130,7 +1130,7 @@ function resize(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.imageSmoothingEnabled = false;
 }
-window.addEventListener('resize', resize);
+window.addEventListener('resize', function(){ resize(); if(race) resetHudControls(); });
 window.addEventListener('orientationchange', function(){ setTimeout(resize, 250); });
 
 /* ----------------------------------------------------------------- input */
@@ -1162,8 +1162,10 @@ function bindTap(el, fn){
   el.addEventListener('touchstart', fire, {passive:false});
   el.addEventListener('mousedown', fire);
 }
-bindTap(document.getElementById('p-shiftup'), function(){ shiftUp(); });
-bindTap(document.getElementById('p-shiftdn'), function(){ shiftDown(); });
+/* the paddle shifters are the real control; they call straight into the
+   Pass 3 gearbox and no-op in automatic, where they render dimmed */
+bindTap(document.getElementById('p-shiftup'), function(){ hudCtl.padUp = 1; shiftUp(); });
+bindTap(document.getElementById('p-shiftdn'), function(){ hudCtl.padDn = 1; shiftDown(); });
 
 document.addEventListener('keydown', function(e){
   if(e.repeat) return;
@@ -1368,6 +1370,193 @@ function audioBeep(freq, dur){
 }
 function audioStopAll(){ audioEngine(0,0,0,false); }
 
+/* =========================================================================
+   HUD CONTROLS — pixel-art pedal telemetry, paddle shifters and a pull-up
+   handbrake lever. Everything is drawn with canvas primitives at a chunky
+   pixel grid, like the car sprites and the garage scenes, so there are no
+   asset files. Each surface only repaints when its animation actually
+   moves, which keeps this off the per-frame cost.
+   ========================================================================= */
+
+var hudCtl = { gas:0, brake:0, hb:0, padUp:0, padDn:0,
+               drawnGas:-1, drawnBrake:-1, drawnHb:-1, drawnUp:-1, drawnDn:-1, drawnMode:null };
+
+/* integer-scaled pixel painter for a small HUD canvas */
+function hudPainter(cv, gw, gh, cssScale){
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var S = Math.max(1, Math.round(cssScale*dpr));
+  if(cv.width !== gw*S || cv.height !== gh*S){
+    cv.width = gw*S; cv.height = gh*S;
+    cv.style.width = (gw*cssScale)+'px';
+    cv.style.height = (gh*cssScale)+'px';
+  }
+  var g = cv.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.clearRect(0,0,cv.width,cv.height);
+  return function(x,y,w,h,col){
+    g.fillStyle = col;
+    g.fillRect(Math.round(x)*S, Math.round(y)*S,
+               Math.max(1,Math.round(w))*S, Math.max(1,Math.round(h))*S);
+  };
+}
+
+var HUDC = {
+  steel:'#9aa2a8', steelHi:'#c6ccd1', steelLo:'#5c6167',
+  dark:'#20262a', black:'#12161a', rubber:'#2b3036', rubberHi:'#3c434a',
+  amber:'#ffb432', amberLo:'#a8721a', green:'#7ef08a', red:'#ff5a4a',
+  dim:'#575e63', dimLo:'#3a4045'
+};
+
+/* ------------------------------------------------------- pedal telemetry
+   Side-on foot pedals: a hinged arm off the floor with a rubber-faced
+   plate. Pressing swings the plate down and forward. Purely a readout of
+   what the throttle and brake inputs are doing. */
+function drawPedals(gasV, brakeV){
+  var cv = document.getElementById('pedal-cv');
+  if(!cv) return;
+  var px = hudPainter(cv, 40, 28, 2);
+  var floorY = 24;
+
+  px(0, floorY, 40, 2, HUDC.black);                     /* bulkhead floor */
+  px(0, floorY, 40, 1, HUDC.steelLo);
+
+  var pedals = [
+    { x0:4,  w:12, v:brakeV, tint:HUDC.red },           /* brake, wider face */
+    { x0:23, w:10, v:gasV,   tint:HUDC.green }
+  ];
+  for(var i=0;i<pedals.length;i++){
+    var p = pedals[i], v = p.v;
+    var cx = p.x0 + Math.floor(p.w/2);
+    var topY = 7 + Math.round(v*6);                     /* plate drops when pressed */
+    var lean = Math.round(v*2);                         /* and swings forward */
+
+    px(cx-1, topY+2, 2, floorY-topY-2, HUDC.steelLo);   /* pivot arm */
+    px(cx-1, topY+2, 1, floorY-topY-2, HUDC.steel);
+    px(cx-2, floorY-2, 4, 2, HUDC.dark);                /* hinge */
+
+    px(p.x0+lean-1, topY-1, p.w+2, 7, HUDC.black);      /* plate outline */
+    px(p.x0+lean, topY, p.w, 5, HUDC.steelLo);          /* plate backing */
+    px(p.x0+lean, topY, p.w, 1, HUDC.steelHi);          /* lit top edge */
+    px(p.x0+lean, topY+1, p.w, 3, v > 0.5 ? p.tint : HUDC.rubber);
+    for(var r=0;r<3;r++)                                /* rubber grip ribs */
+      px(p.x0+lean+2+r*3, topY+1, 1, 3, v > 0.5 ? HUDC.black : HUDC.rubberHi);
+    if(v > 0.05) px(p.x0+lean, topY+5, p.w, 1, HUDC.amberLo);   /* travel */
+  }
+}
+
+/* ------------------------------------------------------ handbrake lever
+   A console-mounted fly-off lever: base, gaiter, angled arm and a grip
+   with a release button. Engaging swings the arm up towards vertical. */
+function drawHandbrake(v){
+  var cv = document.getElementById('hbrake-cv');
+  if(!cv) return;
+  var px = hudPainter(cv, 20, 32, 3);
+  var pivotX = 5, pivotY = 24;
+  var on = v > 0.5;
+
+  px(1, 26, 18, 5, HUDC.dark);                          /* console base */
+  px(1, 26, 18, 1, on ? HUDC.amber : HUDC.steelLo);
+  px(2, 30, 16, 1, HUDC.black);
+  px(pivotX-2, 21, 7, 5, HUDC.black);                   /* rubber gaiter */
+  px(pivotX-1, 21, 5, 1, HUDC.rubberHi);
+
+  var ang = (38 + v*36) * Math.PI/180;                  /* 38deg at rest, 74deg pulled */
+  var dx = Math.cos(ang), dy = -Math.sin(ang);
+  var len = 13;
+  for(var i=0;i<=len;i++){
+    px(pivotX + dx*i - 1, pivotY + dy*i - 1, 2, 2, HUDC.steel);
+    px(pivotX + dx*i - 1, pivotY + dy*i - 1, 1, 1, HUDC.steelHi);
+  }
+  px(pivotX-2, pivotY-2, 4, 4, HUDC.steelLo);           /* pivot boss */
+  px(pivotX-1, pivotY-1, 2, 2, HUDC.black);
+
+  var gx = pivotX + dx*len, gy = pivotY + dy*len;       /* grip */
+  px(gx-3, gy-5, 6, 8, HUDC.black);
+  px(gx-2, gy-4, 4, 6, on ? HUDC.amberLo : HUDC.rubber);
+  px(gx-2, gy-4, 4, 1, on ? HUDC.amber : HUDC.rubberHi);
+  px(gx-2, gy+1, 4, 1, HUDC.black);
+  px(gx-1, gy-5, 3, 1, on ? HUDC.amber : HUDC.dim);     /* release button */
+}
+
+/* --------------------------------------------------------- shift paddles
+   Wheel-style paddles. Left of the pair drops a gear, right takes one. */
+function drawPaddle(id, up, press, active){
+  var cv = document.getElementById(id);
+  if(!cv) return;
+  var px = hudPainter(cv, 22, 21, 2);
+  var body   = active ? HUDC.steel   : HUDC.dim;
+  var bodyHi = active ? HUDC.steelHi : HUDC.steel;
+  var bodyLo = active ? HUDC.steelLo : HUDC.dimLo;
+  var drop = press > 0.5 ? 1 : 0;
+  var face = press > 0.5 ? HUDC.amber : body;
+
+  px(3, 1+drop, 16, 19, HUDC.black);                    /* blade outline */
+  px(4, 2+drop, 14, 17, face);
+  px(4, 2+drop, 1, 1, HUDC.black);                      /* clipped corners */
+  px(17, 2+drop, 1, 1, HUDC.black);
+  px(4, 18+drop, 1, 1, HUDC.black);
+  px(17, 18+drop, 1, 1, HUDC.black);
+  px(5, 2+drop, 12, 1, press > 0.5 ? '#ffd487' : bodyHi);  /* lit top edge */
+  px(4, 3+drop, 1, 15, bodyHi);
+  px(17, 3+drop, 1, 15, bodyLo);
+  px(5, 18+drop, 12, 1, bodyLo);
+
+  /* chevron: points up for an upshift, down for a downshift */
+  var ink = active ? HUDC.black : '#272d31';
+  for(var i=0;i<4;i++){
+    var w = up ? 2 + i*2 : 8 - i*2;
+    px(11 - w/2, 6+i+drop, w, 1, ink);
+  }
+  px(8, (up ? 12 : 4) + drop, 6, 1, ink);               /* the +/- notch bar */
+}
+
+/* ------------------------------------------------------------- per frame */
+function updateHudControls(dt){
+  /* mirror exactly what the physics treats as throttle and brake */
+  var gasOn   = save.settings.autoGas ? !input.hbrake : input.gas;
+  var brakeOn = input.hbrake;
+  var k = 1 - Math.pow(0.0004, dt);
+  hudCtl.gas   += ((gasOn?1:0)   - hudCtl.gas)*k;
+  hudCtl.brake += ((brakeOn?1:0) - hudCtl.brake)*k;
+  hudCtl.hb    += ((brakeOn?1:0) - hudCtl.hb)*k;
+  hudCtl.padUp = Math.max(0, hudCtl.padUp - dt*4.5);
+  hudCtl.padDn = Math.max(0, hudCtl.padDn - dt*4.5);
+
+  /* repaint only on a visible change */
+  var q = function(v){ return Math.round(v*12); };
+  if(q(hudCtl.gas) !== hudCtl.drawnGas || q(hudCtl.brake) !== hudCtl.drawnBrake){
+    hudCtl.drawnGas = q(hudCtl.gas); hudCtl.drawnBrake = q(hudCtl.brake);
+    drawPedals(hudCtl.gas, hudCtl.brake);
+  }
+  if(q(hudCtl.hb) !== hudCtl.drawnHb){
+    hudCtl.drawnHb = q(hudCtl.hb);
+    drawHandbrake(hudCtl.hb);
+  }
+  var manual = save.settings.transmission === 'manual';
+  if(q(hudCtl.padUp) !== hudCtl.drawnUp || hudCtl.drawnMode !== manual){
+    hudCtl.drawnUp = q(hudCtl.padUp);
+    drawPaddle('pad-up-cv', true, hudCtl.padUp, manual);
+  }
+  if(q(hudCtl.padDn) !== hudCtl.drawnDn || hudCtl.drawnMode !== manual){
+    hudCtl.drawnDn = q(hudCtl.padDn);
+    drawPaddle('pad-dn-cv', false, hudCtl.padDn, manual);
+  }
+  hudCtl.drawnMode = manual;
+}
+
+/* force a full repaint, e.g. when a race starts or the viewport changes */
+function resetHudControls(){
+  hudCtl.gas = hudCtl.brake = hudCtl.hb = hudCtl.padUp = hudCtl.padDn = 0;
+  hudCtl.drawnGas = hudCtl.drawnBrake = hudCtl.drawnHb = -1;
+  hudCtl.drawnUp = hudCtl.drawnDn = -1; hudCtl.drawnMode = null;
+  var manual = save.settings.transmission === 'manual';
+  drawPedals(0,0); drawHandbrake(0);
+  drawPaddle('pad-up-cv', true, 0, manual);
+  drawPaddle('pad-dn-cv', false, 0, manual);
+  document.getElementById('p-shiftup').classList.toggle('auto', !manual);
+  document.getElementById('p-shiftdn').classList.toggle('auto', !manual);
+}
+
 /* ------------------------------------------------------------- gearbox
    Six speeds. GEAR_SPANS is the fraction of the car's top speed reached at
    the redline in each gear, so engine revs are speed/(top*span) — revs fall
@@ -1495,9 +1684,7 @@ function startRace(stageId){
   document.getElementById('controls').classList.remove('hidden');
   document.getElementById('tilt-bar').classList.toggle('hidden', save.settings.control !== 'tilt');
   document.getElementById('p-gas').classList.toggle('hidden', save.settings.autoGas);
-  var manual = save.settings.transmission === 'manual';
-  document.getElementById('p-shiftup').classList.toggle('hidden', !manual);
-  document.getElementById('p-shiftdn').classList.toggle('hidden', !manual);
+  resetHudControls();
   audioKick();
   bigMsg('3');
 }
@@ -1996,7 +2183,7 @@ function drawCar(g, r){
 function drawMinimap(g, r, W, H){
   var nodes = r.track.nodes;
   var mw = Math.min(120, W*0.19), mh = mw;
-  var x0 = W - mw - 10, y0 = H*0.5 - mh*0.5;
+  var x0 = W - mw - 10, y0 = 46;          /* top right, under the pause button */
   /* fit whole track */
   if(!r.mapBox){
     var minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
@@ -2077,6 +2264,7 @@ function frame(ts){
   lastT = ts;
   if(dt > 0.05) dt = 0.05;
   if(race && !paused){
+    updateHudControls(dt);
     if(race.state !== 'done') stepRace(dt);
     else { race.shake = Math.max(0, race.shake - dt*2); spawnEffects(race,dt,0,SURFACES[race.stage.surface],false); }
     renderRace();

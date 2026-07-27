@@ -128,15 +128,23 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 #hud-timer{top:calc(6px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);text-align:center;}
 #hud-timer .t{font-size:clamp(17px,4.2vh,30px);font-weight:700;letter-spacing:2px;color:var(--amber);text-shadow:0 0 10px rgba(255,180,50,.4);}
 #hud-timer .d{font-size:clamp(9px,1.7vh,12px);letter-spacing:1px;}
-#hud-speed{right:calc(8px + env(safe-area-inset-right));bottom:calc(78px + env(safe-area-inset-bottom));text-align:right;}
-#hud-speed .v{font-size:clamp(20px,5vh,36px);font-weight:700;color:var(--green);letter-spacing:1px;line-height:1;}
-#hud-speed .u{font-size:9px;color:var(--muted);letter-spacing:2px;}
-#hud-speed .u #h-gear.perfect{color:var(--green);}
-#hud-speed .revbar{height:5px;background:#0d110c;border:1px solid var(--line);border-radius:2px;
-  margin-top:3px;overflow:hidden;width:74px;margin-left:auto;}
-#hud-speed .revbar i{display:block;height:100%;width:0%;background:var(--green);}
-#hud-speed .revbar i.warn{background:var(--amber);}
-#hud-speed .revbar i.red{background:var(--red);}
+/* bottom-centre instrument cluster: pedal telemetry + speed + revs + gear.
+   Sits between the steering pads on the left and the drive controls on the
+   right, so nothing overlaps and neither thumb covers it. */
+#hud-cluster{left:50%;transform:translateX(-50%);bottom:calc(8px + env(safe-area-inset-bottom));
+  display:flex;align-items:center;gap:8px;padding:5px 9px;}
+#hud-cluster .cl-pedals{display:flex;flex-direction:column;align-items:center;gap:2px;}
+#hud-cluster canvas{image-rendering:pixelated;display:block;}
+#hud-cluster .lbl{display:flex;gap:10px;font-size:7.5px;letter-spacing:1px;color:var(--muted);}
+#hud-cluster .cl-dash{text-align:right;min-width:76px;}
+#hud-cluster .v{font-size:clamp(18px,4.6vh,32px);font-weight:700;color:var(--green);letter-spacing:1px;line-height:1;}
+#hud-cluster .u{font-size:9px;color:var(--muted);letter-spacing:2px;}
+#hud-cluster .u #h-gear.perfect{color:var(--green);}
+#hud-cluster .revbar{height:5px;background:#0d110c;border:1px solid var(--line);border-radius:2px;
+  margin-top:3px;overflow:hidden;width:86px;margin-left:auto;}
+#hud-cluster .revbar i{display:block;height:100%;width:0%;background:var(--green);}
+#hud-cluster .revbar i.warn{background:var(--amber);}
+#hud-cluster .revbar i.red{background:var(--red);}
 #hud-left{top:calc(6px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));min-width:118px;}
 #hud-left .nm{font-size:10px;color:var(--muted);letter-spacing:1px;}
 .meter{height:6px;background:#0d110c;border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-top:3px;}
@@ -168,16 +176,24 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 .pad.act{background:rgba(255,180,50,.5);border-color:#ffd487;color:#1a1200;}
 #p-left{left:calc(10px + env(safe-area-inset-left));bottom:calc(10px + env(safe-area-inset-bottom));width:76px;height:70px;}
 #p-right{left:calc(94px + env(safe-area-inset-left));bottom:calc(10px + env(safe-area-inset-bottom));width:76px;height:70px;}
-#p-gas{right:calc(10px + env(safe-area-inset-right));bottom:calc(10px + env(safe-area-inset-bottom));width:84px;height:70px;}
-#p-hbrake{right:calc(102px + env(safe-area-inset-right));bottom:calc(10px + env(safe-area-inset-bottom));width:80px;height:70px;font-size:clamp(9px,1.9vh,13px);}
+#p-gas{right:calc(10px + env(safe-area-inset-right));bottom:calc(10px + env(safe-area-inset-bottom));width:92px;height:62px;}
+/* handbrake: a pull-up lever, right side, left of the gas/paddle stack */
+#p-hbrake{right:calc(106px + env(safe-area-inset-right));bottom:calc(10px + env(safe-area-inset-bottom));
+  width:60px;height:118px;flex-direction:column;gap:1px;background:rgba(20,26,18,.42);}
+#p-hbrake canvas{image-rendering:pixelated;display:block;}
+#p-hbrake small{font-size:7.5px;letter-spacing:1px;opacity:.8;}
+#p-hbrake.act{background:rgba(255,180,50,.22);border-color:#ffd487;}
 #p-pause{right:calc(8px + env(safe-area-inset-right));top:calc(6px + env(safe-area-inset-top));width:44px;height:34px;font-size:12px;}
-/* placeholder shift inputs — the dedicated paddle UI in a later pass wires
-   to the same shiftUp()/shiftDown() calls these fire */
-.pad.shift{flex-direction:column;gap:0;line-height:1;bottom:calc(86px + env(safe-area-inset-bottom));height:46px;}
-.pad.shift small{font-size:8px;letter-spacing:1px;opacity:.8;}
-#p-shiftup{right:calc(10px + env(safe-area-inset-right));width:84px;}
-#p-shiftdn{right:calc(102px + env(safe-area-inset-right));width:80px;}
-#tilt-bar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom));
+/* paddle shifters — right thumb, directly above the gas pedal.
+   Left of the pair downshifts, right of the pair upshifts, as on a wheel. */
+.pad.paddle{bottom:calc(78px + env(safe-area-inset-bottom));height:42px;width:44px;
+  padding:0;background:none;border:none;}
+.pad.paddle canvas{image-rendering:pixelated;display:block;}
+.pad.paddle.act{background:none;}
+.pad.paddle.auto{opacity:.55;}
+#p-shiftup{right:calc(10px + env(safe-area-inset-right));}
+#p-shiftdn{right:calc(58px + env(safe-area-inset-right));}
+#tilt-bar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom));
   width:150px;height:8px;background:rgba(8,11,7,.6);border:2px solid rgba(140,160,130,.5);border-radius:4px;pointer-events:none;}
 #tilt-bar i{position:absolute;top:0;bottom:0;left:50%;width:6px;margin-left:-3px;background:var(--amber);border-radius:3px;}
 
