@@ -133,23 +133,14 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 #hud-timer{top:calc(6px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);text-align:center;}
 #hud-timer .t{font-size:clamp(17px,4.2vh,30px);font-weight:700;letter-spacing:2px;color:var(--amber);text-shadow:0 0 10px rgba(255,180,50,.4);}
 #hud-timer .d{font-size:clamp(9px,1.7vh,12px);letter-spacing:1px;}
-/* bottom-centre instrument cluster: pedal telemetry + speed + revs + gear.
-   Sits between the steering pads on the left and the drive controls on the
-   right, so nothing overlaps and neither thumb covers it. */
-#hud-cluster{left:50%;transform:translateX(-50%);bottom:calc(8px + env(safe-area-inset-bottom));
-  display:flex;align-items:center;gap:8px;padding:5px 9px;}
-#hud-cluster .cl-pedals{display:flex;flex-direction:column;align-items:center;gap:2px;}
-#hud-cluster canvas{image-rendering:pixelated;display:block;}
-#hud-cluster .lbl{display:flex;gap:10px;font-size:7.5px;letter-spacing:1px;color:var(--muted);}
-#hud-cluster .cl-dash{text-align:right;min-width:76px;}
-#hud-cluster .v{font-size:clamp(18px,4.6vh,32px);font-weight:700;color:var(--green);letter-spacing:1px;line-height:1;}
-#hud-cluster .u{font-size:9px;color:var(--muted);letter-spacing:2px;}
-#hud-cluster .u #h-gear.perfect{color:var(--green);}
-#hud-cluster .revbar{height:5px;background:#0d110c;border:1px solid var(--line);border-radius:2px;
-  margin-top:3px;overflow:hidden;width:86px;margin-left:auto;}
-#hud-cluster .revbar i{display:block;height:100%;width:0%;background:var(--green);}
-#hud-cluster .revbar i.warn{background:var(--amber);}
-#hud-cluster .revbar i.red{background:var(--red);}
+/* bottom-centre instrument cluster: pedal bay, tacho, gear + lamps, speedo.
+   One canvas — the panel shell, bezels and dial faces are all drawn there.
+   Its width is capped in JS so it always clears the steering pads on the
+   left and the handbrake lever on the right, and neither thumb covers it. */
+#hud-cluster{position:absolute;left:50%;transform:translateX(-50%);
+  bottom:calc(8px + env(safe-area-inset-bottom));line-height:0;
+  filter:drop-shadow(0 3px 6px rgba(0,0,0,.55));}
+#hud-cluster canvas{display:block;}
 #hud-left{top:calc(6px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));min-width:118px;}
 #hud-left .nm{font-size:10px;color:var(--muted);letter-spacing:1px;}
 .meter{height:6px;background:#0d110c;border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-top:3px;}
@@ -189,16 +180,18 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 #p-hbrake small{font-size:7.5px;letter-spacing:1px;opacity:.8;}
 #p-hbrake.act{background:rgba(255,180,50,.22);border-color:#ffd487;}
 #p-pause{right:calc(8px + env(safe-area-inset-right));top:calc(6px + env(safe-area-inset-top));width:44px;height:34px;font-size:12px;}
-/* paddle shifters — right thumb, directly above the gas pedal.
-   Left of the pair downshifts, right of the pair upshifts, as on a wheel. */
-.pad.paddle{bottom:calc(78px + env(safe-area-inset-bottom));height:42px;width:44px;
-  padding:0;background:none;border:none;}
+/* paddle shifters — mounted on the outer edges of the dash, like the
+   stalks behind a wheel: the left blade downshifts, the right upshifts.
+   Each sits just clear of the pad below it (steering left, gas right). */
+.pad.paddle{height:52px;width:40px;padding:0;background:none;border:none;}
 .pad.paddle canvas{image-rendering:pixelated;display:block;}
 .pad.paddle.act{background:none;}
-.pad.paddle.auto{opacity:.55;}
-#p-shiftup{right:calc(10px + env(safe-area-inset-right));}
-#p-shiftdn{right:calc(58px + env(safe-area-inset-right));}
-#tilt-bar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom));
+.pad.paddle.auto{opacity:.5;}
+#p-shiftup{right:calc(10px + env(safe-area-inset-right));bottom:calc(78px + env(safe-area-inset-bottom));}
+#p-shiftdn{left:calc(10px + env(safe-area-inset-left));bottom:calc(86px + env(safe-area-inset-bottom));}
+/* the tilt strip parks above the cluster, whatever height the cluster took */
+#tilt-bar{position:absolute;left:50%;transform:translateX(-50%);
+  bottom:calc(var(--cluster-h, 92px) + 16px + env(safe-area-inset-bottom));
   width:150px;height:8px;background:rgba(8,11,7,.6);border:2px solid rgba(140,160,130,.5);border-radius:4px;pointer-events:none;}
 #tilt-bar i{position:absolute;top:0;bottom:0;left:50%;width:6px;margin-left:-3px;background:var(--amber);border-radius:3px;}
 

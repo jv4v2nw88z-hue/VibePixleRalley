@@ -69,8 +69,18 @@ corner. Red notes are the ones that will hurt.
 |---|---|
 | Steer | on-screen ◀ / ▶ |
 | Throttle | `GAS` (or switch to auto throttle in Settings) |
-| Handbrake | `H-BRAKE` — locks the rears for hairpins, and reverses when stopped |
+| Handbrake | the lever on the right — locks the rears for hairpins, and reverses when stopped |
+| Shift | the paddles on the outer edges of the dash: `−` bottom left drops a gear, `+` bottom right takes one (manual gearbox only) |
 | Pause | `II`, top right |
+
+## The dash
+
+The instrument cluster along the bottom of the screen is one canvas, drawn from scratch
+every frame: a footwell with live brake and throttle pedals, an analog tachometer reading
+in thousands of rpm with the redline banded in red at 7, a gear panel with a shift bar, and
+an analog speedometer with a digital km/h readout. The speedometer scales itself to the car
+you are driving. Three warning lamps — coolant, check-engine, brake — pick up on a cooked
+engine, a battered car and the handbrake, purely for atmosphere.
 
 **Tilt** — enable in Settings (iOS asks for motion permission). Steering comes from the
 phone's tilt; gas and handbrake stay on screen. Hold the phone how you want to drive, then
