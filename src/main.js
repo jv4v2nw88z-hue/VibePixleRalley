@@ -1844,15 +1844,25 @@ function hudPainter(cv, gw, gh, cssScale){
 var HUDC = {
   steel:'#9aa2a8', steelHi:'#c6ccd1', steelLo:'#5c6167',
   dark:'#20262a', black:'#12161a', rubber:'#2b3036', rubberHi:'#3c434a',
-  amber:'#ffb432', amberLo:'#a8721a', green:'#7ef08a', red:'#ff5a4a',
+  amber:'#ffb432', amberLo:'#a8721a', green:'#7ef08a', warn:'#ff5a4a',
   dim:'#575e63', dimLo:'#3a4045',
-  /* instrument faces — near-black glass under a chrome bezel, with bright
-     white/periwinkle numbering for contrast at a glance */
-  bezelHi:'#eef3f8', bezel:'#7d8894', bezelLo:'#333b44',
-  tick:'#ffffff', tickDim:'rgba(196,212,234,.62)', tickRed:'#c2392c',
-  numSpd:'#f4f8ff', numTach:'#bcccff',
-  needle:'#ff3b2f', needleHot:'#ff6f52', needleSpd:'#ff3b2f',
-  lcd:'#05070a', lcdOn:'#f2f7ff', lampOff:'#39423a'
+  /* Instrument faces. Every value here is sampled straight off the reference
+     dash (see scratchpad/PALETTE.md) rather than approximated: flat charcoal
+     glass, a flat two-tone grey bezel, a grey tick ring the periwinkle tick
+     marks cross, and a brick-red needle. */
+  face:'#1C1C1C',                    /* dial glass, flat — no vignette */
+  bezelHi:'#797979', bezelLo:'#545559', bezelEdge:'#000000', bezelIn:'#0D0D0D',
+  ring:'#999999',                    /* the continuous tick-ring circle */
+  tick:'#B2B3E1', tickDim:'#6E6F8C', tickRed:'#E6A49C',
+  numSpd:'#C9C9C9', numTach:'#B2B3E1',
+  cap:'#C9C9C9', capLo:'#767676',    /* TYPE R / X1000 captions */
+  needle:'#D2453C', needleHot:'#E8574A', needleSpd:'#D2453C',
+  red:'#B92C23',                     /* redline arc */
+  tri:'#3A3DD6', triLo:'#23268C',    /* the module's blue shift tell-tales */
+  knob:'#585252', knobHi:'#7A7373', knobLo:'#3A3535',
+  led:'#5BE04A',
+  ladBlue:'#56B2DB', ladGreen:'#5BE04A', ladRed:'#E8564F', ladOff:'#191A1D',
+  lcd:'#18181A', lcdOn:'#FFFFFF', lampOff:'#39423a'
 };
 
 /* pixel painter that draws into an existing context at an offset, so the
@@ -1888,6 +1898,75 @@ var PXFONT = {
   'Y':[5,5,2,2,2], 'Z':[7,1,2,4,7], '-':[0,0,7,0,0], '.':[0,0,0,0,2],
   ' ':[0,0,0,0,0]
 };
+/* Seven-segment digits, in A B C D E F G order. The reference dash draws its
+   dial numerals as segment shapes rather than font glyphs, which is most of
+   why it reads as an instrument cluster and not as text on a circle. */
+var SEG7 = {
+  '0':[1,1,1,1,1,1,0], '1':[0,1,1,0,0,0,0], '2':[1,1,0,1,1,0,1],
+  '3':[1,1,1,1,0,0,1], '4':[0,1,1,0,0,1,1], '5':[1,0,1,1,0,1,1],
+  '6':[1,0,1,1,1,1,1], '7':[1,1,1,0,0,0,0], '8':[1,1,1,1,1,1,1],
+  '9':[1,1,1,1,0,1,1]
+};
+function pxSegW(str, w){ return str.length*(w+2) - 2; }
+function pxSeg(px, str, x, y, w, h, col, align){
+  var i, seg, gx, pitch = w + 2, mid = (h-1) >> 1;
+  var tw = pxSegW(str, w);
+  var x0 = Math.round(align === 'c' ? x - tw/2 : align === 'r' ? x - tw : x);
+  y = Math.round(y);
+  for(i=0;i<str.length;i++){
+    seg = SEG7[str.charAt(i)];
+    if(!seg) continue;
+    gx = x0 + i*pitch;
+    if(seg[0]) px(gx+1,   y,        w-2, 1,        col);   /* A  top    */
+    if(seg[5]) px(gx,     y+1,      1,   mid-1,    col);   /* F  up-left  */
+    if(seg[1]) px(gx+w-1, y+1,      1,   mid-1,    col);   /* B  up-right */
+    if(seg[6]) px(gx+1,   y+mid,    w-2, 1,        col);   /* G  middle */
+    if(seg[4]) px(gx,     y+mid+1,  1,   h-mid-2,  col);   /* E  low-left  */
+    if(seg[2]) px(gx+w-1, y+mid+1,  1,   h-mid-2,  col);   /* C  low-right */
+    if(seg[3]) px(gx+1,   y+h-1,    w-2, 1,        col);   /* D  bottom */
+  }
+  return tw;
+}
+
+/* 5x7 letter face — the reference's captions stand as tall as its numerals,
+   which the 3x5 face cannot do without doubling and going too wide. */
+var PXFONT7 = {
+  'A':[14,17,17,31,17,17,17], 'B':[30,17,17,30,17,17,30], 'C':[14,17,16,16,16,17,14],
+  'D':[30,17,17,17,17,17,30], 'E':[31,16,16,30,16,16,31], 'F':[31,16,16,30,16,16,16],
+  'G':[14,17,16,23,17,17,15], 'H':[17,17,17,31,17,17,17], 'I':[14,4,4,4,4,4,14],
+  'J':[7,2,2,2,2,18,12],      'K':[17,18,20,24,20,18,17], 'L':[16,16,16,16,16,16,31],
+  'M':[17,27,21,21,17,17,17], 'N':[17,25,21,19,17,17,17], 'O':[14,17,17,17,17,17,14],
+  'P':[30,17,17,30,16,16,16], 'Q':[14,17,17,17,21,18,13], 'R':[30,17,17,30,20,18,17],
+  'S':[15,16,16,14,1,1,30],   'T':[31,4,4,4,4,4,4],       'U':[17,17,17,17,17,17,14],
+  'V':[17,17,17,17,17,10,4],  'W':[17,17,17,21,21,27,17], 'X':[17,17,10,4,10,17,17],
+  'Y':[17,17,10,4,4,4,4],     'Z':[31,1,2,4,8,16,31],     '-':[0,0,0,31,0,0,0],
+  ' ':[0,0,0,0,0,0,0],
+  /* Numerals are the bold, two-pixel-stroke shapes the reference uses on
+     both dials — a slotted 0, a diagonal 2, a closed 4. */
+  '0':[14,27,27,27,27,27,14], '1':[4,12,4,4,4,4,14],      '2':[14,27,3,6,12,24,31],
+  '3':[30,3,3,14,3,3,30],     '4':[6,14,10,26,31,2,2],    '5':[31,24,30,3,3,27,14],
+  '6':[6,12,24,30,27,27,14],  '7':[31,3,6,12,12,12,12],   '8':[14,27,27,14,27,27,14],
+  '9':[14,27,27,15,3,6,12]
+};
+function pxText7W(str, s, tr){ return str.length*(5*s + (tr==null?s:tr)) - (tr==null?s:tr); }
+function pxText7(px, str, x, y, s, col, align, tr){
+  if(tr == null) tr = s;
+  var pitch = 5*s + tr;
+  var w = pxText7W(str, s, tr), i, r, c, bits, rows;
+  var x0 = Math.round(align === 'c' ? x - w/2 : align === 'r' ? x - w : x);
+  y = Math.round(y);
+  for(i=0;i<str.length;i++){
+    rows = PXFONT7[str.charAt(i)];
+    if(!rows) continue;
+    for(r=0;r<7;r++){
+      bits = rows[r];
+      if(!bits) continue;
+      for(c=0;c<5;c++) if(bits & (16>>c)) px(x0 + i*pitch + c*s, y + r*s, s, s, col);
+    }
+  }
+  return w;
+}
+
 /* rendered width of a string at pixel size s (3 wide, 1 of tracking) */
 function pxTextW(str, s){ return str.length*4*s - s; }
 /* align: 'l' (default), 'c' centres on x, 'r' ends at x. y is the top row. */
@@ -2025,11 +2104,11 @@ function clusterLayout(){
   var maxW = Math.max(140, vw - safeInsetX() - 2*DOCK_REACH - 8);
   /* Columns run left to right exactly as on the reference cluster: pedal bay,
      gear widget, tacho, the console module, speedo. As fractions of the dial
-     diameter that is 0.72 + 0.62 + 1 + 0.48 + 1 = 3.82 D, plus the padding
+     diameter that is 0.72 + 0.70 + 1 + 0.48 + 1 = 3.90 D, plus the padding
      and four gaps. Invert it for the largest dial the width allows — though
      on any real phone it is the HEIGHT cap that binds, not this. */
-  var D = Math.min(clamp(Math.round(vh*0.215), 58, 104) - 2*pad,
-                   Math.floor((maxW - 2*pad - 4*gap)/3.82));
+  var D = Math.min(clamp(Math.round(vh*0.25), 62, 116) - 2*pad,
+                   Math.floor((maxW - 2*pad - 4*gap)/3.90));
   D = Math.max(40, D);
   /* The dash is a flat bar with the two dials standing proud of it, as on
      the reference: the bar's top edge runs BELOW the tops of the dials, so
@@ -2037,7 +2116,7 @@ function clusterLayout(){
      `rise` is how far they clear it; everything else lives in the band. */
   var rise = Math.round(D*0.34);
   var wp = Math.round(D*0.72);                /* pedal bay */
-  var wg = Math.round(D*0.62);                /* gear widget */
+  var wg = Math.round(D*0.70);                /* gear widget */
   var wa = Math.round(D*0.48);                /* console module */
   var W = 2*pad + wp + wg + 2*D + wa + 4*gap;
   var H = D + 2*pad;
@@ -2064,23 +2143,28 @@ function clusterLayout(){
 
   /* Gear widget: a vertical shift-light ladder outboard, then the GEAR
      caption with the gear-position row under it, as on the reference. */
-  L.ladX  = L.gearX + 1;
-  L.ladW  = Math.max(4, Math.round(wg*0.26));
-  L.gnX   = L.ladX + L.ladW + 2;
-  L.gnW   = L.gearX + wg - L.gnX - 1;
-  L.gLabS = L.gnW >= 26 ? 2 : 1;              /* caption pixel size */
-  L.gPosS = Math.max(1, Math.min(3, Math.floor((L.gnW - 2)/15)));
-  L.gPosY = L.colY + 4 + L.gLabS*5;
+  L.ladX   = L.gearX + 1;
+  L.ladW   = Math.max(12, Math.round(wg*0.52));
+  L.ladSeg = 6;
+  L.ladStep = 2;                              /* how far each row leans out */
+  L.ladPitch = Math.max(3, Math.floor(colH/(L.ladSeg + 1)));
+  L.gnX    = L.ladX + L.ladW + 2;
+  L.gnW    = L.gearX + wg - L.gnX - 1;
+  L.gPosY  = L.colY + Math.round(colH*0.55);
 
-  /* Console module: caption, the pair of shift tell-tales, then the knob,
-     all inside one bordered panel; the warning lamps sit under it. */
-  L.triH  = Math.max(4, Math.round(colH*0.17));
-  L.triY  = colY + 8;
-  L.knobR = Math.max(3, Math.round(colH*0.13));
-  L.knobY = L.triY + L.triH + 2;
-  L.modH  = Math.min(colH - 8, L.knobY + L.knobR*2 + 2 - colY);
-  L.lampY = colY + L.modH + 2;
-  L.lampH = Math.max(5, colY + colH - L.lampY);
+  /* Console module, stacked exactly as the reference stacks its own: a
+     bordered panel carrying the caption and the two blue shift tell-tales,
+     then the knob on the bare dash, then the lamp row, then the digital
+     readout at the foot. */
+  L.triH  = Math.max(4, Math.round(colH*0.15));
+  L.triY  = colY + 7;
+  L.modH  = L.triY + L.triH + 2 - colY;
+  L.knobR = Math.max(3, Math.min(Math.round(colH*0.15), Math.round(wa*0.27)));
+  L.knobY = colY + L.modH + 2;
+  L.lcdH  = Math.max(7, Math.round(colH*0.16));
+  L.lcdY  = colY + colH - L.lcdH;
+  L.lampY = L.knobY + L.knobR*2 + 2;
+  L.lampH = Math.max(5, L.lcdY - 2 - L.lampY);
   return L;
 }
 
@@ -2094,87 +2178,95 @@ function clusterBandH(){
 }
 
 /* --------------------------------------------------------- static face
-   A pixel-art instrument face, laid out like the reference: a flat blocky
-   bezel ring, a matte black glass with no gloss on it at all, chunky white
-   ticks around the rim with the redline banded in red, and 3x5 bitmap
-   numerals sat inside the tick ring. Nothing here is antialiased. */
+   A pixel-art instrument face built to the reference's own proportions
+   (scratchpad/PALETTE.md): a flat two-tone grey bezel, flat charcoal glass,
+   a continuous grey tick ring that the periwinkle tick marks cross, and
+   seven-segment numerals sat inside it. Nothing here is antialiased and
+   nothing is a gradient. Radii are fractions of R, straight off the
+   reference: bezel 1.00-0.90, shoulder 0.88, ticks 0.92-0.78, ring 0.83,
+   numerals 0.66. */
 function drawDialFace(px, cx, cy, R, o){
-  var i, v, a, maj, red, r0, r1, len;
+  var i, v, a, maj, r0, r1;
   var num = o.num || HUDC.numSpd;
   cx = Math.round(cx); cy = Math.round(cy); R = Math.round(R);
 
-  /* --- bezel: a flat grey ring, two tones, lighter across the top --- */
-  var bw = Math.max(2, Math.round(R*0.13));
-  pxDisc(px, cx, cy, R, '#05070a');                     /* outer edge */
-  pxDisc(px, cx, cy, R-1, function(t){
-    return t < -0.45 ? '#c8d0d8' : t < 0.25 ? '#8d959e' : '#5a626b';
-  });
-  pxDisc(px, cx, cy, R-bw, '#05070a');                  /* inner shoulder */
-
+  /* --- bezel: flat, two tones, lighter across the top left --- */
+  pxDisc(px, cx, cy, R, HUDC.bezelEdge);
+  pxDisc(px, cx, cy, R-1, function(t){ return t < -0.10 ? HUDC.bezelHi : HUDC.bezelLo; });
+  var bw = Math.max(2, Math.round(R*0.10));
+  pxDisc(px, cx, cy, R-bw, HUDC.bezelIn);               /* dark shoulder */
   var fr = R - bw - 1;
-  pxDisc(px, cx, cy, fr, '#0a0c10');                    /* matte glass */
+  pxDisc(px, cx, cy, fr, HUDC.face);                    /* flat glass */
 
-  /* --- tick ring. Both dials reserve the same band so they read as a
-     matched pair; on the tacho it carries the redline. --- */
-  var trackR = fr - 1, trackW = Math.max(2, Math.round(R*0.09));
-  var a0 = dialAngle(o.min,o.min,o.max), a1 = dialAngle(o.max,o.min,o.max);
-  if(o.redFrom != null){
+  /* --- the tick ring: a continuous circle the marks cross, as on the
+     reference, rather than a shaded band --- */
+  var ringR = Math.round(R*0.83);
+  pxDisc(px, cx, cy, ringR, HUDC.ring);
+  pxDisc(px, cx, cy, ringR-1, HUDC.face);
+
+  var a1 = dialAngle(o.max,o.min,o.max);
+  if(o.redFrom != null){                                /* redline, outboard */
     var ra = dialAngle(o.redFrom,o.min,o.max);
-    pxArcBand(px, cx, cy, trackR-trackW, trackR, ra, a1, HUDC.needle);
+    pxArcBand(px, cx, cy, ringR, fr, ra, a1, HUDC.red);
+    /* the little fan of hash marks the reference puts at the band's start */
+    for(i=1;i<=4;i++)
+      pxRay(px, cx, cy, ra - i*0.055, ringR, fr, 1, HUDC.red);
   }
 
-  /* Numerals: the widest label decides the pixel size, and the label ring
-     is pushed as far out as that size allows so the digits sit just inside
-     the ticks the way the reference has them. Three-digit dials thin the
-     labelling out below full size — all eight majors keep their ticks. */
+  /* --- ticks and numerals --- */
+  var ns = 1, dh = 7;                                   /* numeral cell */
   var wide = String(Math.round(o.max));
-  var ns = R >= 52 ? 2 : 1;
-  var every = (o.labelEvery || 1) * (wide.length >= 3 && R < 44 ? 2 : 1);
-  var majLen = Math.max(3, Math.round(R*0.10));
-  var minLen = Math.max(2, Math.round(R*0.05));
-  var lblR = trackR - 2 - majLen - Math.max(pxTextW(wide, ns), 5*ns)/2;
+  var every = o.labelEvery || 1;
+  /* Seat the numeral ring so the widest label's corner just clears the tick
+     ring — a fixed fraction works for the tacho's single digits but drives
+     the speedo's three-digit labels straight through it. */
+  var lw = pxText7W(wide, ns);
+  var lblR = Math.round(Math.max(R*0.45,
+             ringR - 2 - Math.sqrt(lw*lw + dh*dh)/2));
+  /* ...and thin the labelling out until the ring can actually hold it. The
+     reference fits nine three-digit labels because its dial is half again
+     as wide in art pixels; at ours they would run into each other, so the
+     ticks stay every major and only the numbering steps down. */
+  while(every < 4 &&
+        lblR*DIAL_SWEEP/Math.max(1, (o.max-o.min)/(o.major*every)) < lw + 3)
+    every *= 2;
   var steps = Math.round((o.max-o.min)/o.minor);
   var lblEvery = Math.round(o.major*every/o.minor);
 
   for(i=0;i<=steps;i++){
     v = o.min + i*o.minor;
     maj = (i % Math.round(o.major/o.minor)) === 0;
-    red = o.redFrom != null && v >= o.redFrom - 1e-6;
     a = dialAngle(v,o.min,o.max);
-    len = maj ? majLen : minLen;
-    r1 = trackR - 1;
-    r0 = r1 - len;
-    /* in the red zone the ticks run straight over the band, so they read as
-       hash marks cut into it rather than as a second row of marks inside */
-    pxRay(px, cx, cy, a, r0, r1, maj ? 2 : 1,
-          red ? '#ffe6df' : (maj ? HUDC.tick : HUDC.tickDim));
+    r1 = Math.round(R*(maj ? 0.93 : 0.87));
+    r0 = Math.round(R*(maj ? 0.80 : 0.82));
+    /* the reference leaves the numbering and the marks alone through the
+       redline — only the arc behind them turns red */
+    pxRay(px, cx, cy, a, r0, r1, 1, maj ? HUDC.tick : HUDC.tickDim);
     if(maj && (i % lblEvery) === 0)
-      pxText(px, String(Math.round(v)),
-             cx + Math.cos(a)*lblR, cy + Math.sin(a)*lblR - 2.5*ns,
-             ns, red ? '#ff8b78' : num, 'c');
+      pxText7(px, String(Math.round(v)),
+              cx + Math.cos(a)*lblR, cy + Math.sin(a)*lblR - dh/2, ns, num, 'c');
   }
 
   /* Captions ride close in to the hub — the numerals sit out on the
      diagonals, so anything further out collides with them at this size. */
   if(o.label && R >= 20)
-    pxText(px, o.label, cx, cy - Math.round(R*0.32), R >= 52 ? 2 : 1, '#dfe8f6', 'c');
-  if(o.sub && R >= 52)
-    pxText(px, o.sub, cx, cy + Math.round(R*0.24), 1, '#7d8ba4', 'c');
+    pxText7(px, o.label, cx, cy - Math.round(R*0.30), 1, HUDC.cap, 'c', 2);
+  if(o.sub && R >= 42)
+    pxText(px, o.sub, cx, cy + Math.round(R*0.26), 1, HUDC.capLo, 'c');
 }
 
 /* ------------------------------------------------------------- needles
-   A chunky pixel pointer: a solid blade three art pixels wide that steps
-   down to two near the tip, a short counterweight behind the hub, and a
-   blocky hub cap over the pivot. */
+   A blunt pixel pointer in the reference's proportions: about a fifteenth
+   of the diameter thick, reaching three quarters of the way out, with a
+   short counterweight and a small hub rather than a big chrome cap. */
 function drawNeedle(px, cx, cy, R, ang, col){
   cx = Math.round(cx); cy = Math.round(cy); R = Math.round(R);
-  var w = R >= 30 ? 3 : 2;
-  var tip = Math.round(R*0.80), mid = Math.round(R*0.55);
-  pxRay(px, cx, cy, ang + Math.PI, 2, Math.round(R*0.20), w, '#20262e');
-  pxRay(px, cx, cy, ang, 2,     mid, w,   col);         /* blade */
-  pxRay(px, cx, cy, ang, mid+1, tip, w-1, col);         /* tapered tip */
-  pxDisc(px, cx, cy, Math.max(2, Math.round(R*0.13)), '#20262e');
-  pxDisc(px, cx, cy, Math.max(1, Math.round(R*0.09)), col);
+  var w = Math.max(2, Math.round(R*0.05));
+  var tip = Math.round(R*0.72);
+  pxRay(px, cx, cy, ang + Math.PI, 1, Math.round(R*0.16), Math.max(1,w-1), col);
+  pxRay(px, cx, cy, ang, 1, Math.round(tip*0.72), w, col);
+  pxRay(px, cx, cy, ang, Math.round(tip*0.72), tip, Math.max(1, w-1), col);
+  pxDisc(px, cx, cy, Math.max(1, Math.round(R*0.05)), col);
 }
 
 /* Everything that never moves, painted once at device resolution. */
@@ -2211,14 +2303,18 @@ function buildClusterBase(L, S){
 
   /* --- gear widget: shift-light ladder outboard, GEAR caption and the
      gear-position row inboard, exactly as the reference lays it out --- */
-  pxPanel(px, L.gearX, L.colY, L.wg, L.colH, '#0a0e13', '#39434e', '#1d242c');
-  pxText(px, 'GEAR', L.gnX + L.gnW/2, L.colY + 3, L.gLabS, '#c3d2e6', 'c');
-  pxPanel(px, L.ladX, L.colY + 2, L.ladW, L.colH - 4, '#04060a', '#2b333d');
+  pxText7(px, 'GEAR', L.gnX + L.gnW/2, L.colY + 3, 1, HUDC.cap, 'c', 1);
 
-  /* --- console module: one bordered unit carrying its caption, the pair of
-     shift tell-tales and the knob, the way the reference houses its own --- */
-  pxPanel(px, L.auxX, L.colY, L.wa, L.modH, '#0a0e13', '#39434e', '#1d242c');
-  pxText(px, 'SHIFT', L.auxX + L.wa/2, L.colY + 2, 1, '#8fa2bd', 'c');
+  /* --- console module: a bordered unit carrying its caption and its pair of
+     tell-tales, with the caption left and a status LED right, as on the
+     reference's own; the knob, lamps and readout stack under it --- */
+  pxPanel(px, L.auxX, L.colY, L.wa, L.modH, '#141416', '#3A3A3E', '#242428');
+  pxText(px, 'SHIFT', L.auxX + 3, L.colY + 2, 1, '#C0C0C0', 'l');
+  px(L.auxX + L.wa - 6, L.colY + 3, 2, 2, HUDC.led);
+  px(L.auxX + L.wa - 3, L.colY + 3, 2, 2, HUDC.led);
+
+  /* digital speed readout, in the module's foot where the reference has it */
+  pxPanel(px, L.auxX, L.lcdY, L.wa, L.lcdH, HUDC.lcd, '#8a8a8e');
 
   return c;
 }
@@ -2280,7 +2376,7 @@ function drawPedalPlates(g, L, gasV, brakeV){
   var floorY = pedalFloorY(GH), restY = pedalRestY(GH);
   var cols = pedalCols(GW);
   var peds = [
-    { x0:cols[0].x0, w:cols[0].w, v:brakeV, hi:'#ffb3a6', led:HUDC.red },
+    { x0:cols[0].x0, w:cols[0].w, v:brakeV, hi:'#ffb3a6', led:HUDC.warn },
     { x0:cols[1].x0, w:cols[1].w, v:gasV,   hi:'#b8f6c1', led:HUDC.green }
   ];
   var travel = Math.max(1, Math.round(GH*0.10));
@@ -2311,28 +2407,29 @@ function drawPedalPlates(g, L, gasV, brakeV){
 /* --------------------------------------------------------- warning lamps
    Cosmetic dash atmosphere: they take a hint from the drive (a cooked
    engine, a battered car, the lever pulled) but nothing reads them back.
-   Drawn as blocky pixel glyphs in a bordered cell, like the reference's
-   lamp strip rather than as scaled vector icons. */
+   Drawn as outlined pixel glyphs in a bordered strip, like the reference's
+   own lamp panel rather than as scaled vector icons. */
+function drawLampStrip(px, x, y, w, h){
+  pxPanel(px, x, y, w, h, '#141416', '#3A3A3E', '#242428');
+}
 function drawLamp(px, x, y, sz, kind, on, col){
-  var u = Math.max(1, Math.round(sz/6));                /* glyph unit */
+  var u = Math.max(1, Math.round(sz/7));
   var cx = x + (sz>>1), cy = y + (sz>>1);
-  px(x, y, sz, sz, on ? '#2a1d0c' : '#080c07');         /* cell */
-  px(x, y, sz, 1, on ? '#6b4d17' : '#1c241a');
-  px(x, y+sz-1, sz, 1, '#05070a');
-  var ink = on ? col : HUDC.lampOff;
+  var ink = on ? col : '#6E7276';
 
   if(kind === 'temp'){                                  /* coolant */
-    px(cx-u, y+2, u*2, sz-4-u, ink);                    /* stem */
-    px(cx-u*2, y+sz-3-u, u*4, u*2, ink);                /* bulb */
-    px(cx+u*2, y+3, u*2, u, ink);                       /* fins */
-    px(cx+u*2, y+3+u*2, u*2, u, ink);
+    px(cx-u, y+1, u*2, sz-3-u*2, ink);                  /* stem */
+    px(cx-u*2, y+sz-2-u*3, u*4, u*3, ink);              /* bulb */
+    px(cx+u*2, y+2,     u*2, u, ink);                   /* fins */
+    px(cx+u*2, y+2+u*2, u*2, u, ink);
   } else if(kind === 'engine'){                         /* check engine */
-    px(x+2, cy-u, sz-4, u*2, ink);                      /* block */
+    px(x+1, cy-u, sz-2, u*2, ink);                      /* block */
     px(cx-u, cy-u*3, u*3, u*2, ink);                    /* rocker cover */
-    px(x+2, cy+u, u*2, u*2, ink);                       /* sump */
+    px(x+1, cy+u, u*2, u*2, ink);                       /* sump */
+    px(x+sz-2-u, cy-u*2, u, u*2, ink);                  /* pulley */
   } else {                                              /* brake / lever */
-    pxDisc(px, cx, cy, Math.max(2, (sz>>1)-2), ink);    /* drum */
-    pxDisc(px, cx, cy, Math.max(1, (sz>>1)-3), on ? '#2a1d0c' : '#080c07');
+    pxDisc(px, cx, cy, Math.max(2, (sz>>1)-1), ink);    /* drum */
+    pxDisc(px, cx, cy, Math.max(1, (sz>>1)-2), '#141416');
     px(cx-u, cy-u*2, u*2, u*3, ink);                    /* the ! */
     px(cx-u, cy+u*2, u*2, u, ink);
   }
@@ -2373,6 +2470,10 @@ function ensureCluster(){
   return true;
 }
 
+/* Visual-regression hook: the screenshot harness reads the live cluster
+   geometry off this rather than guessing dial boxes out of the pixels. */
+if(typeof window !== 'undefined') window.__hudLayout = function(){ return cluster.L; };
+
 function drawCluster(r){
   if(!ensureCluster()) return;
   var L = cluster.L, g = cluster.g, i;
@@ -2394,95 +2495,101 @@ function drawCluster(r){
   drawNeedle(px, L.spdX, L.dialY, L.R,
              dialAngle(clamp(kmh,0,cluster.kmhMax), 0, cluster.kmhMax),
              HUDC.needleSpd);
-  /* the readout sits in the blank wedge at the foot of the dial, clear of
-     the 0 and full-scale numbers on either side of it */
-  var ds = L.R >= 34 ? 2 : 1;
+  /* the readout lives at the foot of the console module, seven-segment and
+     with its unit alongside, the way the reference has it — not stamped on
+     the speedo's face, where the reference leaves nothing at all */
   var txt = String(Math.round(Math.max(0,kmh)));
-  var lw = pxTextW(txt, ds) + 6, lh = 5*ds + 4;
-  var lx = Math.round(L.spdX - lw/2), ly = Math.round(L.dialY + L.R*0.62);
-  pxPanel(px, lx, ly, lw, lh, HUDC.lcd, '#8a97ab');
-  pxText(px, txt, lx + lw/2, ly + 2, ds, HUDC.lcdOn, 'c');
+  var dh7 = L.lcdH - 2, dw7 = Math.max(3, Math.round(dh7*0.5));
+  var unitW = pxTextW('KMH', 1) + 2;
+  var lcdW = pxSegW(txt, dw7);
+  var lcx = L.auxX + (L.wa - lcdW - unitW)/2;
+  pxSeg(px, txt, lcx, L.lcdY + 1, dw7, dh7, HUDC.lcdOn, 'l');
+  pxText(px, 'KMH', lcx + lcdW + 2, L.lcdY + L.lcdH - 6, 1, '#9aa0a6', 'l');
 
-  /* ---- gear widget: GEAR caption, then the position row under it ---- */
+  /* ---- shift-light ladder: a slanted stack of blue bars with green caps,
+     the bottom one red, exactly as the reference draws it. It fills from the
+     bottom as the revs climb; unlit bars stay as dark slots. ---- */
+  var frac = clamp(rpm/1.12, 0, 1);
+  var segs = L.ladSeg, pitch = L.ladPitch, barH = Math.max(2, pitch - 2);
+  var step = L.ladStep, barW = L.ladW - step*(segs-1) - 2;
+  var capW = Math.max(2, Math.round(barW*0.28));
+  var lad0 = L.colY + Math.round((L.colH - (segs-1)*pitch - barH)/2);
+  for(i=0;i<segs;i++){
+    var row = segs-1-i;                                 /* 0 = top row */
+    var bx  = L.ladX + 1 + row*step;                    /* lower rows lean out */
+    var by  = lad0 + row*pitch;
+    var lit = (i+1)/segs <= frac + 1e-6;
+    if(!lit){ px(bx, by, barW, barH, HUDC.ladOff); px(bx, by, barW, 1, '#101114'); continue; }
+    px(bx, by, barW - capW, barH, i === 0 ? HUDC.ladRed : HUDC.ladBlue);
+    px(bx + barW - capW, by, capW, barH, HUDC.ladGreen);
+  }
+
+  /* ---- gear position row: N, R and the live gear, the active one lit ---- */
   var fwd = r ? r.car.fwd : 0, spd = Math.abs(fwd);
   var flash = r && r.perfectFlash > 0;
-  var live = flash ? HUDC.green : (hot ? HUDC.red : HUDC.amber);
+  var live = flash ? HUDC.green : (hot ? HUDC.warn : HUDC.amber);
   var at = spd < 2 ? 'N' : (fwd < -1 ? 'R' : String(r ? r.gear : 1));
   var pos = ['N', 'R', spd < 2 || fwd < -1 ? '1' : String(r ? r.gear : 1)];
-  var ps = L.gPosS, pw = pxTextW('N', ps) + ps*2, px0 = L.gnX + 1;
+  var pw = pxText7W('N', 1) + 4, px0 = L.gnX + Math.round((L.gnW - pos.length*pw + 4)/2);
   for(i=0;i<pos.length;i++)
-    pxText(px, pos[i], px0 + i*pw, L.gPosY, ps,
-           pos[i] === at ? live : '#4a5666', 'l');
-
-  /* ---- shift-light ladder, filling upward: blue through green to red ---- */
-  var frac = clamp(rpm/1.12, 0, 1);
-  var segs = L.colH >= 34 ? 7 : 5;
-  var lad0 = L.colY + 4, ladH = L.colH - 8;
-  var sh = Math.max(1, Math.floor((ladH - (segs-1))/segs));
-  for(i=0;i<segs;i++){
-    var lit = (i+1)/segs <= frac + 1e-6;
-    var col = i < segs-4 ? '#3f8cff' : i < segs-2 ? HUDC.green :
-              i < segs-1 ? HUDC.amber : HUDC.red;
-    px(L.ladX + 2, lad0 + ladH - (i+1)*sh - i, L.ladW - 4, sh,
-       lit ? col : '#161d26');
-  }
+    pxText7(px, pos[i], px0 + i*pw, L.gPosY, 1,
+            pos[i] === at ? live : '#4A4A4E', 'l');
 
   /* ---- console module: tell-tales, knob, then the warning lamps ---- */
   var ax = L.auxX, aw = L.wa;
-  var tw = Math.floor((aw - 6)/2), th = L.triH;
-  drawAuxTri(px, ax + 2,        L.triY, tw, th, false, hudCtl.padDn > 0.15);
-  drawAuxTri(px, ax + 4 + tw,   L.triY, tw, th, true,  hudCtl.padUp > 0.15);
+  var tw = Math.floor((aw - 7)/2), th = L.triH;
+  drawAuxTri(px, ax + 3,        L.triY, tw, th, false, hudCtl.padDn > 0.15);
+  drawAuxTri(px, ax + aw-3-tw,  L.triY, tw, th, true,  hudCtl.padUp > 0.15);
 
+  /* the knob sits on the bare dash below the panel, as the reference's does */
   var kr = L.knobR, kcx = Math.round(ax + aw/2), kcy = Math.round(L.knobY + kr);
-  pxDisc(px, kcx, kcy, kr, '#05070a');
+  pxDisc(px, kcx, kcy, kr, '#0A0A0C');
   pxDisc(px, kcx, kcy, kr-1, function(t){
-    return t < -0.40 ? '#8f9aa7' : t < 0.30 ? '#4a5460' : '#232a33';
+    return t < -0.35 ? HUDC.knobHi : t < 0.35 ? HUDC.knob : HUDC.knobLo;
   });
-  pxDisc(px, kcx, kcy, Math.max(1, kr-3), '#12181f');
 
-  var lampSz = Math.max(5, Math.min(L.lampH, Math.floor((aw - 2)/3)));
-  var lx0 = Math.round(ax + (aw - lampSz*3 - 2)/2);
+  drawLampStrip(px, ax, L.lampY, aw, L.lampH);
+  var lampSz = Math.max(5, Math.min(L.lampH - 4, Math.floor((aw - 6)/3)));
+  var lx0 = Math.round(ax + (aw - lampSz*3 - 4)/2);
   var ly0 = Math.round(L.lampY + (L.lampH - lampSz)/2);
   var dmg = r ? r.car.damage : 0;
-  drawLamp(px, lx0,                ly0, lampSz, 'temp',   cluster.heat > 0.55, HUDC.red);
-  drawLamp(px, lx0 + lampSz + 1,   ly0, lampSz, 'engine', dmg > 45,            HUDC.amber);
-  drawLamp(px, lx0 + lampSz*2 + 2, ly0, lampSz, 'brake',  hudCtl.hb > 0.5,     HUDC.red);
+  drawLamp(px, lx0,                ly0, lampSz, 'temp',   cluster.heat > 0.55, HUDC.warn);
+  drawLamp(px, lx0 + lampSz + 2,   ly0, lampSz, 'engine', dmg > 45,            HUDC.amber);
+  drawLamp(px, lx0 + lampSz*2 + 4, ly0, lampSz, 'brake',  hudCtl.hb > 0.5,     HUDC.warn);
 }
 
-/* the pair of little blue triangles above the knob, which wink when the
-   matching paddle is tapped — the reference's shift tell-tales */
+/* The pair of blue shift tell-tales inside the console panel: solid
+   triangles, left pointing down and right pointing up, in the reference's
+   royal blue. They brighten when the matching paddle is tapped. */
 function drawAuxTri(px, x, y, w, h, up, lit){
-  var i, cx = x + (w>>1), n = Math.max(2, Math.min(h-2, (w>>1)));
-  px(x, y, w, h, lit ? '#1b2b55' : '#080c12');
-  px(x, y, w, 1, lit ? '#4a6bb8' : '#1a222c');
-  var col = lit ? '#dce7ff' : HUDC.numTach;
+  var i, cx = x + (w>>1);
+  var n = Math.max(2, Math.min(h, (w+1)>>1));
+  var col = lit ? '#8C8EEE' : HUDC.tri;
   var y0 = y + ((h - n) >> 1);
-  for(i=0;i<n;i++){                                     /* solid triangle */
+  for(i=0;i<n;i++){                     /* apex at the top when pointing up */
     var run = up ? (i+1) : (n-i);
-    px(cx - run + 1, up ? y0 + n-1 - i : y0 + i, run*2 - 1, 1, col);
+    px(cx - run + 1, y0 + i, run*2 - 1, 1, col);
   }
 }
 
-/* A chrome housing, drawn straight into a control's own canvas so every
-   physical control on the dash is cast from the same material as the
-   instrument bezels: dark inset face, bright top edge, shaded foot. */
+/* The moulded housing every physical control on the dash is cut from: a
+   dark panel with a rolled top lip and a shaded body, matching the flat
+   pixel language of the reference's minus and plus buttons. */
 function drawHousing(px, w, h, lit){
-  var y, x, t, c;
-  px(0, 0, w, h, '#05070a');                            /* outer edge */
-  for(y=1; y<h-1; y++){                                 /* rolled chrome */
+  var y, t, c;
+  px(1, 0, w-2, h, '#05070a');                          /* outer edge */
+  px(0, 1, 1, h-2, '#05070a');
+  px(w-1, 1, 1, h-2, '#05070a');
+  for(y=1; y<h-1; y++){
     t = y/(h-1);
-    c = t < 0.07 ? '#e6edf4' : t < 0.16 ? '#b4bfcb' :
-        t < 0.42 ? '#6f7a87' : t < 0.70 ? '#4a5560' :
-        t < 0.88 ? '#333c46' : '#1a2028';
+    c = lit ? (t < 0.10 ? '#ffd487' : t < 0.30 ? '#c98a2a' : '#7d5312')
+            : (t < 0.06 ? '#69747f' : t < 0.18 ? '#39424c' :
+               t < 0.70 ? '#20272f' : '#141a20');
     px(1, y, w-2, 1, c);
   }
-  for(x=3; x<w-3; x+=3)                                 /* brushed grain */
-    px(x, 2, 1, h-4, 'rgba(255,255,255,.055)');
-  px(1, 1, 1, h-2, '#cdd6de');                          /* left bevel */
-  px(w-2, 1, 1, h-2, '#131920');                        /* right shade */
-  px(3, 4, w-6, h-8, lit ? '#3d3111' : '#070b10');      /* inset face */
-  px(3, 4, w-6, 1, lit ? '#7a6420' : '#020407');
-  px(3, h-5, w-6, 1, lit ? '#241d0a' : '#121a23');
+  px(1, 1, 1, h-2, lit ? '#ffe3a6' : '#4c5762');        /* left bevel */
+  px(w-2, 1, 1, h-2, '#0a0e13');                        /* right shade */
+  px(3, 4, w-6, h-8, lit ? '#241d0a' : '#0A0C10');      /* inset face */
 }
 
 /* --------------------------------------------------- steering buttons
