@@ -1846,10 +1846,12 @@ var HUDC = {
   dark:'#20262a', black:'#12161a', rubber:'#2b3036', rubberHi:'#3c434a',
   amber:'#ffb432', amberLo:'#a8721a', green:'#7ef08a', warn:'#ff5a4a',
   dim:'#575e63', dimLo:'#3a4045',
-  /* Instrument faces. Every value here is sampled straight off the reference
-     dash (see scratchpad/PALETTE.md) rather than approximated: flat charcoal
-     glass, a flat two-tone grey bezel, a grey tick ring the periwinkle tick
-     marks cross, and a brick-red needle. */
+  /* Instrument faces. Every value here was sampled straight off the
+     reference dash rather than approximated: flat charcoal glass, a flat
+     two-tone grey bezel, a grey tick ring the periwinkle marks cross, and a
+     brick-red needle. Its geometry, as fractions of the dial radius:
+     bezel 1.00-0.90, shoulder 0.88, major ticks 0.93-0.80, ring 0.83,
+     numerals ~0.68, needle tip 0.72. */
   face:'#1C1C1C',                    /* dial glass, flat — no vignette */
   bezelHi:'#797979', bezelLo:'#545559', bezelEdge:'#000000', bezelIn:'#0D0D0D',
   ring:'#999999',                    /* the continuous tick-ring circle */
@@ -1861,6 +1863,8 @@ var HUDC = {
   tri:'#3A3DD6', triLo:'#23268C',    /* the module's blue shift tell-tales */
   knob:'#585252', knobHi:'#7A7373', knobLo:'#3A3535',
   led:'#5BE04A',
+  tab:'#1F2326', tabEdge:'#0A0A0C', tabInk:'#5A5E62',   /* the dash's buttons */
+  tabOn:'#C98A2A', tabOnHi:'#FFD487', tabOnInk:'#241800',
   ladBlue:'#56B2DB', ladGreen:'#5BE04A', ladRed:'#E8564F', ladOff:'#191A1D',
   lcd:'#18181A', lcdOn:'#FFFFFF', lampOff:'#39423a'
 };
@@ -2178,8 +2182,8 @@ function clusterBandH(){
 }
 
 /* --------------------------------------------------------- static face
-   A pixel-art instrument face built to the reference's own proportions
-   (scratchpad/PALETTE.md): a flat two-tone grey bezel, flat charcoal glass,
+   A pixel-art instrument face built to the reference's own proportions:
+   a flat two-tone grey bezel, flat charcoal glass,
    a continuous grey tick ring that the periwinkle tick marks cross, and
    seven-segment numerals sat inside it. Nothing here is antialiased and
    nothing is a gradient. Radii are fractions of R, straight off the
@@ -2500,11 +2504,11 @@ function drawCluster(r){
      the speedo's face, where the reference leaves nothing at all */
   var txt = String(Math.round(Math.max(0,kmh)));
   var dh7 = L.lcdH - 2, dw7 = Math.max(3, Math.round(dh7*0.5));
-  var unitW = pxTextW('KMH', 1) + 2;
+  var unitW = pxTextW('KMH', 1) + 3;
   var lcdW = pxSegW(txt, dw7);
   var lcx = L.auxX + (L.wa - lcdW - unitW)/2;
   pxSeg(px, txt, lcx, L.lcdY + 1, dw7, dh7, HUDC.lcdOn, 'l');
-  pxText(px, 'KMH', lcx + lcdW + 2, L.lcdY + L.lcdH - 6, 1, '#9aa0a6', 'l');
+  pxText(px, 'KMH', lcx + lcdW + 3, L.lcdY + L.lcdH - 6, 1, '#9aa0a6', 'l');
 
   /* ---- shift-light ladder: a slanted stack of blue bars with green caps,
      the bottom one red, exactly as the reference draws it. It fills from the
@@ -2592,37 +2596,42 @@ function drawHousing(px, w, h, lit){
   px(3, 4, w-6, h-8, lit ? '#241d0a' : '#0A0C10');      /* inset face */
 }
 
+/* ------------------------------------------------------------ dash tabs
+   The reference's minus and plus are flat, very dark parallelograms — the
+   top edge shifted right of the bottom, a hairline black outline, no lip
+   and no gradient — carrying a small mid-grey glyph. Every button on the
+   dash is cut from this, so the steering arrows and the shift tabs are the
+   same object with a different stamp. Returns the glyph's centre. */
+function drawTab(px, W, H, pressed){
+  var y, off, lean = Math.max(2, Math.round(H*0.34));
+  var drop = pressed ? 1 : 0;
+  var bw = W - lean - 1;
+  for(y=0; y<H-1-drop; y++){
+    off = Math.round((H-2-drop-y)/(H-2-drop) * lean);
+    px(off,      y+drop, bw+1, 1, HUDC.tabEdge);        /* cast outline */
+    px(off+1,    y+drop, bw-1, 1, pressed ? HUDC.tabOn : HUDC.tab);
+  }
+  px(1, H-2, bw-1, 1, HUDC.tabEdge);
+  if(pressed) px(Math.round(lean)+1, drop, bw-1, 1, HUDC.tabOnHi);
+  return { cx: Math.round(lean/2) + Math.round(bw/2),
+           cy: Math.round((H-1)/2) + drop,
+           ink: pressed ? HUDC.tabOnInk : HUDC.tabInk };
+}
+
 /* --------------------------------------------------- steering buttons
-   Flat moulded tabs sitting flush on the dash, cast exactly like the
-   reference's minus and plus buttons: a square-cornered pixel panel with a
-   rolled top lip, a shaded body, and a solid arrowhead stamped into it.
-   They light amber while held and drop a pixel, like every other control. */
+   The same tab the reference stamps its minus and plus into, carrying a
+   solid arrowhead pointing outboard instead. */
 function drawSteer(id, right, pressed){
   var cv = document.getElementById(id);
   if(!cv) return;
-  var W = 28, H = Math.max(16, Math.round((hudCtl.barArt || 26)*0.74));
+  var W = 30, H = Math.max(16, Math.round((hudCtl.barArt || 26)*0.74));
   var px = hudPainter(cv, W, H, 2);
-  var drop = pressed ? 1 : 0, y, t, c, i;
-
-  px(1, drop, W-2, H-1-drop, '#05070a');                /* moulded shoulder */
-  for(y=1; y<H-2-drop; y++){                            /* face, lit at the lip */
-    t = y/(H-3);
-    c = pressed ? (t < 0.14 ? '#ffd487' : t < 0.55 ? '#e0921a' : '#9c6412')
-                : (t < 0.10 ? '#69747f' : t < 0.24 ? '#39424c' :
-                   t < 0.70 ? '#20272f' : '#141a20');
-    px(2, y+drop, W-4, 1, c);
-  }
-  px(2, 1+drop, 1, H-4-drop, pressed ? '#ffe3a6' : '#4c5762');   /* left bevel */
-  px(W-3, 1+drop, 1, H-4-drop, '#0a0e13');                       /* right shade */
-
-  /* solid arrowhead: a column-by-column triangle pointing outboard */
-  var ink = pressed ? '#241800' : '#e8eef6';
-  var n = Math.max(5, Math.min(H-6, W>>1) | 1);
-  var cy = ((H-1)>>1) + drop;
-  var ax0 = (W>>1) + (right ? -Math.round(n*0.45) : Math.round(n*0.45));
+  var t = drawTab(px, W, H, pressed), i;
+  var n = Math.max(5, Math.min(H-9, (W>>1)-5) | 1);
+  var ax0 = t.cx + (right ? -Math.round(n*0.45) : Math.round(n*0.45));
   for(i=0;i<n;i++){
     var hh = n - i;
-    px(right ? ax0 + i : ax0 - i, cy - hh/2, 1, hh, ink);
+    px(right ? ax0 + i : ax0 - i, t.cy - hh/2, 1, hh, t.ink);
   }
 }
 
@@ -2665,36 +2674,18 @@ function drawHandbrake(v){
 }
 
 /* --------------------------------------------------------- shift paddles
-   Flat moulded tabs recessed into the dash, exactly as the reference has
-   them either side of the instruments: a dark rounded pad with a rolled
-   top lip and a big stamped − or +. No checker plate — that belongs to the
-   pedals, and putting it here was what made these read as stray pedals
-   parked at the edges of the screen. */
+   The reference's own minus and plus: the dash tab with a stamped bar, and
+   a second bar crossed over it on the up-shift. */
 function drawPaddle(id, up, press, active){
   var cv = document.getElementById(id);
   if(!cv) return;
-  var W = 20, H = Math.max(16, Math.round((hudCtl.barArt || 26)*0.62));
+  var W = 22, H = Math.max(16, Math.round((hudCtl.barArt || 26)*0.62));
   var px = hudPainter(cv, W, H, 2);
-  var down = press > 0.5;
-  var drop = down ? 1 : 0;
-  var y, t, c;
-
-  px(1, drop, W-2, H-1-drop, '#05070a');                /* moulded shoulder */
-  for(y=1; y<H-2-drop; y++){                            /* face, lit at the lip */
-    t = y/(H-3);
-    c = down ? (t < 0.14 ? '#ffd487' : t < 0.55 ? '#e0921a' : '#9c6412')
-             : (t < 0.10 ? '#69747f' : t < 0.24 ? '#39424c' :
-                t < 0.70 ? '#20272f' : '#141a20');
-    px(2, y+drop, W-4, 1, c);
-  }
-  px(2, 1+drop, 1, H-4-drop, down ? '#ffe3a6' : '#4c5762');   /* left bevel */
-  px(W-3, 1+drop, 1, H-4-drop, '#0a0e13');                    /* right shade */
-
-  /* stamped − / +, centred on the face */
-  var ink = down ? '#241800' : (active ? '#dfe8f2' : '#5b6670');
-  var cx = W>>1, cy = ((H-1)>>1) + drop, arm = Math.max(3, (W>>2));
-  px(cx-arm, cy, arm*2, 2, ink);
-  if(up) px(cx-1, cy-arm+1, 2, arm*2, ink);
+  var t = drawTab(px, W, H, press > 0.5);
+  var ink = press > 0.5 ? t.ink : (active ? t.ink : '#3D4146');
+  var arm = Math.max(3, (W - 10) >> 1);
+  px(t.cx - arm, t.cy, arm*2, 2, ink);
+  if(up) px(t.cx - 1, t.cy - arm + 1, 2, arm*2, ink);
 }
 
 /* ---------------------------------------------------------- throttle pedal

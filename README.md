@@ -82,22 +82,30 @@ console module, and an analog speedometer reading 0-240 with a digital km/h read
 
 None of it is vector art. Everything on the cluster — bezels, tick marks, numerals,
 captions, needles, lamps — is laid down a whole pixel at a time through a small pixel
-toolkit (`pxDisc`, `pxRay`, `pxArcBand`, `pxPanel`, and a 3x5 bitmap font), so nothing is
-gradient-filled, hinted or antialiased. One art pixel is one CSS pixel; the canvas is scaled
-underneath by an integer device ratio, so every rect lands on exact device pixels. Blocky
-grey bezels, matte black glass, chunky white ticks and three-pixel-wide red pointers.
+toolkit (`pxDisc`, `pxRay`, `pxArcBand`, `pxPanel`, a 3x5 caption face and a bold 5x7 face
+whose numerals carry the two-pixel strokes a dash font wants), so nothing is gradient-filled,
+hinted or antialiased. One art pixel is one CSS pixel; the canvas is scaled underneath by an
+integer device ratio, so every rect lands on exact device pixels.
 
-The gear widget is the reference's: a vertical shift-light ladder running blue through green
-to red as the revs climb, with a GEAR caption and an `N R <gear>` row beside it, the live
-position lit. The console module houses its caption, the pair of shift tell-tales and the
-knob inside one bordered panel. Three warning lamps under it — coolant, check-engine, brake
-— pick up on a cooked engine, a battered car and the handbrake, purely for atmosphere.
+The palette and the dial geometry are sampled off a reference cluster rather than guessed —
+flat `#1C1C1C` glass under a two-tone grey bezel, a `#999999` tick ring the marks cross,
+periwinkle `#B2B3E1` numbering on the tacho and grey `#C9C9C9` on the speedo, a `#B92C23`
+redline band and a `#D2453C` pointer. Radii, as fractions of R: bezel 1.00-0.90, tick ring
+0.83, numerals ~0.68, needle tip 0.72.
+
+The gear widget is a slanted shift-light ladder — blue bars with green caps stepping outboard
+as they descend, the bottom one red — with a GEAR caption over an `N R <gear>` row, the live
+position lit. The console module stacks a bordered panel (caption, status LED, the two
+royal-blue shift tell-tales), then the knob, then a lamp strip, then the digital km/h
+readout in seven-segment digits. The three lamps — coolant, check-engine, brake — pick up on
+a cooked engine, a battered car and the handbrake, purely for atmosphere.
 
 The dash is not a rectangle. It is a flat bar across the bottom of the screen with the two
 dials standing proud of it: the bar's top edge runs *below* the tops of the dials, so the
 circles break its outline rather than sitting inset inside it. The steering buttons get the
-bar. The steering buttons, the shift tabs, the lever and the throttle all stay flush in the
-band, cast as the same flat moulded pixel tabs the reference uses for its minus and plus.
+bar. The steering buttons and the shift tabs stay flush in the band, cast as the same flat
+slanted parallelogram — near-black body, hairline outline, small grey stamp — the reference
+uses for its minus and plus.
 
 Every touch control docks against the cluster rather than the screen edge, and each is drawn
 on its own canvas in the same pixel-art metal as the binnacle — no text-label boxes. Left to
