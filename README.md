@@ -76,7 +76,7 @@ corner. Red notes are the ones that will hurt.
 ## The dash
 
 The instrument binnacle along the bottom of the screen is one canvas, drawn from scratch
-every frame: a bay of chunky checker-tread brake and throttle pedals, an analog tachometer
+every frame: a bay of studded rubber brake and throttle pads, an analog tachometer
 reading 0-9 in thousands of rpm with the redline banded in red at 7, a gear widget, a
 console module, and an analog speedometer reading 0-240 with a digital km/h readout.
 
@@ -99,6 +99,12 @@ position lit. The console module stacks a bordered panel (caption, status LED, t
 royal-blue shift tell-tales), then the knob, then a lamp strip, then the digital km/h
 readout in seven-segment digits. The three lamps — coolant, check-engine, brake — pick up on
 a cooked engine, a battered car and the handbrake, purely for atmosphere.
+
+The pedal pads are cut to the reference's own: near-white, rounded at the corners, tapering
+in towards the foot and shading to grey at the bottom, with five dark studs laid out as a
+quincunx. They sink under the foot and take a red or green tint from the control they show.
+The throttle pedal at the right end of the dash keeps the checker tread, which is what the
+reference has there.
 
 The dash is not a rectangle. It is a flat bar across the bottom of the screen with the two
 dials standing proud of it: the bar's top edge runs *below* the tops of the dials, so the

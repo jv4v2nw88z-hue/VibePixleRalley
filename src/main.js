@@ -2059,16 +2059,32 @@ var CLUSTER_BOTTOM = 4;                       /* px above the safe-area edge */
    does, rather than a row of islands floating over the road. DOCK_REACH is
    how far the deeper side runs out from the panel: shift tab (40) + two
    steering tabs (56 each) + gaps. */
-var DOCK_GAP = 3, DOCK_REACH = 165;
+var DOCK_GAP = 3, DOCK_REACH = 172;
 
 function layoutDashControls(){
   var side = [
     { dir:-1, ids:['p-shiftdn','p-right','p-left'] },   /* −, then the arrows */
     { dir: 1, ids:['p-shiftup','p-hbrake','p-gas'] }    /* +, lever, throttle */
   ];
-  var half = (cluster.W || clusterLayout().W)/2, s, i, el, w, off, dir;
+  var half = (cluster.W || clusterLayout().W)/2, s, i, el, w, off, dir, run;
+  /* The two runs are not the same length — three tabs and two arrows on the
+     left, tab, lever and pedal on the right — so laying both out from the
+     panel edge leaves the whole assembly sitting off to one side even though
+     the panel itself is centred. Measure them first and push the shorter one
+     out by the difference, and the dash comes out symmetric on screen. */
+  var runs = [];
   for(s=0;s<side.length;s++){
-    off = half + DOCK_GAP; dir = side[s].dir;
+    run = 0;
+    for(i=0;i<side[s].ids.length;i++){
+      el = document.getElementById(side[s].ids[i]);
+      w = el ? el.offsetWidth || 0 : 0;
+      if(w) run += w + DOCK_GAP;
+    }
+    runs.push(run);
+  }
+  var pad = Math.max(runs[0], runs[1]);
+  for(s=0;s<side.length;s++){
+    off = half + DOCK_GAP + (pad - runs[s]); dir = side[s].dir;
     for(i=0;i<side[s].ids.length;i++){
       el = document.getElementById(side[s].ids[i]);
       if(!el) continue;
@@ -2133,7 +2149,7 @@ function clusterLayout(){
   L.colY = colY; L.colH = colH;
 
   L.bayX = x; L.bayY = colY; L.wp = wp;
-  L.ps = Math.max(1, Math.floor(wp/20));      /* pedal-art pixel size */
+  L.ps = 1;                                   /* one art px per CSS px */
   L.pgw = Math.max(8, Math.floor(wp/L.ps));
   L.pgh = Math.max(8, Math.floor(colH/L.ps));
   x += wp + gap;
@@ -2324,41 +2340,32 @@ function buildClusterBase(L, S){
 }
 
 /* ----------------------------------------------------------- pedal bay
-   Two chunky pedals standing at the far left of the bar, as on the
-   reference: big black-and-white checkered tread on a raked face, thick
-   cast outline, hanging off a stalk into a dark footwell. The footwell and
-   its floor are static; the plates themselves move with the controls.
-
-   The tread is stepped rather than sheared — each block row shifts a whole
-   tread square outboard of the one above it — so the rake stays pixel-art
-   crisp at any size instead of turning into an antialiased parallelogram. */
-function pedalFloorY(GH){ return GH - Math.max(2, Math.round(GH*0.12)); }
-function pedalRestY(GH){ return Math.max(1, Math.round(GH*0.10)); }
-/* the two pedals, as grid columns: brake wide on the left, throttle narrow */
+   Two rubber pedal pads standing at the left of the dash, cut to the
+   reference's own: a near-white pad with rounded top corners tapering in
+   towards its foot, a lit top edge shading to grey at the bottom, and five
+   dark square studs laid out as a quincunx with the middle one sitting a
+   shade high. They sink under the foot and take a tint from the control
+   they show. The bay behind them is bare — the reference's pads sit
+   straight on the dash, with no footwell dressing behind them. */
+function pedalFloorY(GH){ return GH - Math.max(2, Math.round(GH*0.10)); }
+function pedalRestY(GH){ return Math.max(1, Math.round(GH*0.08)); }
+/* the two pads, as grid columns: brake wide on the left, throttle narrower */
 function pedalCols(GW){
-  var bw = Math.round(GW*0.46), gw = Math.round(GW*0.40);
-  return [ { x0:1, w:bw }, { x0:GW-1-gw, w:gw } ];
+  var gap = Math.max(2, Math.round(GW*0.04));
+  var bw  = Math.round((GW - gap - 2)*0.53);
+  return [ { x0:1, w:bw }, { x0:1 + bw + gap, w:GW - 2 - gap - bw } ];
 }
 
 function drawPedalBayBase(g, L){
   var s = L.ps, GW = L.pgw, GH = L.pgh;
   var px = pxInto(g, L.bayX, L.bayY, s);
-  var floorY = pedalFloorY(GH);
-  var x;
-
-  px(0,0,GW,GH,'#0a0e12');                              /* footwell recess */
-  for(x=2;x<GW-2;x+=4) px(x,1,1,floorY-1,'#141b21');    /* bulkhead ribs */
-
-  px(0,floorY,GW,GH-floorY,'#2b333a');                  /* floor plate */
-  px(0,floorY,GW,1,'#69747f');                          /* lit leading edge */
-  px(0,GH-1,GW,1,'#05070a');
-  px(0,0,1,GH,'#1a2128'); px(GW-1,0,1,GH,'#05070a');    /* side shading */
+  px(0, 0, GW, GH, '#101114');
+  px(0, GH-1, GW, 1, '#05070a');
 }
 
-/* One chunky checker-tread pedal face, raked toward the driver. Stepped a
-   whole tread square per block row so the rake stays pixel-art crisp at any
-   size instead of turning into an antialiased parallelogram. Shared by the
-   pedals in the bay and the throttle pedal on the right of the dash. */
+/* One chunky checker-tread face, raked toward the driver. Stepped a whole
+   tread square per block row so the rake stays pixel-art crisp at any size.
+   The throttle pedal on the right of the dash is cut from this. */
 function drawTread(px, x0, topY, nc, nr, sq, lean, hi, lo){
   var br, bc, pw = nc*sq;
   for(br=0; br<nr; br++){
@@ -2374,37 +2381,64 @@ function drawTread(px, x0, topY, nc, nr, sq, lean, hi, lo){
   px(x0 - 1, topY + nr*sq, pw+2, 1, '#05070a');         /* foot shadow */
 }
 
+/* one pad: tapered body, lit top edge, then the five studs */
+function drawPedalPad(px, x, y, w, h, tintHi, tintLo, on){
+  var row, inset, ww, t, col, i, sx, sy;
+  var taper = Math.max(1, Math.round(w*0.14));
+  var body  = on ? tintHi : '#E8E8E8';
+  var mid   = on ? tintLo : '#C8CBCE';
+  var low   = on ? tintLo : '#B0B4B8';
+  var foot  = on ? tintLo : '#9AA0A5';
+
+  for(row=0; row<h; row++){
+    t = row/(h-1);
+    inset = Math.round(taper * t);
+    if(row === 0 || row === h-1) inset += 1;            /* rounded corners */
+    ww = w - 2*inset;
+    px(x+inset-1, y+row, ww+2, 1, '#101012');           /* cast outline */
+    col = row === 0 ? '#FFFFFF' :
+          t < 0.70 ? body : t < 0.84 ? mid : t < 0.94 ? low : foot;
+    px(x+inset,      y+row, ww, 1, col);
+    px(x+inset,      y+row, 1,  1, row ? (on ? tintHi : '#F4F4F4') : '#FFFFFF');
+    px(x+inset+ww-1, y+row, 1,  1, on ? tintLo : '#8E9499');
+  }
+
+  var ss = Math.max(2, Math.round(w*0.20));
+  var ix = Math.max(1, Math.round(w*0.14));
+  var iy = Math.max(1, Math.round(h*0.14));
+  var studs = [[ix, iy], [w-ix-ss, iy],
+               [Math.round((w-ss)/2), Math.round((h-ss)/2) - 1],
+               [ix+1, h-iy-ss], [w-ix-ss-1, h-iy-ss]];
+  for(i=0;i<studs.length;i++){
+    sx = x + studs[i][0]; sy = y + studs[i][1];
+    px(sx-1, sy-1, ss+2, ss+2, '#2A2B2D');
+    px(sx,   sy,   ss,   ss,   '#3C3D3F');
+    px(sx,   sy,   ss,   1,    '#2F3032');
+  }
+}
+
 function drawPedalPlates(g, L, gasV, brakeV){
   var s = L.ps, GW = L.pgw, GH = L.pgh;
   var px = pxInto(g, L.bayX, L.bayY, s);
   var floorY = pedalFloorY(GH), restY = pedalRestY(GH);
   var cols = pedalCols(GW);
   var peds = [
-    { x0:cols[0].x0, w:cols[0].w, v:brakeV, hi:'#ffb3a6', led:HUDC.warn },
-    { x0:cols[1].x0, w:cols[1].w, v:gasV,   hi:'#b8f6c1', led:HUDC.green }
+    { c:cols[0], v:brakeV, hi:'#FFC9BF', lo:'#C08479', led:HUDC.warn },
+    { c:cols[1], v:gasV,   hi:'#C8F7CE', lo:'#7FB588', led:HUDC.green }
   ];
-  var travel = Math.max(1, Math.round(GH*0.10));
-  var room   = floorY - restY - 1;                      /* depth of the bay */
+  var travel = Math.max(1, Math.round(GH*0.07));
+  var room   = floorY - restY - travel - 1;
+  /* the reference's pads are about as tall as they are wide, so they take
+     their height off their own width rather than filling the bay */
+  var padH   = Math.max(6, Math.min(room, Math.round(cols[0].w*1.20)));
+  var padY   = restY + Math.max(0, Math.round((room - padH)/2));
 
   for(var i=0;i<peds.length;i++){
     var p = peds[i], v = p.v, on = v > 0.4;
-    var faceHi = on ? p.hi : '#eef3f8';                 /* bare alloy tread */
-    var faceLo = on ? '#1c1411' : '#0d1116';
-    /* roughly four or five tread squares across, and enough rows to come
-       out about as tall as it is wide — the reference pedals are chunky
-       blocks, not blades. The plate hangs so its foot rests just clear of
-       the floor, with the rest of its travel left underneath it. */
-    var sq   = Math.max(2, Math.floor(p.w/4.6));
-    var lean = Math.max(1, Math.round(sq*0.8));         /* rake, top to foot */
-    var nc   = Math.max(2, Math.floor((p.w - lean)/sq));
-    var nr   = Math.max(3, Math.min(10, Math.round(room*0.72/sq)));
-    var pw   = nc*sq, ph = nr*sq;
-    var topY = Math.max(1, floorY - travel - 2 - ph) + Math.round(v*travel);
-
-    drawTread(px, p.x0, topY, nc, nr, sq, lean, faceHi, faceLo);
-
+    var topY = padY + Math.round(clamp(v,0,1)*travel);
+    drawPedalPad(px, p.c.x0, topY, p.c.w, padH, p.hi, p.lo, on);
     if(v > 0.05)                                        /* travel glow */
-      px(p.x0, floorY+1, pw + lean, 1, on ? p.led : HUDC.amberLo);
+      px(p.c.x0, floorY+1, p.c.w, 1, on ? p.led : HUDC.amberLo);
   }
 }
 
