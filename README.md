@@ -81,6 +81,16 @@ activates the moment the pointer enters its box and releases the moment it leave
 controls are reference-counted, so a second finger arriving as the first leaves never drops
 the input, and shift tabs fire on entry and re-arm on exit.
 
+The hit boxes are deliberately larger than the art. `PAD_SLOP` (10px) is how far past its
+drawn edge a button still counts as pressed, and `PAD_SNAP` (26px) is how far into genuinely
+dead space a press may land and still be pulled to the nearest button — both are at the top
+of the dash-pad block. Only one button ever takes a press: candidates are ranked by how far
+off-centre the point is *as a fraction of that button's own half size*, so a point inside one
+button's art always scores under 1 and beats a neighbour whose padding it merely grazes, and
+a wide shift tab competes fairly with a tall pedal. The drag gesture tests the same boxes, so
+a finger sliding along the dash gets the tolerance too — it can ride well above the strip and
+still hand off from one control to the next.
+
 **Speed units** — the speedometer reads in KPH or MPH, set in Settings or straight from the
 pause menu. It is display only: the physics, the car stats and the stage targets are all in
 km/h either way. The dial rescales to the same eight divisions in whichever unit is showing

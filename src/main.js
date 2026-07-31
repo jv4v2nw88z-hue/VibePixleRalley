@@ -1626,6 +1626,18 @@ var input = { left:false, right:false, gas:false, hbrake:false, steer:0, tiltRaw
    a naive boolean would drop the input on the first release. Taps fire on
    entry and re-arm on exit, so sliding back and forth over a shift tab
    shifts each time it is crossed rather than repeating while held. */
+
+/* --- fat-finger tolerance, tune here ---------------------------------
+   PAD_SLOP  how far past its drawn edge, on every side, a button still
+             counts as pressed. Nothing about the art moves; only the
+             hit box grows, and the drag gesture tests the same boxes so
+             sliding between buttons gets the same tolerance.
+   PAD_SNAP  how far into genuinely dead space a press may land and still
+             be pulled to the nearest button. Beyond this the press is
+             not for the dash at all and is left alone. */
+var PAD_SLOP = 10;
+var PAD_SNAP = 26;
+
 var PADS = [], padHeld = {}, padPtr = {};
 
 function padHold(id, key){
@@ -1656,12 +1668,49 @@ function padMeasure(){
     p.rect = p.el.offsetParent === null ? null : p.el.getBoundingClientRect();
   }
 }
+/* How far off-centre a point is, as a fraction of the button's own half
+   size: 0 dead centre, 1 on the drawn edge, above that out in the slop.
+   Normalising per button is what keeps padded boxes from fighting — a
+   point actually inside one button's art always scores under 1 and so
+   always beats a neighbour whose slop it merely grazes. It also treats a
+   wide, short tab and a tall, narrow pedal fairly, which a plain distance
+   would not. */
+function padScore(r, x, y){
+  var hw = Math.max(1, r.width/2), hh = Math.max(1, r.height/2);
+  return Math.max(Math.abs(x - (r.left + hw))/hw,
+                  Math.abs(y - (r.top + hh))/hh);
+}
+/* Exactly one pad, or none: whichever padded box the point falls in most
+   centrally, else the nearest button to a press that landed in dead space
+   between them, else nothing. Both the press and every move of a drag come
+   through here, so the whole gesture gets the same tolerance. */
 function padAt(x, y){
-  for(var i=0;i<PADS.length;i++){
-    var r = PADS[i].rect;
-    if(r && x >= r.left && x < r.right && y >= r.top && y < r.bottom) return PADS[i];
+  var best = null, bestScore = Infinity, i, p, r, sc;
+
+  for(i=0;i<PADS.length;i++){
+    p = PADS[i]; r = p.rect;
+    if(!r) continue;
+    if(x < r.left - PAD_SLOP || x >= r.right + PAD_SLOP ||
+       y < r.top  - PAD_SLOP || y >= r.bottom + PAD_SLOP) continue;
+    sc = padScore(r, x, y);
+    if(sc < bestScore){ bestScore = sc; best = p; }
   }
-  return null;
+  if(best) return best;
+
+  /* nothing claimed it: pull it to the nearest button, but only from close
+     enough that it was plainly meant for one */
+  var bestD = Infinity, gx, gy, cx, cy, d;
+  for(i=0;i<PADS.length;i++){
+    p = PADS[i]; r = p.rect;
+    if(!r) continue;
+    gx = Math.max(r.left - PAD_SLOP - x, 0, x - (r.right + PAD_SLOP));
+    gy = Math.max(r.top  - PAD_SLOP - y, 0, y - (r.bottom + PAD_SLOP));
+    if(gx*gx + gy*gy > PAD_SNAP*PAD_SNAP) continue;
+    cx = r.left + r.width/2; cy = r.top + r.height/2;
+    d = (x-cx)*(x-cx) + (y-cy)*(y-cy);
+    if(d < bestD){ bestD = d; best = p; }
+  }
+  return best;
 }
 function padEnter(p){
   if(!p) return;
