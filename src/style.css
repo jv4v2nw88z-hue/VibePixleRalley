@@ -235,6 +235,10 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 .pad.art.act{background:none;border:none;}
 .pad.art canvas{image-rendering:pixelated;display:block;}
 .pad.art.auto{opacity:.45;}
+/* Tap targets laid over art the cluster canvas already draws — invisible,
+   and positioned in page coordinates by JS rather than docked. */
+.pad.hit{background:none;border:none;box-shadow:none;}
+.pad.hit.act{background:none;border:none;}
 /* Docked controls sit against the cluster, not the screen edge, so the dash
    reads as one unit. Centred in the safe area exactly like #hud-cluster,
    then shifted outboard by JS (transform) using the cluster's real width. */

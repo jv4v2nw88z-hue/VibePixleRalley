@@ -40,7 +40,11 @@
     <div class="pad art dock" id="p-left"><canvas id="steer-l-cv"></canvas></div>
     <div class="pad art dock" id="p-right"><canvas id="steer-r-cv"></canvas></div>
     <div class="pad art dock" id="p-hbrake"><canvas id="hbrake-cv"></canvas></div>
-    <div class="pad art dock" id="p-gas"><canvas id="gas-cv"></canvas></div>
+    <!-- The brake and throttle are the two pads in the cluster's own pedal
+         bay: the canvas draws them, these are just their tap targets, laid
+         over the bay by JS from the measured cluster geometry. -->
+    <div class="pad hit" id="p-brake"></div>
+    <div class="pad hit" id="p-throttle"></div>
     <!-- paddles flank the cluster: left drops a gear, right takes one -->
     <div class="pad art dock" id="p-shiftdn"><canvas id="pad-dn-cv"></canvas></div>
     <div class="pad art dock" id="p-shiftup"><canvas id="pad-up-cv"></canvas></div>

@@ -1638,7 +1638,9 @@ function padTap(id, fn){
 }
 padHold('p-left','left');
 padHold('p-right','right');
-padHold('p-gas','gas');
+/* the throttle and brake are the pads in the cluster's own pedal bay */
+padHold('p-throttle','gas');
+padHold('p-brake','hbrake');
 padHold('p-hbrake','hbrake');
 /* the paddle shifters are the real control; they call straight into the
    gearbox and no-op in automatic, where they render dimmed */
@@ -1721,6 +1723,31 @@ function padReleaseAll(){
   }
 }
 window.addEventListener('blur', padReleaseAll);
+
+/* The brake and throttle are drawn on the cluster canvas, not as controls of
+   their own, so their tap targets are positioned over the bay from the
+   measured cluster geometry. Each covers its pad's column for the full depth
+   of the dash band, which is a fair bit more finger than the pad art itself
+   without changing how any of it looks. */
+function layoutPedalHits(){
+  var L = cluster.L, el = document.getElementById('hud-cluster');
+  if(!L || !L.pedCols || !el) return;
+  var r = el.getBoundingClientRect();
+  /* each target takes half the bay plus a little outboard, rather than only
+     the pad art — these are the throttle and the brake, so they want more
+     finger than the drawing gives them, and being invisible they can have it */
+  var mid = L.bayX + Math.round(L.wp/2), edge = 4;
+  var span = [[L.bayX - edge, mid], [mid, L.bayX + L.wp + edge]];
+  var ids = ['p-brake', 'p-throttle'];
+  for(var i=0;i<ids.length;i++){
+    var hit = document.getElementById(ids[i]);
+    if(!hit) continue;
+    hit.style.left   = Math.round(r.left + span[i][0]) + 'px';
+    hit.style.top    = Math.round(r.top + L.colY - 2) + 'px';
+    hit.style.width  = Math.round(span[i][1] - span[i][0]) + 'px';
+    hit.style.height = Math.round(L.colH + 2) + 'px';
+  }
+}
 
 document.addEventListener('keydown', function(e){
   if(e.repeat) return;
@@ -1943,7 +1970,7 @@ function audioStopAll(){ audioEngine(0,0,0,false); }
    ========================================================================= */
 
 var hudCtl = { gas:0, brake:0, hb:0, padUp:0, padDn:0,
-               drawnHb:-1, drawnUp:-1, drawnDn:-1, drawnGas:-1, drawnMode:null,
+               drawnHb:-1, drawnUp:-1, drawnDn:-1, drawnMode:null,
                drawnL:null, drawnR:null, needLayout:true,
                steerH:30,              /* art height of a steering mount */
                barArt:26 };            /* art height of the flat dash bar */
@@ -2206,14 +2233,16 @@ var CLUSTER_BOTTOM = 4;                       /* px above the safe-area edge */
 /* Docked controls. Everything on the dash hangs off the cluster instead of
    the screen edge, so the band reads as one dashboard the way the reference
    does, rather than a row of islands floating over the road. DOCK_REACH is
-   how far the deeper side runs out from the panel: shift tab (40) + two
-   steering tabs (52 each) + gaps. */
-var DOCK_GAP = 3, DOCK_REACH = 158;
+   how far the deeper side runs out from the panel: shift tab (44) + two
+   steering tabs (44 each) + gaps. The throttle used to sit on the other
+   side; now that it lives in the panel's own pedal bay, the left run is on
+   its own in setting this, so it is trimmed to what it actually needs. */
+var DOCK_GAP = 2, DOCK_REACH = 140;
 
 function layoutDashControls(){
   var side = [
     { dir:-1, ids:['p-shiftdn','p-right','p-left'] },   /* −, then the arrows */
-    { dir: 1, ids:['p-shiftup','p-hbrake','p-gas'] }    /* +, lever, throttle */
+    { dir: 1, ids:['p-shiftup','p-hbrake'] }            /* +, then the lever */
   ];
   var L = cluster.L || clusterLayout();
   var half = L.W/2, shift = L.shift || 0, s, i, el, w, off, dir, run;
@@ -2267,18 +2296,20 @@ function clusterLayout(){
   var vw = view.w || window.innerWidth || 800;
   var vh = view.h || window.innerHeight || 400;
   var pad = 3, gap = 4;
-  /* The touch controls dock against the panel rather than the screen edge,
-     so the width they need is a fixed run either side of it: shift tab,
-     two steering mounts and their gaps on the left (the deeper of the two),
-     tab, lever and throttle on the right. The panel gets what is left. */
-  var maxW = Math.max(140, vw - safeInsetX() - 2*DOCK_REACH - 8);
+  /* What has to fit on each side of the screen's middle is: the shift the
+     panel needs to bring its DIALS onto the middle, plus half the panel,
+     plus the docked run. The shift is half the pedal bay (the column the
+     speedo side has no answer for), so with the panel at 4.52 D wide that
+     comes to 0.36 D + 2.26 D + DOCK_REACH — solve it for D and the dials
+     land centred at every size instead of only where there was slack. */
+  var half = (vw - safeInsetX())/2 - 4;
+  var maxD = Math.floor((half - DOCK_REACH - 15) / 2.62);
   /* Columns run left to right exactly as on the reference cluster: pedal bay,
      gear widget, tacho, the console module, speedo, lamp panel. As fractions
      of the dial diameter that is 0.72 + 0.70 + 1 + 0.40 + 1 + 0.70 = 4.52 D,
      plus the padding and five gaps. Invert it for the largest dial the width
      allows — though on most phones the HEIGHT cap binds first. */
-  var D = Math.min(clamp(Math.round(vh*0.25), 62, 116) - 2*pad,
-                   Math.floor((maxW - 2*pad - 5*gap)/4.52));
+  var D = Math.min(clamp(Math.round(vh*0.25), 62, 116) - 2*pad, maxD);
   D = Math.max(40, D);
   /* The dash is a flat bar with the two dials standing proud of it, as on
      the reference: the bar's top edge runs BELOW the tops of the dials, so
@@ -2303,6 +2334,7 @@ function clusterLayout(){
   L.ps = 1;                                   /* one art px per CSS px */
   L.pgw = Math.max(8, Math.floor(wp/L.ps));
   L.pgh = Math.max(8, Math.floor(colH/L.ps));
+  L.pedCols = pedalCols(L.pgw);               /* brake, then throttle */
   x += wp + gap;
   L.gearX = x; L.wg = wg;
   x += wg + gap;
@@ -2538,24 +2570,6 @@ function drawPedalBayBase(g, L){
   px(0, GH-1, GW, 1, '#05070a');
 }
 
-/* One chunky checker-tread face, raked toward the driver. Stepped a whole
-   tread square per block row so the rake stays pixel-art crisp at any size.
-   The throttle pedal on the right of the dash is cut from this. */
-function drawTread(px, x0, topY, nc, nr, sq, lean, hi, lo){
-  var br, bc, pw = nc*sq;
-  for(br=0; br<nr; br++){
-    var y  = topY + br*sq;                              /* top row leans out */
-    var rx = x0 + Math.round((nr-1-br)/(nr-1) * lean);
-    px(rx-1, y, pw+2, sq, '#05070a');                   /* cast edge */
-    for(bc=0; bc<nc; bc++)
-      px(rx + bc*sq, y, sq, sq, ((br+bc) & 1) ? lo : hi);
-    px(rx-1, y, 1, sq, '#c8d2da');                      /* lit outboard edge */
-    px(rx+pw, y, 1, sq, '#151b21');                     /* shaded inboard edge */
-  }
-  px(x0 + lean - 1, topY-1, pw+2, 1, '#ffffff');        /* top catch */
-  px(x0 - 1, topY + nr*sq, pw+2, 1, '#05070a');         /* foot shadow */
-}
-
 /* one pad: tapered body, lit top edge, then the five studs */
 function drawPedalPad(px, x, y, w, h, tintHi, tintLo, on){
   var row, inset, ww, t, col, i, sx, sy;
@@ -2691,7 +2705,7 @@ function ensureCluster(){
     hudCtl.barArt = Math.max(20, Math.round(L.bandH/2));
     /* re-cut every control at the new size, then re-dock them all */
     hudCtl.drawnL = hudCtl.drawnR = null;
-    hudCtl.drawnHb = hudCtl.drawnUp = hudCtl.drawnDn = hudCtl.drawnGas = -1;
+    hudCtl.drawnHb = hudCtl.drawnUp = hudCtl.drawnDn = -1;
     hudCtl.needLayout = true;
   }
   cluster.g.setTransform(S,0,0,S,0,0);
@@ -2854,7 +2868,7 @@ function drawTab(px, W, H, pressed){
 function drawSteer(id, right, pressed){
   var cv = document.getElementById(id);
   if(!cv) return;
-  var W = 26, H = Math.max(16, Math.round((hudCtl.barArt || 26)*0.74));
+  var W = 22, H = Math.max(16, Math.round((hudCtl.barArt || 26)*0.74));
   var px = hudPainter(cv, W, H, 2);
   var t = drawTab(px, W, H, pressed), i;
   var n = Math.max(5, Math.min(H-9, (W>>1)-5) | 1);
@@ -2918,30 +2932,6 @@ function drawPaddle(id, up, press, active){
   if(up) px(t.cx - 1, t.cy - arm + 1, 2, arm*2, ink);
 }
 
-/* ---------------------------------------------------------- throttle pedal
-   The reference parks a tall checker-tread pedal at the end of the dash;
-   this is that pedal, and it replaces the flat GAS text box. Same tread art
-   as the pedals in the bay, so the two ends of the dash match. */
-function drawGasPedal(v, on){
-  var cv = document.getElementById('gas-cv');
-  if(!cv) return;
-  var W = 22, H = Math.max(20, hudCtl.barArt || 26);
-  var px = hudPainter(cv, W, H, 2);
-  var floorY = H - 2;
-  var sq = 4, lean = 3;
-  var nc = Math.max(2, Math.floor((W - lean - 2)/sq));
-  var nr = Math.max(3, Math.floor((floorY - 3)/sq));
-  var travel = 2;
-  var topY = Math.max(1, floorY - travel - 1 - nr*sq) + Math.round(clamp(v,0,1)*travel);
-
-  px(0, floorY, W, H-floorY, '#2b333a');                /* footwell floor */
-  px(0, floorY, W, 1, '#69747f');
-  drawTread(px, 1, topY, nc, nr, sq, lean,
-            on ? '#b8f6c1' : '#eef3f8', on ? '#111c13' : '#0d1116');
-  if(v > 0.05)                                          /* travel glow */
-    px(1, floorY+1, nc*sq + lean, 1, on ? HUDC.green : HUDC.amberLo);
-}
-
 /* ------------------------------------------------------------- per frame */
 function updateHudControls(dt){
   /* mirror exactly what the physics treats as throttle and brake */
@@ -2983,11 +2973,6 @@ function updateHudControls(dt){
   }
   hudCtl.drawnMode = manual;
 
-  if(q(hudCtl.gas) !== hudCtl.drawnGas){
-    hudCtl.drawnGas = q(hudCtl.gas);
-    drawGasPedal(hudCtl.gas, hudCtl.gas > 0.4);
-  }
-
   /* the steering buttons are on/off, so they only ever repaint on a press */
   if(input.left !== hudCtl.drawnL){
     hudCtl.drawnL = input.left;
@@ -3000,14 +2985,18 @@ function updateHudControls(dt){
 
   /* re-dock only once everything above has been re-cut, so the offsets are
      measured against the sizes the canvases actually ended up */
-  if(hudCtl.needLayout){ hudCtl.needLayout = false; layoutDashControls(); }
+  if(hudCtl.needLayout){
+    hudCtl.needLayout = false;
+    layoutDashControls();
+    layoutPedalHits();
+  }
 }
 
 /* force a full repaint, e.g. when a race starts or the viewport changes */
 function resetHudControls(){
   padReleaseAll();
   hudCtl.gas = hudCtl.brake = hudCtl.hb = hudCtl.padUp = hudCtl.padDn = 0;
-  hudCtl.drawnHb = hudCtl.drawnGas = -1;
+  hudCtl.drawnHb = -1;
   hudCtl.drawnUp = hudCtl.drawnDn = -1; hudCtl.drawnMode = null;
   hudCtl.drawnL = hudCtl.drawnR = null;
   cluster.nRpm = cluster.nKmh = cluster.heat = 0;
@@ -3024,7 +3013,6 @@ function resetHudControls(){
   drawSteer('steer-r-cv', true, false);
   var manual = save.settings.transmission === 'manual';
   drawHandbrake(0);
-  drawGasPedal(0, false);
   drawPaddle('pad-up-cv', true, 0, manual);
   drawPaddle('pad-dn-cv', false, 0, manual);
   document.getElementById('p-shiftup').classList.toggle('auto', !manual);
@@ -3032,6 +3020,7 @@ function resetHudControls(){
   /* last, once every canvas has its final size */
   hudCtl.needLayout = false;
   layoutDashControls();
+  layoutPedalHits();
 }
 
 /* ------------------------------------------------------------- gearbox
@@ -3177,7 +3166,8 @@ function startRace(stageId){
   document.getElementById('hud').classList.remove('hidden');
   document.getElementById('controls').classList.remove('hidden');
   document.getElementById('tilt-bar').classList.toggle('hidden', save.settings.control !== 'tilt');
-  document.getElementById('p-gas').classList.toggle('hidden', save.settings.autoGas);
+  /* auto throttle drives the pedal for you, so its tap target goes away */
+  document.getElementById('p-throttle').classList.toggle('hidden', save.settings.autoGas);
   resetHudControls();
   audioKick();
   bigMsg('3');
