@@ -68,9 +68,9 @@ corner. Red notes are the ones that will hurt.
 | Action | Control |
 |---|---|
 | Steer | the ◀ / ▶ buttons on the left of the dash |
-| Throttle | the right-hand pedal pad in the cluster's bay (or switch to auto throttle in Settings) |
+| Throttle | the right-hand pedal pad, out past the handbrake (or switch to auto throttle in Settings) |
 | Brake | the left-hand pedal pad beside it |
-| Handbrake | the lever on the right of the dash — locks the rears for hairpins, and reverses when stopped |
+| Handbrake | the lever inboard of the pedals — locks the rears for hairpins, and reverses when stopped |
 | Shift | the tabs either side of the instruments: `−` drops a gear, `+` takes one (manual gearbox only) |
 | Pause | `II`, top right |
 
@@ -106,7 +106,7 @@ still there to do its job.
 ## The dash
 
 The instrument binnacle along the bottom of the screen is one canvas, drawn from scratch
-every frame: a bay of studded rubber brake and throttle pads, an analog tachometer
+every frame: an analog tachometer
 reading 0-9 in thousands of rpm with the redline banded in red at 7, a gear widget, a
 console module, and an analog speedometer reading 0-240 with a digital km/h readout.
 
@@ -136,20 +136,20 @@ Unlit they are a dim grey outline; lit, the icon takes its warning colour and th
 it warms to match. They pick up on a cooked engine, a battered car and the handbrake, purely
 for atmosphere — nothing reads them back.
 
-The panel's columns are lopsided — pedal bay and gear widget outboard of the tacho, only the
-lamp panel outboard of the speedo — so the panel is slid back by however much the run has
-spare until the two **dials**, rather than the panel box, straddle the middle of the screen.
-The docked controls travel with it. The dial size is solved from that shift rather than the
-other way round — the panel takes the largest D for which the shift still fits beside the
-docked run — so the dials come out centred at every viewport rather than only where there
-happened to be slack.
+The panel's columns are symmetric about its dials — gear widget outboard of the tacho, lamp
+panel outboard of the speedo, both 0.70 D — so the **dials** straddle the middle of the
+screen with no correcting offset at all. The dial size is then solved from what has to fit
+either side of that middle: half the panel plus the docked run, of which the pedal block is
+the part that scales with D. There is a slide-the-panel correction still in the code as a
+backstop, but with the columns balanced it computes to zero.
 
-The pedal pads are cut to the reference's own: near-white, rounded at the corners, tapering
-in towards the foot and shading to grey at the bottom, with five dark studs laid out as a
-quincunx. They sink under the foot and take a red or green tint. They are also the throttle
-and the brake themselves — the cluster canvas draws them, and a pair of invisible tap targets
-laid over the bay makes them pressable, each taking half the bay so there is more finger to
-aim at than the art alone would give.
+The pedal pads dock at the outboard end of the dash, past the handbrake. They are cut to the
+reference's own: near-white, rounded at the corners, tapering in towards the foot and shading
+to grey at the bottom, with five dark studs laid out as a quincunx. They sink under the foot
+and take a red or green tint. One canvas draws the pair at the panel's own art scale — one
+pixel per CSS pixel, where the other docked controls draw at two — so they are the size and
+spacing they always were; a pair of invisible tap targets laid over it makes them pressable,
+each taking half the block so there is more finger to aim at than the art alone would give.
 
 The dash is not a rectangle. It is a flat bar across the bottom of the screen with the two
 dials standing proud of it: the bar's top edge runs *below* the tops of the dials, so the
@@ -160,9 +160,9 @@ uses for its minus and plus.
 
 Every touch control docks against the cluster rather than the screen edge, and each is drawn
 on its own canvas in the same pixel-art metal as the binnacle — no text-label boxes. Left to
-right: steering buttons, `−`, the instruments, `+`, handbrake lever. JS positions them from
-the panel's measured width, so the whole run stays one dashboard at any screen size instead
-of a row of islands floating over the road.
+right: steering buttons, `−`, the instruments, `+`, handbrake lever, pedals. JS positions
+them from the panel's measured width, so the whole run stays one dashboard at any screen size
+instead of a row of islands floating over the road.
 
 The dash is held to under a fifth of the screen height and pinned to the bottom edge. It has
 to stay small: this is a chase cam, and the camera aims at a point *ahead* of the car, which

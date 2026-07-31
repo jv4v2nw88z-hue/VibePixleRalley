@@ -1779,22 +1779,22 @@ window.addEventListener('blur', padReleaseAll);
    of the dash band, which is a fair bit more finger than the pad art itself
    without changing how any of it looks. */
 function layoutPedalHits(){
-  var L = cluster.L, el = document.getElementById('hud-cluster');
-  if(!L || !L.pedCols || !el) return;
+  var el = document.getElementById('p-pedals');
+  if(!el || el.offsetParent === null) return;
   var r = el.getBoundingClientRect();
-  /* each target takes half the bay plus a little outboard, rather than only
-     the pad art — these are the throttle and the brake, so they want more
-     finger than the drawing gives them, and being invisible they can have it */
-  var mid = L.bayX + Math.round(L.wp/2), edge = 4;
-  var span = [[L.bayX - edge, mid], [mid, L.bayX + L.wp + edge]];
+  /* each target takes half the block, rather than only the pad art — these
+     are the throttle and the brake, so they want more finger than the
+     drawing gives them, and being invisible they can have it */
+  var mid = Math.round(r.width/2);
+  var span = [[0, mid], [mid, Math.round(r.width)]];
   var ids = ['p-brake', 'p-throttle'];
   for(var i=0;i<ids.length;i++){
     var hit = document.getElementById(ids[i]);
     if(!hit) continue;
     hit.style.left   = Math.round(r.left + span[i][0]) + 'px';
-    hit.style.top    = Math.round(r.top + L.colY - 2) + 'px';
+    hit.style.top    = Math.round(r.top) + 'px';
     hit.style.width  = Math.round(span[i][1] - span[i][0]) + 'px';
-    hit.style.height = Math.round(L.colH + 2) + 'px';
+    hit.style.height = Math.round(r.height) + 'px';
   }
 }
 
@@ -2019,7 +2019,7 @@ function audioStopAll(){ audioEngine(0,0,0,false); }
    ========================================================================= */
 
 var hudCtl = { gas:0, brake:0, hb:0, padUp:0, padDn:0,
-               drawnHb:-1, drawnUp:-1, drawnDn:-1, drawnMode:null,
+               drawnHb:-1, drawnUp:-1, drawnDn:-1, drawnPed:-1, drawnMode:null,
                drawnL:null, drawnR:null, needLayout:true,
                steerH:30,              /* art height of a steering mount */
                barArt:26 };            /* art height of the flat dash bar */
@@ -2286,12 +2286,17 @@ var CLUSTER_BOTTOM = 4;                       /* px above the safe-area edge */
    steering tabs (44 each) + gaps. The throttle used to sit on the other
    side; now that it lives in the panel's own pedal bay, the left run is on
    its own in setting this, so it is trimmed to what it actually needs. */
-var DOCK_GAP = 2, DOCK_REACH = 140;
+var DOCK_GAP = 2;
+/* the fixed-width run each side of the panel; the pedal block on the right
+   scales with the dial, so it is added to the right one at layout time */
+var DOCK_LEFT_W  = 44 + 44 + 44 + 3*DOCK_GAP;   /* shift tab, then the arrows */
+var DOCK_RIGHT_W = 44 + 40 + 2*DOCK_GAP;        /* shift tab, then the lever */
+var DOCK_REACH = DOCK_LEFT_W;                   /* floor for the slack check */
 
 function layoutDashControls(){
   var side = [
     { dir:-1, ids:['p-shiftdn','p-right','p-left'] },   /* −, then the arrows */
-    { dir: 1, ids:['p-shiftup','p-hbrake'] }            /* +, then the lever */
+    { dir: 1, ids:['p-shiftup','p-hbrake','p-pedals'] }  /* +, lever, pedals */
   ];
   var L = cluster.L || clusterLayout();
   var half = L.W/2, shift = L.shift || 0, s, i, el, w, off, dir, run;
@@ -2345,19 +2350,25 @@ function clusterLayout(){
   var vw = view.w || window.innerWidth || 800;
   var vh = view.h || window.innerHeight || 400;
   var pad = 3, gap = 4;
-  /* What has to fit on each side of the screen's middle is: the shift the
-     panel needs to bring its DIALS onto the middle, plus half the panel,
-     plus the docked run. The shift is half the pedal bay (the column the
-     speedo side has no answer for), so with the panel at 4.52 D wide that
-     comes to 0.36 D + 2.26 D + DOCK_REACH — solve it for D and the dials
-     land centred at every size instead of only where there was slack. */
+  /* With the pedals docked out on the right the panel's columns come out
+     symmetric on their own — gear widget outboard of the tacho, lamp panel
+     outboard of the speedo, both 0.70 D — so the dials sit on the panel's
+     own middle and no correcting shift is needed at all.
+
+     What has to fit either side of the screen's middle is then half the
+     panel plus the docked run. The panel is 3.80 D + 22 wide; the right run
+     carries the pedal block, which is 0.72 D, so that side works out at
+     1.90 D + 11 + DOCK_RIGHT_W + 0.72 D and is the deeper of the two. */
   var half = (vw - safeInsetX())/2 - 4;
-  var maxD = Math.floor((half - DOCK_REACH - 15) / 2.62);
+  var maxD = Math.min(
+    Math.floor((half - 11 - DOCK_RIGHT_W - DOCK_GAP) / 2.62),
+    Math.floor((half - 11 - DOCK_LEFT_W) / 1.90));
   /* Columns run left to right exactly as on the reference cluster: pedal bay,
      gear widget, tacho, the console module, speedo, lamp panel. As fractions
-     of the dial diameter that is 0.72 + 0.70 + 1 + 0.40 + 1 + 0.70 = 4.52 D,
-     plus the padding and five gaps. Invert it for the largest dial the width
-     allows — though on most phones the HEIGHT cap binds first. */
+     of the dial diameter that is 0.70 + 1 + 0.40 + 1 + 0.70 = 3.80 D, plus
+     the padding and four gaps. The pedals used to head this run; they are
+     docked out past the handbrake now, which is what leaves the rest of it
+     symmetric about the dials. */
   var D = Math.min(clamp(Math.round(vh*0.25), 62, 116) - 2*pad, maxD);
   D = Math.max(40, D);
   /* The dash is a flat bar with the two dials standing proud of it, as on
@@ -2365,11 +2376,10 @@ function clusterLayout(){
      the circles break its outline instead of sitting inset in a rectangle.
      `rise` is how far they clear it; everything else lives in the band. */
   var rise = Math.round(D*0.34);
-  var wp = Math.round(D*0.72);                /* pedal bay */
   var wg = Math.round(D*0.70);                /* gear widget */
   var wa = Math.round(D*0.40);                /* console module */
   var wl = Math.round(D*0.70);                /* lamp panel */
-  var W = 2*pad + wp + wg + 2*D + wa + wl + 5*gap;
+  var W = 2*pad + wg + 2*D + wa + wl + 4*gap;
   var H = D + 2*pad;
 
   var x = pad;
@@ -2379,12 +2389,6 @@ function clusterLayout(){
   var colY = rise + pad, colH = H - pad - colY;
   L.colY = colY; L.colH = colH;
 
-  L.bayX = x; L.bayY = colY; L.wp = wp;
-  L.ps = 1;                                   /* one art px per CSS px */
-  L.pgw = Math.max(8, Math.floor(wp/L.ps));
-  L.pgh = Math.max(8, Math.floor(colH/L.ps));
-  L.pedCols = pedalCols(L.pgw);               /* brake, then throttle */
-  x += wp + gap;
   L.gearX = x; L.wg = wg;
   x += wg + gap;
   L.tachX = x + D/2;
@@ -2560,8 +2564,6 @@ function buildClusterBase(L, S){
     px(1, by+y, L.W-2, 1, t < 0.10 ? '#2b333d' : t < 0.30 ? '#181e26' : '#10151b');
   }
 
-  drawPedalBayBase(g, L);
-
   drawDialFace(px, L.tachX, L.dialY, L.R, {
     min:0, max:TACH_MAX, major:1, minor:0.5, redFrom:TACH_RED,
     labelEvery:1, label:'RPM', sub:'X1000', num: HUDC.numTach
@@ -2612,11 +2614,15 @@ function pedalCols(GW){
   return [ { x0:1, w:bw }, { x0:1 + bw + gap, w:GW - 2 - gap - bw } ];
 }
 
-function drawPedalBayBase(g, L){
-  var s = L.ps, GW = L.pgw, GH = L.pgh;
-  var px = pxInto(g, L.bayX, L.bayY, s);
-  px(0, 0, GW, GH, '#101114');
-  px(0, GH-1, GW, 1, '#05070a');
+/* The block's own size: as wide as the bay it used to occupy inside the
+   panel and as deep as the dash band, so the pads come out at exactly the
+   size and spacing they had there. One art pixel is one CSS pixel, as in
+   the panel — the other docked controls draw at two, but these must not
+   change size just because they moved. */
+function pedalArt(){
+  var L = cluster.L || clusterLayout();
+  return { w: Math.max(24, Math.round(L.D*0.72)),
+           h: Math.max(20, L.colH) };
 }
 
 /* one pad: tapered body, lit top edge, then the five studs */
@@ -2655,9 +2661,13 @@ function drawPedalPad(px, x, y, w, h, tintHi, tintLo, on){
   }
 }
 
-function drawPedalPlates(g, L, gasV, brakeV){
-  var s = L.ps, GW = L.pgw, GH = L.pgh;
-  var px = pxInto(g, L.bayX, L.bayY, s);
+function drawPedals(gasV, brakeV){
+  var cv = document.getElementById('pedals-cv');
+  if(!cv) return;
+  var a = pedalArt(), GW = a.w, GH = a.h;
+  var px = hudPainter(cv, GW, GH, 1);
+  px(0, 0, GW, GH, '#101114');                          /* footwell */
+  px(0, GH-1, GW, 1, '#05070a');
   var floorY = pedalFloorY(GH), restY = pedalRestY(GH);
   var cols = pedalCols(GW);
   var peds = [
@@ -2754,7 +2764,7 @@ function ensureCluster(){
     hudCtl.barArt = Math.max(20, Math.round(L.bandH/2));
     /* re-cut every control at the new size, then re-dock them all */
     hudCtl.drawnL = hudCtl.drawnR = null;
-    hudCtl.drawnHb = hudCtl.drawnUp = hudCtl.drawnDn = -1;
+    hudCtl.drawnHb = hudCtl.drawnUp = hudCtl.drawnDn = hudCtl.drawnPed = -1;
     hudCtl.needLayout = true;
   }
   cluster.g.setTransform(S,0,0,S,0,0);
@@ -2772,8 +2782,6 @@ function drawCluster(r){
   g.clearRect(0,0,L.W,L.H);
   g.drawImage(cluster.base, 0, 0, L.W, L.H);
   var px = pxInto(g, 0, 0, 1);              /* one art pixel = one CSS pixel */
-
-  drawPedalPlates(g, L, hudCtl.gas, hudCtl.brake);
 
   /* ---- tachometer ---- */
   var rpm = cluster.nRpm;
@@ -3011,6 +3019,11 @@ function updateHudControls(dt){
     hudCtl.drawnHb = q(hudCtl.hb);
     drawHandbrake(hudCtl.hb);
   }
+  var ped = q(hudCtl.gas)*32 + q(hudCtl.brake);
+  if(ped !== hudCtl.drawnPed){
+    hudCtl.drawnPed = ped;
+    drawPedals(hudCtl.gas, hudCtl.brake);
+  }
   var manual = save.settings.transmission === 'manual';
   if(q(hudCtl.padUp) !== hudCtl.drawnUp || hudCtl.drawnMode !== manual){
     hudCtl.drawnUp = q(hudCtl.padUp);
@@ -3045,7 +3058,7 @@ function updateHudControls(dt){
 function resetHudControls(){
   padReleaseAll();
   hudCtl.gas = hudCtl.brake = hudCtl.hb = hudCtl.padUp = hudCtl.padDn = 0;
-  hudCtl.drawnHb = -1;
+  hudCtl.drawnHb = hudCtl.drawnPed = -1;
   hudCtl.drawnUp = hudCtl.drawnDn = -1; hudCtl.drawnMode = null;
   hudCtl.drawnL = hudCtl.drawnR = null;
   cluster.nRpm = cluster.nKmh = cluster.heat = 0;
@@ -3062,6 +3075,7 @@ function resetHudControls(){
   drawSteer('steer-r-cv', true, false);
   var manual = save.settings.transmission === 'manual';
   drawHandbrake(0);
+  drawPedals(0, 0);
   drawPaddle('pad-up-cv', true, 0, manual);
   drawPaddle('pad-dn-cv', false, 0, manual);
   document.getElementById('p-shiftup').classList.toggle('auto', !manual);
