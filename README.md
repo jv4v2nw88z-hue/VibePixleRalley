@@ -95,10 +95,21 @@ redline band and a `#D2453C` pointer. Radii, as fractions of R: bezel 1.00-0.90,
 
 The gear widget is a slanted shift-light ladder — blue bars with green caps stepping outboard
 as they descend, the bottom one red — with a GEAR caption over an `N R <gear>` row, the live
-position lit. The console module stacks a bordered panel (caption, status LED, the two
-royal-blue shift tell-tales), then the knob, then a lamp strip, then the digital km/h
-readout in seven-segment digits. The three lamps — coolant, check-engine, brake — pick up on
-a cooked engine, a battered car and the handbrake, purely for atmosphere.
+position lit. The console module between the dials stacks a bordered panel (caption, status
+LED, the two royal-blue shift tell-tales), then the knob, then the digital km/h readout in
+seven-segment digits.
+
+Outboard of the speedo sits the lamp panel: a chrome surround around a near-black well
+carrying three line-art tell-tales — check-engine, coolant, brake. Each icon is authored as a
+17x11 bitmap so its silhouette stays exact and its strokes stay one pixel wide at any size.
+Unlit they are a dim grey outline; lit, the icon takes its warning colour and the cell behind
+it warms to match. They pick up on a cooked engine, a battered car and the handbrake, purely
+for atmosphere — nothing reads them back.
+
+The panel's columns are lopsided — pedal bay and gear widget outboard of the tacho, only the
+lamp panel outboard of the speedo — so the panel is slid back by however much the run has
+spare until the two **dials**, rather than the panel box, straddle the middle of the screen.
+The docked controls travel with it.
 
 The pedal pads are cut to the reference's own: near-white, rounded at the corners, tapering
 in towards the foot and shading to grey at the bottom, with five dark studs laid out as a

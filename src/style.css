@@ -175,6 +175,9 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
   left:env(safe-area-inset-left);right:env(safe-area-inset-right);
   width:-moz-fit-content;width:fit-content;margin-left:auto;margin-right:auto;
   bottom:calc(4px + env(safe-area-inset-bottom));line-height:0;
+  /* the panel's columns are lopsided, so it is slid back by JS until the two
+     dials — not the panel box — straddle the middle of the screen */
+  transform:translateX(var(--cluster-shift, 0px));
   filter:drop-shadow(0 2px 5px rgba(0,0,0,.6));}
 #hud-cluster canvas{display:block;}
 /* The dash itself: one solid moulding running the full width of the screen,

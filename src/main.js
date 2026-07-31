@@ -2058,15 +2058,16 @@ var CLUSTER_BOTTOM = 4;                       /* px above the safe-area edge */
    the screen edge, so the band reads as one dashboard the way the reference
    does, rather than a row of islands floating over the road. DOCK_REACH is
    how far the deeper side runs out from the panel: shift tab (40) + two
-   steering tabs (56 each) + gaps. */
-var DOCK_GAP = 3, DOCK_REACH = 172;
+   steering tabs (52 each) + gaps. */
+var DOCK_GAP = 3, DOCK_REACH = 158;
 
 function layoutDashControls(){
   var side = [
     { dir:-1, ids:['p-shiftdn','p-right','p-left'] },   /* −, then the arrows */
     { dir: 1, ids:['p-shiftup','p-hbrake','p-gas'] }    /* +, lever, throttle */
   ];
-  var half = (cluster.W || clusterLayout().W)/2, s, i, el, w, off, dir, run;
+  var L = cluster.L || clusterLayout();
+  var half = L.W/2, shift = L.shift || 0, s, i, el, w, off, dir, run;
   /* The two runs are not the same length — three tabs and two arrows on the
      left, tab, lever and pedal on the right — so laying both out from the
      panel edge leaves the whole assembly sitting off to one side even though
@@ -2090,7 +2091,7 @@ function layoutDashControls(){
       if(!el) continue;
       w = el.offsetWidth || 0;
       if(!w) continue;                        /* hidden: leaves no gap behind */
-      el.style.transform = 'translateX(' + (dir*(off + w/2)).toFixed(1) + 'px)';
+      el.style.transform = 'translateX(' + (dir*(off + w/2) + shift).toFixed(1) + 'px)';
       off += w + DOCK_GAP;
     }
   }
@@ -2123,12 +2124,12 @@ function clusterLayout(){
      tab, lever and throttle on the right. The panel gets what is left. */
   var maxW = Math.max(140, vw - safeInsetX() - 2*DOCK_REACH - 8);
   /* Columns run left to right exactly as on the reference cluster: pedal bay,
-     gear widget, tacho, the console module, speedo. As fractions of the dial
-     diameter that is 0.72 + 0.70 + 1 + 0.48 + 1 = 3.90 D, plus the padding
-     and four gaps. Invert it for the largest dial the width allows — though
-     on any real phone it is the HEIGHT cap that binds, not this. */
+     gear widget, tacho, the console module, speedo, lamp panel. As fractions
+     of the dial diameter that is 0.72 + 0.70 + 1 + 0.40 + 1 + 0.70 = 4.52 D,
+     plus the padding and five gaps. Invert it for the largest dial the width
+     allows — though on most phones the HEIGHT cap binds first. */
   var D = Math.min(clamp(Math.round(vh*0.25), 62, 116) - 2*pad,
-                   Math.floor((maxW - 2*pad - 4*gap)/3.90));
+                   Math.floor((maxW - 2*pad - 5*gap)/4.52));
   D = Math.max(40, D);
   /* The dash is a flat bar with the two dials standing proud of it, as on
      the reference: the bar's top edge runs BELOW the tops of the dials, so
@@ -2137,8 +2138,9 @@ function clusterLayout(){
   var rise = Math.round(D*0.34);
   var wp = Math.round(D*0.72);                /* pedal bay */
   var wg = Math.round(D*0.70);                /* gear widget */
-  var wa = Math.round(D*0.48);                /* console module */
-  var W = 2*pad + wp + wg + 2*D + wa + 4*gap;
+  var wa = Math.round(D*0.40);                /* console module */
+  var wl = Math.round(D*0.70);                /* lamp panel */
+  var W = 2*pad + wp + wg + 2*D + wa + wl + 5*gap;
   var H = D + 2*pad;
 
   var x = pad;
@@ -2160,6 +2162,18 @@ function clusterLayout(){
   L.auxX = x; L.wa = wa;
   x += wa + gap;
   L.spdX = x + D/2;
+  x += D + gap;
+  L.lampX = x; L.wl = wl;
+
+  /* The columns are lopsided — pedal bay and gear widget outboard of the
+     tacho, only the lamp panel outboard of the speedo — so the two dials sit
+     right of the panel's own middle. Slide the panel back by the difference
+     and they straddle the screen instead, as far as the run has room for. */
+  L.dialMid = (L.tachX + L.spdX)/2;
+  var want  = L.W/2 - L.dialMid;              /* negative: slide it left */
+  var slack = (vw - safeInsetX())/2 - (L.W/2 + DOCK_REACH) - 4;
+  L.shift = Math.round((want < 0 ? -1 : 1) *
+            Math.min(Math.abs(want), Math.max(0, slack)));
 
   /* Gear widget: a vertical shift-light ladder outboard, then the GEAR
      caption with the gear-position row under it, as on the reference. */
@@ -2179,12 +2193,15 @@ function clusterLayout(){
   L.triH  = Math.max(4, Math.round(colH*0.15));
   L.triY  = colY + 7;
   L.modH  = L.triY + L.triH + 2 - colY;
-  L.knobR = Math.max(3, Math.min(Math.round(colH*0.15), Math.round(wa*0.27)));
-  L.knobY = colY + L.modH + 2;
-  L.lcdH  = Math.max(7, Math.round(colH*0.16));
+  L.lcdH  = Math.max(7, Math.round(colH*0.18));
   L.lcdY  = colY + colH - L.lcdH;
-  L.lampY = L.knobY + L.knobR*2 + 2;
-  L.lampH = Math.max(5, L.lcdY - 2 - L.lampY);
+  var kSpan = L.lcdY - 2 - (colY + L.modH + 2);
+  L.knobR = Math.max(3, Math.min(Math.floor(kSpan/2), Math.round(wa*0.32)));
+  L.knobY = colY + L.modH + 2 + Math.max(0, Math.round((kSpan - L.knobR*2)/2));
+
+  /* lamp panel: its own box outboard of the speedo, as the reference has */
+  L.lampH = Math.max(17, Math.round(colH*0.33));
+  L.lampY = colY + Math.round((colH - L.lampH)/2);
   return L;
 }
 
@@ -2269,8 +2286,13 @@ function drawDialFace(px, cx, cy, R, o){
 
   /* Captions ride close in to the hub — the numerals sit out on the
      diagonals, so anything further out collides with them at this size. */
-  if(o.label && R >= 20)
+  /* the wide, letter-spaced caption is the reference's, but on a small dial
+     it runs into the numerals either side of it — there the narrow face
+     goes in instead */
+  if(o.label && R >= 40)
     pxText7(px, o.label, cx, cy - Math.round(R*0.30), 1, HUDC.cap, 'c', 2);
+  else if(o.label && R >= 18)
+    pxText(px, o.label, cx, cy - Math.round(R*0.28), 1, HUDC.cap, 'c');
   if(o.sub && R >= 42)
     pxText(px, o.sub, cx, cy + Math.round(R*0.26), 1, HUDC.capLo, 'c');
 }
@@ -2335,6 +2357,9 @@ function buildClusterBase(L, S){
 
   /* digital speed readout, in the module's foot where the reference has it */
   pxPanel(px, L.auxX, L.lcdY, L.wa, L.lcdH, HUDC.lcd, '#8a8a8e');
+
+  /* lamp panel, outboard of the speedo */
+  drawLampPanel(px, L.lampX, L.lampY, L.wl, L.lampH);
 
   return c;
 }
@@ -2443,33 +2468,46 @@ function drawPedalPlates(g, L, gasV, brakeV){
 }
 
 /* --------------------------------------------------------- warning lamps
-   Cosmetic dash atmosphere: they take a hint from the drive (a cooked
-   engine, a battered car, the lever pulled) but nothing reads them back.
-   Drawn as outlined pixel glyphs in a bordered strip, like the reference's
-   own lamp panel rather than as scaled vector icons. */
-function drawLampStrip(px, x, y, w, h){
-  pxPanel(px, x, y, w, h, '#141416', '#3A3A3E', '#242428');
-}
-function drawLamp(px, x, y, sz, kind, on, col){
-  var u = Math.max(1, Math.round(sz/7));
-  var cx = x + (sz>>1), cy = y + (sz>>1);
-  var ink = on ? col : '#6E7276';
+   The reference parks a framed lamp panel outboard of its speedo: a chrome
+   surround around a near-black interior carrying outlined line-art icons.
+   Each icon is authored as a 17x11 bitmap so the silhouette stays exact and
+   the strokes stay one pixel wide whatever the panel scales to. Unlit they
+   sit as a dim grey outline; lit, the icon takes its warning colour and the
+   cell behind it warms up. Cosmetic dash atmosphere — they take a hint from
+   the drive (a cooked engine, a battered car, the lever pulled) but nothing
+   reads them back. */
+var LAMP_W = 17, LAMP_H = 11;
+var LAMP_ICON = {
+  engine: [7936, 4352, 65504, 32800, 98364, 65540, 65540, 98308, 32828, 65504, 0],
+  temp:   [896, 652, 640, 652, 640, 652, 1984, 1984, 1984, 49932, 77874],
+  brake:  [1984, 6192, 8456, 16644, 16644, 16644, 16388, 8456, 6192, 1984, 0]
+};
 
-  if(kind === 'temp'){                                  /* coolant */
-    px(cx-u, y+1, u*2, sz-3-u*2, ink);                  /* stem */
-    px(cx-u*2, y+sz-2-u*3, u*4, u*3, ink);              /* bulb */
-    px(cx+u*2, y+2,     u*2, u, ink);                   /* fins */
-    px(cx+u*2, y+2+u*2, u*2, u, ink);
-  } else if(kind === 'engine'){                         /* check engine */
-    px(x+1, cy-u, sz-2, u*2, ink);                      /* block */
-    px(cx-u, cy-u*3, u*3, u*2, ink);                    /* rocker cover */
-    px(x+1, cy+u, u*2, u*2, ink);                       /* sump */
-    px(x+sz-2-u, cy-u*2, u, u*2, ink);                  /* pulley */
-  } else {                                              /* brake / lever */
-    pxDisc(px, cx, cy, Math.max(2, (sz>>1)-1), ink);    /* drum */
-    pxDisc(px, cx, cy, Math.max(1, (sz>>1)-2), '#141416');
-    px(cx-u, cy-u*2, u*2, u*3, ink);                    /* the ! */
-    px(cx-u, cy+u*2, u*2, u, ink);
+function drawLampPanel(px, x, y, w, h){
+  px(x+1, y,     w-2, 1,   '#A2A2A4');                  /* chrome surround */
+  px(x+1, y+h-1, w-2, 1,   '#55555A');
+  px(x,   y+1,   1,   h-2, '#8A8A8C');
+  px(x+w-1, y+1, 1,   h-2, '#55555A');
+  px(x+1, y+1,   w-2, h-2, '#2A2A2C');                  /* frame inner face */
+  px(x+2, y+2,   w-4, h-4, '#0A0A0C');                  /* well */
+}
+
+function drawLamp(px, x, y, w, h, kind, on, col, wash, rim){
+  var rows = LAMP_ICON[kind], r, c, bits;
+  var s  = Math.max(1, Math.min(Math.floor(w/LAMP_W), Math.floor(h/LAMP_H)));
+  var x0 = x + Math.round((w - LAMP_W*s)/2), y0 = y + Math.round((h - LAMP_H*s)/2);
+  var ink = on ? col : '#565A5E';
+
+  if(on){                                    /* the cell warms behind the icon */
+    px(x, y, w, h, wash);
+    px(x, y, w, 1, rim);
+    px(x, y+h-1, w, 1, wash);
+  }
+  for(r=0;r<LAMP_H;r++){
+    bits = rows[r];
+    if(!bits) continue;
+    for(c=0;c<LAMP_W;c++)
+      if(bits & (1 << (LAMP_W-1-c))) px(x0 + c*s, y0 + r*s, s, s, ink);
   }
 }
 
@@ -2493,6 +2531,8 @@ function ensureCluster(){
     /* the flat bar alone — the dials stand above it, and the rail backdrop
        has to stop at the same line so they break its edge too */
     document.documentElement.style.setProperty('--dash-bar-h', L.bandH+'px');
+    /* slides the panel so the two dials straddle the screen, not the panel */
+    document.documentElement.style.setProperty('--cluster-shift', L.shift+'px');
     /* steering buttons are as tall as the bar plus their own rise, so their
        mounts root in the bar and their heads clear it; everything else on
        the dash is cut to the bar itself */
@@ -2586,14 +2626,16 @@ function drawCluster(r){
     return t < -0.35 ? HUDC.knobHi : t < 0.35 ? HUDC.knob : HUDC.knobLo;
   });
 
-  drawLampStrip(px, ax, L.lampY, aw, L.lampH);
-  var lampSz = Math.max(5, Math.min(L.lampH - 4, Math.floor((aw - 6)/3)));
-  var lx0 = Math.round(ax + (aw - lampSz*3 - 4)/2);
-  var ly0 = Math.round(L.lampY + (L.lampH - lampSz)/2);
+  /* ---- lamp panel, outboard of the speedo ---- */
+  var cw = Math.floor((L.wl - 6)/3), ch = L.lampH - 6;
+  var cx0 = L.lampX + 3 + Math.floor((L.wl - 6 - cw*3)/2), cy0 = L.lampY + 3;
   var dmg = r ? r.car.damage : 0;
-  drawLamp(px, lx0,                ly0, lampSz, 'temp',   cluster.heat > 0.55, HUDC.warn);
-  drawLamp(px, lx0 + lampSz + 2,   ly0, lampSz, 'engine', dmg > 45,            HUDC.amber);
-  drawLamp(px, lx0 + lampSz*2 + 4, ly0, lampSz, 'brake',  hudCtl.hb > 0.5,     HUDC.warn);
+  drawLamp(px, cx0,        cy0, cw, ch, 'engine', dmg > 45,
+           HUDC.amber, '#2A1D07', '#7A5510');
+  drawLamp(px, cx0 + cw,   cy0, cw, ch, 'temp',   cluster.heat > 0.55,
+           HUDC.warn,  '#2A0E0A', '#7A2018');
+  drawLamp(px, cx0 + cw*2, cy0, cw, ch, 'brake',  hudCtl.hb > 0.5,
+           HUDC.warn,  '#2A0E0A', '#7A2018');
 }
 
 /* The pair of blue shift tell-tales inside the console panel: solid
@@ -2658,7 +2700,7 @@ function drawTab(px, W, H, pressed){
 function drawSteer(id, right, pressed){
   var cv = document.getElementById(id);
   if(!cv) return;
-  var W = 30, H = Math.max(16, Math.round((hudCtl.barArt || 26)*0.74));
+  var W = 26, H = Math.max(16, Math.round((hudCtl.barArt || 26)*0.74));
   var px = hudPainter(cv, W, H, 2);
   var t = drawTab(px, W, H, pressed), i;
   var n = Math.max(5, Math.min(H-9, (W>>1)-5) | 1);
