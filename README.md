@@ -73,6 +73,25 @@ corner. Red notes are the ones that will hurt.
 | Shift | the tabs either side of the instruments: `−` drops a gear, `+` takes one (manual gearbox only) |
 | Pause | `II`, top right |
 
+Every dash control is one pointer surface rather than a handler per button: a press is
+hit-tested against all of them, and so is every move that follows it, so a finger can go down
+on one button and slide along the dash activating each in turn without being lifted. A pad
+activates the moment the pointer enters its box and releases the moment it leaves — hold
+controls are reference-counted, so a second finger arriving as the first leaves never drops
+the input, and shift tabs fire on entry and re-arm on exit.
+
+**Speed units** — the speedometer reads in KPH or MPH, set in Settings or straight from the
+pause menu. It is display only: the physics, the car stats and the stage targets are all in
+km/h either way. The dial rescales to the same eight divisions in whichever unit is showing
+(0-240 KPH, 0-160 MPH) and the readout and its label change together.
+
+**Orientation** — the rotate prompt is unchanged, but once the player taps anything the game
+asks the platform to pin landscape (Capacitor and Cordova plugins first, then the Screen
+Orientation API) so a stage cannot flip out from under them. On Android that needs the
+document fullscreen, which is only requested on a touch device; where none of it is
+supported — iOS Safari has no orientation lock at all — it fails quietly and the prompt is
+still there to do its job.
+
 ## The dash
 
 The instrument binnacle along the bottom of the screen is one canvas, drawn from scratch

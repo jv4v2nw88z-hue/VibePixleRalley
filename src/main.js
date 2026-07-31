@@ -179,7 +179,8 @@ function freshCarSave(def){
   };
 }
 function freshSave(){
-  var s = { v:1, money:1200, current:'hatch', cars:{}, stages:{}, settings:{ control:'buttons', audio:true, autoGas:false, tiltSens:1, transmission:'auto' } };
+  var s = { v:1, money:1200, current:'hatch', cars:{}, stages:{}, settings:{ control:'buttons', audio:true, autoGas:false, tiltSens:1,
+                          transmission:'auto', units:'kmh' } };
   for(var i=0;i<CARS.length;i++) s.cars[CARS[i].id] = freshCarSave(CARS[i]);
   for(var j=0;j<STAGES.length;j++) s.stages[STAGES[j].id] = { best:null, done:false };
   return s;
@@ -221,6 +222,8 @@ function loadSave(){
     /* saves written before manual existed simply stay on automatic */
     if(s.settings.transmission === 'manual' || s.settings.transmission === 'auto')
       save.settings.transmission = s.settings.transmission;
+    if(s.settings.units === 'kmh' || s.settings.units === 'mph')
+      save.settings.units = s.settings.units;
   }
 }
 function persist(){
@@ -1562,39 +1565,162 @@ function resize(){
 window.addEventListener('resize', function(){ resize(); if(race) resetHudControls(); });
 window.addEventListener('orientationchange', function(){ setTimeout(resize, 250); });
 
+/* ---------------------------------------------------- orientation lock
+   The rotate prompt stays as it was — it is what tells the player to turn
+   the phone in the first place. Once they have, pin the orientation so a
+   stage cannot flip out from under them: a device with auto-rotate off
+   never turns back, and one lying flat with it on can turn at any moment.
+
+   A lock only sticks from inside a user gesture, and on Android only while
+   the document is fullscreen, so it is attempted at the moments the player
+   actually taps something and is allowed to fail quietly everywhere it is
+   not supported (iOS Safari has no Screen Orientation lock at all). */
+var orientLocked = false;
+function lockLandscape(){
+  if(orientLocked) return;
+  /* Capacitor and Cordova both expose a lock of their own; prefer it */
+  var plug = (window.Capacitor && window.Capacitor.Plugins &&
+              window.Capacitor.Plugins.ScreenOrientation) ||
+             (window.cordova && window.cordova.plugins &&
+              window.cordova.plugins.screenorientation) || null;
+  if(plug && plug.lock){
+    try{ plug.lock({ orientation:'landscape' }); orientLocked = true; }catch(e){}
+    return;
+  }
+  var so = window.screen && screen.orientation;
+  if(!so || !so.lock) return;
+
+  var lock = function(){
+    try{
+      var p = so.lock('landscape');
+      if(p && p.then) p.then(function(){ orientLocked = true; }, function(){});
+      else orientLocked = true;
+    }catch(e){}
+  };
+  /* Android will not honour a lock outside fullscreen. Only ask for that on
+     a touch device, where running the game fullscreen is the norm anyway —
+     on a desktop browser it would just be intrusive. */
+  var el = document.documentElement;
+  var coarse = window.matchMedia && matchMedia('(pointer:coarse)').matches;
+  if(coarse && !document.fullscreenElement && el.requestFullscreen){
+    var fs;
+    try{ fs = el.requestFullscreen(); }catch(e){}
+    if(fs && fs.then) fs.then(lock, lock); else lock();
+  } else lock();
+}
+/* first touch anywhere is a user gesture, so take it */
+document.addEventListener('pointerdown', lockLandscape, {once:true});
+
 /* ----------------------------------------------------------------- input */
 var input = { left:false, right:false, gas:false, hbrake:false, steer:0, tiltRaw:0, tiltZero:0, tiltOn:false };
 
-function bindPad(el, key){
-  var on = function(e){ e.preventDefault(); input[key] = true; el.classList.add('act'); audioKick(); };
-  var off = function(e){ if(e) e.preventDefault(); input[key] = false; el.classList.remove('act'); };
-  el.addEventListener('touchstart', on, {passive:false});
-  el.addEventListener('touchend', off, {passive:false});
-  el.addEventListener('touchcancel', off, {passive:false});
-  el.addEventListener('mousedown', on);
-  el.addEventListener('mouseup', off);
-  el.addEventListener('mouseleave', off);
-}
-bindPad(document.getElementById('p-left'),'left');
-bindPad(document.getElementById('p-right'),'right');
-bindPad(document.getElementById('p-gas'),'gas');
-bindPad(document.getElementById('p-hbrake'),'hbrake');
+/* ------------------------------------------------------------ dash pads
+   One pointer manager for the whole dash rather than a handler per button.
+   A press is hit-tested against every pad, and so is every move that
+   follows it, so a finger can go down on one button and slide along the
+   dash activating each in turn without being lifted: a pad activates the
+   moment the pointer enters its box and releases the moment it leaves.
 
-/* the shift pads are taps, not holds, so they get their own binding */
-function bindTap(el, fn){
-  var fire = function(e){
-    e.preventDefault();
-    el.classList.add('act');
-    setTimeout(function(){ el.classList.remove('act'); }, 90);
-    audioKick(); fn();
-  };
-  el.addEventListener('touchstart', fire, {passive:false});
-  el.addEventListener('mousedown', fire);
+   Holds are reference-counted per pad, because two fingers can be on the
+   same control at once (or one arriving as another leaves mid-slide), and
+   a naive boolean would drop the input on the first release. Taps fire on
+   entry and re-arm on exit, so sliding back and forth over a shift tab
+   shifts each time it is crossed rather than repeating while held. */
+var PADS = [], padHeld = {}, padPtr = {};
+
+function padHold(id, key){
+  var el = document.getElementById(id);
+  if(el) PADS.push({ el:el, kind:'hold', key:key });
 }
+function padTap(id, fn){
+  var el = document.getElementById(id);
+  if(el) PADS.push({ el:el, kind:'tap', fn:fn });
+}
+padHold('p-left','left');
+padHold('p-right','right');
+padHold('p-gas','gas');
+padHold('p-hbrake','hbrake');
 /* the paddle shifters are the real control; they call straight into the
-   Pass 3 gearbox and no-op in automatic, where they render dimmed */
-bindTap(document.getElementById('p-shiftup'), function(){ hudCtl.padUp = 1; shiftUp(); });
-bindTap(document.getElementById('p-shiftdn'), function(){ hudCtl.padDn = 1; shiftDown(); });
+   gearbox and no-op in automatic, where they render dimmed */
+padTap('p-shiftup', function(){ hudCtl.padUp = 1; shiftUp(); });
+padTap('p-shiftdn', function(){ hudCtl.padDn = 1; shiftDown(); });
+
+/* Boxes are measured on each press, not on every move: the dash does not
+   move while a finger is down, and re-reading six rects per move would
+   force a layout flush on every frame of a slide. */
+function padMeasure(){
+  for(var i=0;i<PADS.length;i++){
+    var p = PADS[i];
+    p.rect = p.el.offsetParent === null ? null : p.el.getBoundingClientRect();
+  }
+}
+function padAt(x, y){
+  for(var i=0;i<PADS.length;i++){
+    var r = PADS[i].rect;
+    if(r && x >= r.left && x < r.right && y >= r.top && y < r.bottom) return PADS[i];
+  }
+  return null;
+}
+function padEnter(p){
+  if(!p) return;
+  if(p.kind === 'hold'){
+    padHeld[p.key] = (padHeld[p.key] || 0) + 1;
+    input[p.key] = true;
+    p.el.classList.add('act');
+  } else {
+    p.el.classList.add('act');
+    clearTimeout(p.flash);
+    p.flash = setTimeout(function(){ p.el.classList.remove('act'); }, 90);
+    p.fn();
+  }
+  audioKick();
+}
+function padLeave(p){
+  if(!p || p.kind !== 'hold') return;
+  padHeld[p.key] = Math.max(0, (padHeld[p.key] || 1) - 1);
+  if(!padHeld[p.key]){
+    input[p.key] = false;
+    p.el.classList.remove('act');
+  }
+}
+
+window.addEventListener('pointerdown', function(e){
+  if(e.pointerType === 'mouse' && e.button !== 0) return;
+  padMeasure();
+  var p = padAt(e.clientX, e.clientY);
+  if(!p) return;                              /* not on the dash: not ours */
+  e.preventDefault();
+  padPtr[e.pointerId] = p;
+  padEnter(p);
+}, {passive:false});
+
+window.addEventListener('pointermove', function(e){
+  if(!(e.pointerId in padPtr)) return;
+  e.preventDefault();
+  var was = padPtr[e.pointerId], now = padAt(e.clientX, e.clientY);
+  if(now === was) return;                     /* still on the same one */
+  padLeave(was);
+  padPtr[e.pointerId] = now;
+  padEnter(now);
+}, {passive:false});
+
+function padRelease(e){
+  if(!(e.pointerId in padPtr)) return;
+  padLeave(padPtr[e.pointerId]);
+  delete padPtr[e.pointerId];
+}
+window.addEventListener('pointerup', padRelease);
+window.addEventListener('pointercancel', padRelease);
+/* a stage ending or the tab going away leaves nothing holding the pads */
+function padReleaseAll(){
+  for(var id in padPtr) padLeave(padPtr[id]);
+  padPtr = {}; padHeld = {};
+  for(var i=0;i<PADS.length;i++){
+    if(PADS[i].kind === 'hold') input[PADS[i].key] = false;
+    PADS[i].el.classList.remove('act');
+  }
+}
+window.addEventListener('blur', padReleaseAll);
 
 document.addEventListener('keydown', function(e){
   if(e.repeat) return;
@@ -2038,11 +2164,34 @@ function dialAngle(v, min, max){ return DIAL_A0 + DIAL_SWEEP*clamp((v-min)/(max-
    same 1.0 threshold the gearbox and the shift bar use. */
 var TACH_MAX = 9, TACH_RED = 7, TACH_SCALE = 7;
 
+/* Speed is km/h everywhere inside the game — the physics, the car stats and
+   the stage targets all stay in it. These only decide what the dial and the
+   readout SHOW. Each unit carries the full-scale the reference dial uses and
+   the step that divides it into the same eight divisions. */
+var SPD_UNITS = {
+  kmh: { label:'KMH', per:1,        base:240, step:24 },
+  mph: { label:'MPH', per:0.621371, base:160, step:16 }
+};
+function spdUnit(){
+  return (save && save.settings && SPD_UNITS[save.settings.units]) || SPD_UNITS.kmh;
+}
+function spdShow(kmh){ return kmh * spdUnit().per; }
+
 var cluster = {
   cv:null, g:null, base:null, L:null, key:'',
-  S:1, W:0, H:0, kmhMax:240,
+  S:1, W:0, H:0, kmhMax:240, dispMax:240, unit:'kmh',
   nRpm:0, nKmh:0, heat:0
 };
+
+/* Re-cut the speedo for whatever unit is selected, and force the face to be
+   repainted. Safe to call mid-stage — nothing here touches the physics. */
+function applySpeedUnits(){
+  var u = spdUnit();
+  var top = cluster.kmhMax * u.per;
+  cluster.dispMax = Math.max(u.base, Math.ceil(top/u.step)*u.step);
+  cluster.unit = save.settings.units;
+  cluster.key = '';                                     /* rebuild the dial */
+}
 
 /* Sizing.
 
@@ -2339,8 +2488,9 @@ function buildClusterBase(L, S){
   /* Eight divisions on the speedo, as the reference has: 0-240 in thirties.
      A car that runs past 240 gets a bigger dial, still in eight steps. */
   drawDialFace(px, L.spdX, L.dialY, L.R, {
-    min:0, max:cluster.kmhMax, major:cluster.kmhMax/8,
-    minor:cluster.kmhMax/24, labelEvery:1, label:'KMH', num: HUDC.numSpd
+    min:0, max:cluster.dispMax, major:cluster.dispMax/8,
+    minor:cluster.dispMax/24, labelEvery:1, label:spdUnit().label,
+    num: HUDC.numSpd
   });
 
   /* --- gear widget: shift-light ladder outboard, GEAR caption and the
@@ -2518,7 +2668,8 @@ function ensureCluster(){
   var S = Math.max(1, Math.round(Math.min(window.devicePixelRatio || 1, 2)));
   /* keyed on the viewport, not on the layout, so the common case costs a
      string compare rather than a fresh layout object every frame */
-  var key = Math.round(view.w)+'x'+Math.round(view.h)+'@'+S+'/'+cluster.kmhMax;
+  var key = Math.round(view.w)+'x'+Math.round(view.h)+'@'+S+
+            '/'+cluster.dispMax+cluster.unit;
   if(key !== cluster.key || cluster.cv !== el || !cluster.base){
     var L = clusterLayout();
     cluster.cv = el; cluster.L = L; cluster.S = S; cluster.W = L.W; cluster.H = L.H;
@@ -2569,20 +2720,23 @@ function drawCluster(r){
              hot ? HUDC.needleHot : HUDC.needle);
 
   /* ---- speedometer + digital readout ---- */
-  var kmh = cluster.nKmh;
+  /* the needle and the readout both work off the shown value, so the two
+     can never disagree about which unit they are in */
+  var shown = spdShow(cluster.nKmh);
   drawNeedle(px, L.spdX, L.dialY, L.R,
-             dialAngle(clamp(kmh,0,cluster.kmhMax), 0, cluster.kmhMax),
+             dialAngle(clamp(shown,0,cluster.dispMax), 0, cluster.dispMax),
              HUDC.needleSpd);
   /* the readout lives at the foot of the console module, seven-segment and
      with its unit alongside, the way the reference has it — not stamped on
      the speedo's face, where the reference leaves nothing at all */
-  var txt = String(Math.round(Math.max(0,kmh)));
+  var unit = spdUnit().label;
+  var txt = String(Math.round(Math.max(0,shown)));
   var dh7 = L.lcdH - 2, dw7 = Math.max(3, Math.round(dh7*0.5));
-  var unitW = pxTextW('KMH', 1) + 3;
+  var unitW = pxTextW(unit, 1) + 3;
   var lcdW = pxSegW(txt, dw7);
   var lcx = L.auxX + (L.wa - lcdW - unitW)/2;
   pxSeg(px, txt, lcx, L.lcdY + 1, dw7, dh7, HUDC.lcdOn, 'l');
-  pxText(px, 'KMH', lcx + lcdW + 3, L.lcdY + L.lcdH - 6, 1, '#9aa0a6', 'l');
+  pxText(px, unit, lcx + lcdW + 3, L.lcdY + L.lcdH - 6, 1, '#9aa0a6', 'l');
 
   /* ---- shift-light ladder: a slanted stack of blue bars with green caps,
      the bottom one red, exactly as the reference draws it. It fills from the
@@ -2851,17 +3005,19 @@ function updateHudControls(dt){
 
 /* force a full repaint, e.g. when a race starts or the viewport changes */
 function resetHudControls(){
+  padReleaseAll();
   hudCtl.gas = hudCtl.brake = hudCtl.hb = hudCtl.padUp = hudCtl.padDn = 0;
   hudCtl.drawnHb = hudCtl.drawnGas = -1;
   hudCtl.drawnUp = hudCtl.drawnDn = -1; hudCtl.drawnMode = null;
   hudCtl.drawnL = hudCtl.drawnR = null;
   cluster.nRpm = cluster.nKmh = cluster.heat = 0;
-  /* size the speedo to the car actually being driven, rounded up to a
-     whole major division so the numbering stays tidy */
-  /* 0-240 in eight divisions, as on the reference; a car that runs past it
-     gets a bigger dial, still in eight steps so the numbering stays tidy */
+  /* Size the speedo to the car actually being driven: 0-240 km/h in eight
+     divisions as on the reference, and a bigger dial for a car that runs
+     past it, still in eight steps so the numbering stays tidy.
+     applySpeedUnits turns that into whatever unit the dial is showing, and
+     clears the cached face so it gets repainted. */
   if(race) cluster.kmhMax = Math.max(240, Math.ceil(race.stats.kmh*1.08/24)*24);
-  cluster.key = '';                                     /* force a face rebuild */
+  applySpeedUnits();
   drawCluster(race);
   /* after the cluster, so the buttons are cut to the bar height it settled on */
   drawSteer('steer-l-cv', false, false);
@@ -3014,6 +3170,7 @@ function startRace(stageId){
     finishTime:0
   };
   paused = false;
+  lockLandscape();
   document.getElementById('h-stage').textContent = st.name;
   document.getElementById('t-target').textContent = 'TGT ' + fmtTime(track.targetTime);
   showScreen(null);
@@ -4600,6 +4757,13 @@ function renderSettings(){
       save.settings.autoGas = (v==='auto'); persist(); renderSettings();
     }));
 
+  b.appendChild(segRow('SPEED UNITS',
+    'What the speedometer reads in. Display only — the car, the stage targets ' +
+    'and the physics are unchanged either way.',
+    [['kmh','KPH'],['mph','MPH']], save.settings.units, function(v){
+      save.settings.units = v; applySpeedUnits(); persist(); renderSettings();
+    }));
+
   b.appendChild(segRow('AUDIO',
     'Engine, tyre and impact sound effects.',
     [['on','ON'],['off','OFF']], save.settings.audio?'on':'off', function(v){
@@ -4711,13 +4875,30 @@ function mkBtn(text, cls, fn){
 }
 
 /* ------------------------------------------------------------- pause */
+var pauseUnitsLabel = null;
 function togglePause(){
   if(!race) return;
   paused = !paused;
   document.getElementById('pause-overlay').classList.toggle('hidden', !paused);
+  if(paused && pauseUnitsLabel) pauseUnitsLabel();
   if(paused) audioStopAll();
 }
 document.getElementById('pause-resume').onclick = function(){ togglePause(); };
+
+/* the same units toggle, within reach without leaving the stage */
+(function(){
+  var btn = document.getElementById('pause-units');
+  if(!btn) return;
+  var label = function(){
+    btn.textContent = 'SPEED: ' + spdUnit().label.replace('KMH','KPH');
+  };
+  btn.onclick = function(){
+    save.settings.units = save.settings.units === 'mph' ? 'kmh' : 'mph';
+    applySpeedUnits(); persist(); label(); audioKick();
+    if(race) drawCluster(race);
+  };
+  pauseUnitsLabel = label;          /* togglePause refreshes it on open */
+})();
 document.getElementById('pause-restart').onclick = function(){
   var id = race.stage.id;
   paused = false;
