@@ -170,8 +170,11 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
    overhang is centred and clipped by #app.
    It takes pointer events because the steering arrows, paddles and lever
    are hit boxes routed against the same layout the art is drawn from. */
+/* The fascia is the one part of the game that is not pixel art: it is a
+   moulded panel drawn with real curves at device resolution, so it must not
+   be nearest-neighbour scaled the way the world above it is. */
 #dash-cv{position:absolute;bottom:0;left:0;display:block;pointer-events:auto;
-  image-rendering:pixelated;image-rendering:crisp-edges;touch-action:none;}
+  touch-action:none;}
 #hud-left{top:calc(6px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));min-width:118px;}
 #hud-left .nm{font-size:10px;color:var(--muted);letter-spacing:1px;}
 .meter{height:6px;background:#0d110c;border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-top:3px;}

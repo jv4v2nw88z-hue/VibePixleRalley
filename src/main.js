@@ -1804,183 +1804,172 @@ function audioStopAll(){ audioEngine(0,0,0,false); }
 /* =========================================================================
    HUD - DASHBOARD
 
-   One canvas across the foot of the screen carries the whole dash. It is
-   painted on an integer pixel grid: every element is a run of whole cells
-   and the grid is blitted to the device with nearest-neighbour scaling, so
-   the dash keeps the same pixel size as the car and the scenery and nothing
-   is ever antialiased.
+   The world above the dash is pixel art. The dash is not, and the reference
+   is emphatic about it: moulded plastic photographed head on, with smooth
+   bezels, soft bevels, a fine speckle in the mouldings and small crisp
+   lettering. So this half of the screen is drawn with real curves at device
+   resolution while the road above it stays on its chunky grid — the same
+   split the reference has, and the reason its instruments read at a glance
+   where a pixel grid would smear them.
 
-   The design is laid out against a nominal 300 x 79 cell grid. The real
-   grid is whatever the viewport gives us, so the three banks are anchored
-   independently - steering and gear to the left edge, the binnacle to the
-   middle, lever and status panels to the right edge - and spare width opens
-   the gaps between them rather than stretching the art.
+   Everything is laid out against a nominal 300 x 78 unit design grid taken
+   off the reference, with the raised centre binnacle standing 13 units
+   proud of the outer wings. Spare width on a long phone opens the two
+   terraces rather than stretching the art, so the three banks — steering to
+   the left edge, the binnacle to the middle, lever and status panels to the
+   right edge — always sit where a thumb expects them.
 
-   Cost control: everything that never changes (frame, seams, dial faces,
-   panel shells, labels) is painted once into an offscreen bitmap and
-   blitted as a single image each frame. The three moving controls keep
-   their own small bitmaps and only repaint when their state actually
-   changes. Only the needles, lit segments, gear marker and digits are
-   redrawn from scratch every frame.
+   Cost control: everything static (moulding, dial faces, panel shells,
+   lettering) is painted once into an offscreen bitmap and blitted each
+   frame. Only the needles, lamps, digits and the controls that move are
+   redrawn.
    ========================================================================= */
 
+/* Colours sampled off the reference. The plastic is a neutral charcoal that
+   warms very slightly towards the top face, not the blue-grey it is easy to
+   drift into, and the instrument glass is nearly black. */
 var DC = {
-  base:'#242b33', baseHi:'#2f3841', baseLo:'#1a2028', deep:'#12171d',
-  seam:'#0a0d11', bevel:'#5c6874', bevelHi:'#8e9caa',
-  inset:'#161c23', insetLo:'#0b0f14',
-  steel:'#98a3af', steelHi:'#d7e0e9', steelLo:'#5a646f', steelDk:'#2f3740',
-  glass:'#070a0e', glassHi:'#101620',
-  tick:'#e9eff5', tickDim:'#8d99a5', tickRed:'#c8362a',
-  num:'#f2f6fa', numDim:'#b0bbc6',
-  needle:'#dd3327', needleHi:'#ff7a60', hub:'#242b32',
-  amber:'#ffb432', amberLo:'#8a5f1a',
-  green:'#5fe070', greenLo:'#2c7a38', greenDim:'#183220',
-  red:'#e0463a', redLo:'#7a2018', redPanel:'#3a1410',
-  blue:'#3f7fe0', blueHi:'#8cbcff',
-  grey:'#7d8791', greyLo:'#4a535c', greyDim:'#333b44', label:'#c3ccd5'
+  faceHi:'#2e3335', face:'#23282a', faceLo:'#171a1c', deep:'#0b0d0e',
+  lip:'#767d80', lipLo:'#3d4245', seam:'#050708',
+  recess:'#141719', recessLo:'#0a0c0d',
+  steel:'#a9afb2', steelHi:'#e6ebee', steelLo:'#61686b', steelDk:'#2c3133',
+  glass:'#090b0c', glassHi:'#1b1e20',
+  tick:'#eef2f4', tickDim:'#9aa1a4',
+  num:'#ffffff', numDim:'#aeb5b8',
+  needle:'#df2f21', needleHi:'#ff6a52', hub:'#1d2123',
+  amber:'#ffab26', amberLo:'#7a5410',
+  green:'#61ca1d', greenHi:'#a6f76a', greenLo:'#2f6a12', greenDim:'#16240e',
+  red:'#e33a2a', redLo:'#7d1d15', redPanel:'#25100c', redEdge:'#4a1a13',
+  blue:'#2f7fd8', blueHi:'#63b0ff',
+  grey:'#8d9497', greyLo:'#565c5f', greyDim:'#2a2f31', label:'#c9d0d3'
 };
 
-/* ------------------------------------------------------------------ font
-   A 3x5 pixel face, variable width so M, N and W keep their diagonals.
-   Every glyph is a list of row strings; a 1 is an inked cell. Nothing in
-   the dash uses the browser's text rendering, so no label is ever smoothed. */
-var FONT = {
-  '0':['111','101','101','101','111'], '1':['010','110','010','010','111'],
-  '2':['111','001','111','100','111'], '3':['111','001','111','001','111'],
-  '4':['101','101','111','001','001'], '5':['111','100','111','001','111'],
-  '6':['111','100','111','101','111'], '7':['111','001','010','010','010'],
-  '8':['111','101','111','101','111'], '9':['111','101','111','001','111'],
-  'A':['010','101','111','101','101'], 'B':['110','101','110','101','110'],
-  'C':['011','100','100','100','011'], 'D':['110','101','101','101','110'],
-  'E':['111','100','110','100','111'], 'F':['111','100','110','100','100'],
-  'G':['011','100','101','101','011'], 'H':['101','101','111','101','101'],
-  'I':['111','010','010','010','111'], 'J':['001','001','001','101','010'],
-  'K':['101','101','110','101','101'], 'L':['100','100','100','100','111'],
-  'M':['10001','11011','10101','10001','10001'],
-  'N':['1001','1101','1011','1001','1001'],
-  'O':['010','101','101','101','010'], 'P':['110','101','110','100','100'],
-  'Q':['010','101','101','011','001'], 'R':['110','101','110','101','101'],
-  'S':['011','100','010','001','110'], 'T':['111','010','010','010','010'],
-  'U':['101','101','101','101','011'], 'V':['101','101','101','101','010'],
-  'W':['10001','10001','10101','11011','10001'],
-  'X':['101','101','010','101','101'], 'Y':['101','101','010','010','010'],
-  'Z':['111','001','010','100','111'],
-  ' ':['00','00','00','00','00'], '.':['0','0','0','0','1'],
-  '-':['000','000','111','000','000'], '+':['010','010','111','010','010'],
-  '/':['001','001','010','100','100'], ':':['0','1','0','1','0'],
-  '(':['01','10','10','10','01'], ')':['10','01','01','01','10'],
-  /* lower case x doubles as the multiplication sign on the tacho */
-  'x':['000','101','010','101','000']
-};
-var FONT_H = 5;
-
-function glyphW(ch){ var g = FONT[ch]; return g ? g[0].length : 3; }
-function textW(s, k, sp){
-  k = k || 1; sp = sp == null ? 1 : sp;
-  var w = 0;
-  for(var i=0;i<s.length;i++) w += glyphW(s.charAt(i))*k + (i ? sp*k : 0);
-  return w;
+/* ------------------------------------------------------------- geometry */
+function rrPath(g, x, y, w, h, r){
+  r = Math.min(r, w/2, h/2);
+  g.beginPath();
+  g.moveTo(x+r, y);
+  g.arcTo(x+w, y,   x+w, y+h, r);
+  g.arcTo(x+w, y+h, x,   y+h, r);
+  g.arcTo(x,   y+h, x,   y,   r);
+  g.arcTo(x,   y,   x+w, y,   r);
+  g.closePath();
 }
-/* draw a string with its top-left at x,y, each font cell k grid cells wide */
-function pxText(px, s, x, y, col, k, sp){
-  k = k || 1; sp = sp == null ? 1 : sp;
-  var cx = x;
-  for(var i=0;i<s.length;i++){
-    var ch = s.charAt(i), gl = FONT[ch];
-    if(gl){
-      for(var r=0;r<FONT_H;r++){
-        var row = gl[r], run = 0;
-        for(var c=0;c<=row.length;c++){
-          if(c < row.length && row.charAt(c) === '1'){ run++; continue; }
-          if(run){ px(cx + (c-run)*k, y + r*k, run*k, k, col); run = 0; }
-        }
-      }
+/* The mouldings on the reference are not rounded, they are chamfered: the
+   corners are cut off at 45 degrees, which is what an injection-moulded
+   fascia actually looks like. */
+function chamferPath(g, x, y, w, h, c){
+  c = Math.min(c, w/2, h/2);
+  g.beginPath();
+  g.moveTo(x+c, y);       g.lineTo(x+w-c, y);
+  g.lineTo(x+w, y+c);     g.lineTo(x+w, y+h-c);
+  g.lineTo(x+w-c, y+h);   g.lineTo(x+c, y+h);
+  g.lineTo(x, y+h-c);     g.lineTo(x, y+c);
+  g.closePath();
+}
+function polyPath(g, pts){
+  g.beginPath();
+  g.moveTo(pts[0][0], pts[0][1]);
+  for(var i=1;i<pts.length;i++) g.lineTo(pts[i][0], pts[i][1]);
+  g.closePath();
+}
+function vGrad(g, y0, y1, stops){
+  var lg = g.createLinearGradient(0, y0, 0, y1), i;
+  for(i=0;i<stops.length;i++) lg.addColorStop(stops[i][0], stops[i][1]);
+  return lg;
+}
+
+/* A recessed well: dark fill, a shadow under its top lip and a hint of
+   light catching the bottom edge, so it reads as cut into the fascia. */
+function well(g, x, y, w, h, c, fill){
+  chamferPath(g, x, y, w, h, c);
+  g.fillStyle = fill || DC.recessLo; g.fill();
+  g.lineWidth = Math.max(1, h*0.05);
+  g.strokeStyle = 'rgba(0,0,0,.55)';
+  g.stroke();
+  g.save(); chamferPath(g, x, y, w, h, c); g.clip();
+  g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(x, y, w, Math.max(1, h*0.10));
+  g.fillStyle = 'rgba(190,205,210,.10)';
+  g.fillRect(x, y+h-Math.max(1, h*0.07), w, Math.max(1, h*0.07));
+  g.restore();
+}
+/* A pad standing proud of the fascia: lit along the top, shaded at the foot
+   and sitting on its own cast shadow. */
+function pad(g, x, y, w, h, c, top, bot){
+  g.save();
+  g.fillStyle = 'rgba(0,0,0,.45)';
+  chamferPath(g, x, y+h*0.06, w, h, c); g.fill();
+  g.restore();
+  chamferPath(g, x, y, w, h, c);
+  g.fillStyle = vGrad(g, y, y+h, [[0, top||DC.faceHi],[1, bot||DC.faceLo]]);
+  g.fill();
+  g.lineWidth = Math.max(1, h*0.04);
+  g.strokeStyle = 'rgba(190,200,205,.22)'; g.stroke();
+}
+
+/* ------------------------------------------------------------ lettering
+   One place decides how the dash speaks. The reference letters a plain
+   grotesque in caps, tight but never touching, so that is what this is. */
+function dashFont(g, size, weight){
+  g.font = (weight||'700') + ' ' + Math.max(4, size).toFixed(1) +
+           'px "Helvetica Neue",Helvetica,Arial,"Liberation Sans",sans-serif';
+}
+/* Draw centred on x, with y as the visual middle of the caps. Canvas puts
+   the alphabetic baseline where we would rather have the cap centre, and
+   every label on this dash is caps only, so correct for it once here. */
+function capText(g, s, x, y, size, col, weight, track){
+  dashFont(g, size, weight);
+  if(track != null && 'letterSpacing' in g) g.letterSpacing = track.toFixed(2)+'px';
+  g.fillStyle = col;
+  g.textAlign = 'center';
+  g.textBaseline = 'alphabetic';
+  g.fillText(s, x, y + size*0.355);
+  if('letterSpacing' in g) g.letterSpacing = '0px';
+}
+/* the same, shrunk until it fits a given width — panel captions are the
+   one place the design genuinely runs out of room */
+function capTextFit(g, s, x, y, size, w, col, weight, track){
+  var sz = size;
+  dashFont(g, sz, weight);
+  if(track != null && 'letterSpacing' in g) g.letterSpacing = track.toFixed(2)+'px';
+  while(g.measureText(s).width > w && sz > 4){
+    sz -= 0.4; dashFont(g, sz, weight);
+  }
+  if('letterSpacing' in g) g.letterSpacing = '0px';
+  capText(g, s, x, y, sz, col, weight, track);
+  return sz;
+}
+
+/* --------------------------------------------------------------- speckle
+   The fascia has a fine grain in it. One small tile, generated once from
+   the deterministic hash the rest of the game uses, tiled as a pattern. */
+var grainTile = null;
+function grainPattern(g){
+  if(!grainTile){
+    var n = 64;
+    grainTile = document.createElement('canvas');
+    grainTile.width = grainTile.height = n;
+    var tg = grainTile.getContext('2d');
+    var img = tg.createImageData(n, n);
+    for(var y=0;y<n;y++) for(var x=0;x<n;x++){
+      var i = (y*n+x)*4, v = rnd2(x, y, 71);
+      var lit = v > 0.82, dark = v < 0.20;
+      img.data[i] = img.data[i+1] = img.data[i+2] = lit ? 255 : 0;
+      img.data[i+3] = lit ? 26 : (dark ? 34 : 0);
     }
-    cx += glyphW(ch)*k + sp*k;
+    tg.putImageData(img, 0, 0);
   }
-}
-function pxTextC(px, s, cx, y, col, k, sp){
-  pxText(px, s, Math.round(cx - textW(s,k,sp)/2), y, col, k, sp);
-}
-/* Centre a label inside a panel, tightening the letter spacing before
-   giving up. Panel titles are the one place the design runs out of room. */
-function pxTextFit(px, s, cx, y, w, col, k){
-  var sp = textW(s,k,1) <= w ? 1 : 0;
-  pxText(px, s, Math.round(cx - textW(s,k,sp)/2), y, col, k, sp);
-}
-
-/* -------------------------------------------------------- raster helpers
-   All of them take a painter that lands on whole grid cells, so a caller
-   can never accidentally draw a half pixel. */
-function rasterInto(g, S){
-  return function(x,y,w,h,col){
-    if(w <= 0 || h <= 0) return;
-    g.fillStyle = col;
-    g.fillRect(Math.round(x)*S, Math.round(y)*S, Math.round(w)*S, Math.round(h)*S);
-  };
-}
-function pxDisc(px, cx, cy, r, col){
-  for(var y=-r; y<=r; y++){
-    var w = Math.floor(Math.sqrt(Math.max(0, r*r - y*y)));
-    px(cx-w, cy+y, w*2+1, 1, col);
-  }
-}
-function pxRing(px, cx, cy, r, t, col){
-  var ri = r - t;
-  for(var y=-r; y<=r; y++){
-    var wo = Math.floor(Math.sqrt(Math.max(0, r*r - y*y)));
-    var wi = Math.abs(y) <= ri ? Math.floor(Math.sqrt(Math.max(0, ri*ri - y*y))) : -1;
-    if(wi < 0){ px(cx-wo, cy+y, wo*2+1, 1, col); }
-    else { px(cx-wo, cy+y, wo-wi, 1, col); px(cx+wi+1, cy+y, wo-wi, 1, col); }
-  }
-}
-/* an annulus limited to an angle span, walked cell by cell */
-function pxArc(px, cx, cy, r, t, a0, a1, col){
-  var steps = Math.max(6, Math.round(Math.abs(a1-a0)*r*1.7));
-  for(var i=0;i<=steps;i++){
-    var a = a0 + (a1-a0)*i/steps, ca = Math.cos(a), sa = Math.sin(a);
-    for(var k=0;k<t;k++)
-      px(Math.round(cx+ca*(r-k)), Math.round(cy+sa*(r-k)), 1, 1, col);
-  }
-}
-/* a radial run of cells, used for every tick mark and for the needles */
-function pxRadial(px, cx, cy, a, r0, r1, w, col){
-  var ca = Math.cos(a), sa = Math.sin(a);
-  var n = Math.max(1, Math.round(Math.abs(r1-r0)));
-  for(var i=0;i<=n;i++){
-    var r = r0 + (r1-r0)*i/n;
-    px(Math.round(cx+ca*r - (w-1)/2), Math.round(cy+sa*r - (w-1)/2), w, w, col);
-  }
-}
-/* a panel with one-cell stepped corners: pixel art's answer to a rounded
-   rect, with a lit top edge and a shaded foot */
-function pxPanel(px, x, y, w, h, fill, hi, lo, edge){
-  px(x+1, y,     w-2, 1,   edge);
-  px(x,   y+1,   1,   h-2, edge);
-  px(x+w-1, y+1, 1,   h-2, edge);
-  px(x+1, y+h-1, w-2, 1,   edge);
-  px(x+1, y+1,   w-2, h-2, fill);
-  if(hi) px(x+1, y+1, w-2, 1, hi);
-  if(lo) px(x+1, y+h-2, w-2, 1, lo);
+  return g.createPattern(grainTile, 'repeat');
 }
 
 /* =========================================================================
    LAYOUT
    ========================================================================= */
 
-/* Share of the viewport the dash occupies. The mockup gives it the bottom
-   forty percent; on a squarer tablet the content runs out of width first
-   and the band ends up a little shorter, which is handled below. */
 var DASH_FRAC = 0.40;
-/* the nominal design grid every position below is quoted against */
-var DASH_NOM_W = 300, DASH_NOM_H = 79, DASH_NOM_OVER = 30;
-
-/* Dash cell size in CSS pixels. Tied to viewport height so the dash art
-   stays in the same pixel family as the car sprite and the scenery props,
-   which are also sized off the viewport. It runs one step finer than the
-   world grid: the dash carries lettering, and a 3x5 face at the world's
-   own cell size would not leave room for a word like THROTTLE. */
-function dashPixel(vh){ return clamp(Math.round(vh/300), 2, 4); }
+/* the design grid: 300 across, 78 down from the wing tops, the binnacle 13
+   proud of them and the paddles reaching 32 above */
+var NW = 300, NH = 78, NTOP = 32, NRISE = 13;
 
 var dash = { cv:null, g:null, base:null, L:null, key:'', S:1,
              nRpm:0, nSpd:0, nBoost:0 };
@@ -1988,99 +1977,81 @@ var dash = { cv:null, g:null, base:null, L:null, key:'', S:1,
 function dashLayout(){
   var vw = view.w || window.innerWidth || 800;
   var vh = view.h || window.innerHeight || 400;
-  var PX = dashPixel(vh);
-  var GW = Math.ceil(vw/PX);
-  /* Content scale. Whichever axis runs out first decides it: on a wide
-     phone that is the height, and the spare width simply opens the gaps
-     between the three banks; on a 4:3 tablet it is the width, and the
-     whole dash sits a little shorter than forty percent. */
-  var U = Math.min((vh*DASH_FRAC/PX)/DASH_NOM_H, GW/(DASH_NOM_W+6));
-  var u = function(n){ return Math.round(n*U); };
-  var GH = u(DASH_NOM_H), OVER = u(DASH_NOM_OVER);
+  /* whichever axis runs out first sets the scale; on anything wider than
+     the design needs, the surplus goes into the two terraces */
+  var U = Math.min(vh*DASH_FRAC/NH, vw/NW);
+  var extra = Math.max(0, vw - NW*U);
+  var CX = vw/2;
 
-  var L = { PX:PX, GW:GW, GH:GH, OVER:OVER, U:U, u:u, CH:GH+OVER, top:OVER };
-  var top = OVER;
+  /* Three anchor groups. L walks out to the left edge, R to the right, C
+     stays on the centreline; the flat terraces between them absorb the
+     difference, so no art is ever stretched. */
+  var off = { L:-extra/2, C:0, R:extra/2 };
+  var X = function(nx, grp){ return CX + (nx - NW/2)*U + off[grp||'C']; };
+  var Y = function(ny){ return (ny + NTOP)*U; };
+  var u = function(n){ return n*U; };
 
-  /* How far the two edge banks are inset. On a screen wider than the design
-     needs, they walk in by a third of the surplus rather than staying pinned
-     to the glass, so a 20:9 phone does not leave a dead gap in the middle of
-     the dash while still keeping the arrows inside easy thumb reach. */
-  var spread = Math.max(0, GW - u(DASH_NOM_W));
-  var inset  = u(6) + Math.round(spread*0.34);
+  var L = {
+    U:U, PX:1, u:u, X:X, Y:Y, vw:vw, vh:vh,
+    W:vw, CH:(NH+NTOP)*U, top:NTOP*U, extra:extra,
+    originX:0, originY:vh - (NH+NTOP)*U
+  };
 
-  /* -------------------------------------------------- centre binnacle
-     Laid out first: the gear column and the lever hang off it, the way
-     they sit against the binnacle on the mockup. */
-  var C = Math.round(GW/2);
-  L.C = C;
-  L.R = u(28);
-  L.dialY = top + u(20);
-  L.tachX = C - u(42);
-  L.spdX  = C + u(42);
-  L.stack = { x:C-u(13), w:u(26),
-              shiftY:top+u(1),  shiftH:u(6),
-              chevY: top+u(9),  chevH:u(7),
-              segY:  top+u(18), segH:u(5),
-              boxY:  top+u(26), boxH:u(21) };
-  /* the boost gauge tucks under the speedo's outer shoulder, and has to
-     stay clear of the status panels' top edge */
-  L.boost = { x:C+u(86), y:top+u(34), r:u(14) };
-  L.housing = { x0:L.tachX-L.R-u(4), x1:L.spdX+L.R+u(4), rise:u(9) };
-  /* paddles: mounted just outboard of the dial pair, breaking up into the
-     world above the dash line */
-  L.padW = u(19); L.padH = u(38);
-  L.padL = { x:C-u(82)-Math.round(L.padW/2), y:top-u(26), w:L.padW, h:L.padH };
-  L.padR = { x:C+u(82)-Math.round(L.padW/2), y:top-u(26), w:L.padW, h:L.padH };
+  /* the fascia's top edge, as a run of (x, y, group) vertices: wing, chamfer
+     up to the terrace, terrace, chamfer up to the binnacle, and back down */
+  L.contour = [
+    [  0,   0,  'L'], [ 42,   0,  'L'], [ 57, -4.5,'L'],
+    [ 92, -4.5,'C'], [105, -13, 'C'],
+    [195, -13, 'C'], [208, -4.5,'C'],
+    [243, -4.5,'R'], [258,  0,  'R'], [NW,  0,  'R']
+  ];
 
   /* ------------------------------------------------------- left bank */
-  var lx = inset;
-  L.steerL = { x:lx,       y:top+u(17), w:u(17), h:u(34) };
-  L.steerR = { x:lx+u(19), y:top+u(17), w:u(17), h:u(34) };
-  L.led    = { x:lx+u(5), y:top+u(11), n:5, w:u(4), h:u(3), gap:u(3) };
-  L.gear   = { x:L.tachX-L.R-u(6)-u(20), y:top+u(12), w:u(20), h:u(41), rowH:u(6) };
-  L.leftEdge = L.steerR.x + L.steerR.w;
+  L.led    = { x:X(13.4,'L'), y:Y(6.2), w:u(25.7), h:u(5.1), n:5 };
+  L.steerL = { x:X(7.9,'L'),  y:Y(15),  w:u(22),   h:u(45.7) };
+  L.steerR = { x:X(32,'L'),   y:Y(15),  w:u(21.7), h:u(45.7) };
+  L.leftBay= { x:X(4,'L'),    y:Y(3.4), w:u(53.6), h:u(59) };
+
+  /* ---------------------------------------------------- centre bank */
+  L.R      = u(29.5);
+  L.dialY  = Y(19.7);
+  L.tachX  = X(108);
+  L.spdX   = X(190);
+  L.gear   = { x:X(61), y:Y(16.8), w:u(12.2), h:u(33.6), rows:5,
+               capY:Y(13.2), capH:u(5) };
+  L.stack  = { x:X(135.5), w:u(27),
+               topY:  Y(0.6),  topH:u(20.4),
+               shiftY:Y(1),    shiftH:u(6.6),
+               chevY: Y(9.8),  chevH:u(4.8),
+               segY:  Y(16),   segH:u(4.2),
+               boxY:  Y(23.6), boxH:u(21.9) };
+  L.padL   = { x:X(59.4), y:Y(-30), w:u(18.7), h:u(42) };
+  L.padR   = { x:X(223.4), y:Y(-30), w:u(18.7), h:u(42) };
+  L.strip  = { x:X(60.5), y:Y(55.3), w:X(221.7)-X(60.5), h:u(18.5) };
 
   /* ------------------------------------------------------ right bank */
-  var rx = GW - inset;
-  var sw = u(30), sg = u(2);
-  L.stat = { y:top+u(52), h:u(24), w:sw, gap:sg };
-  L.stat.x2 = rx - sw;
-  L.stat.x1 = L.stat.x2 - sw - sg;
-  L.stat.x0 = L.stat.x1 - sw - sg;
-  /* the lever sits between the boost gauge and the panels, never on top of
-     either, however tight the grid gets */
-  var hbW = u(36);
-  var hbX = Math.min(rx - u(6) - hbW, Math.max(L.boost.x + L.boost.r + u(3), L.stat.x2));
-  L.hb = { x:hbX, y:top+u(25), w:hbW, h:u(16), rise:u(20) };
-  L.hb.slotOff = Math.round(L.hb.h*0.34);
-  L.hb.slotH   = Math.max(3, Math.round(L.hb.h*0.30));
-
-  /* ------------------------------------------------- indicator strip */
-  var isW = u(129), isH = u(14);
-  var isC = Math.round((L.leftEdge + L.stat.x0)/2);
-  L.strip = { x:isC-Math.round(isW/2), y:top+u(57), w:isW, h:isH };
-
-  /* screen-space origin, so hit boxes and the camera can be worked out
-     from the same numbers the art is drawn with */
-  L.originX = Math.round((vw - GW*PX)/2);
-  L.originY = vh - L.CH*PX;
+  L.boost  = { x:X(231.6,'R'), y:Y(35), r:u(11.7) };
+  L.hb     = { x:X(252.3,'R'), y:Y(19.5), w:u(42), h:u(24.1),
+               rise:u(21), slotOff:u(9.4), slotH:u(6.3) };
+  var sw = u(21.5), sg = u(1.4);
+  L.stat   = { y:Y(50.4), h:u(24.4), w:sw, gap:sg,
+               x0:X(227.3,'R'), x1:X(227.3,'R')+sw+sg, x2:X(227.3,'R')+2*(sw+sg) };
   return L;
 }
 
-/* How much of the screen bottom the dash claims, including the raised
-   gauge housing, so the chase camera can keep the car clear of it. */
+/* How much of the screen bottom the fascia claims, so the chase camera can
+   keep the car clear of it. The paddles are allowed to overlap the road. */
 function dashBandH(){
   var L = dash.L || dashLayout();
-  return (L.GH + L.housing.rise)*L.PX + 4;
+  return (NH + NRISE)*L.U + 4;
 }
 
 /* =========================================================================
-   STATIC ART
+   DIALS
    ========================================================================= */
 
-/* --- dial faces -------------------------------------------------------- */
-/* 135deg round through the bottom to 45deg, the sweep every road instrument
-   uses. Shared by the tacho, the speedo and the boost gauge. */
+/* 135 degrees round through the bottom to 45, the sweep every road
+   instrument uses. Shared by the tacho, the speedo and the boost gauge. */
 var DIAL_A0 = Math.PI*0.75, DIAL_SWEEP = Math.PI*1.5;
 function dialAngle(v, min, max){ return DIAL_A0 + DIAL_SWEEP*clamp((v-min)/(max-min),0,1); }
 
@@ -2089,454 +2060,701 @@ function dialAngle(v, min, max){ return DIAL_A0 + DIAL_SWEEP*clamp((v-min)/(max-
 var TACH_MAX = 8, TACH_RED = 7, TACH_SCALE = 7;
 var BOOST_MAX = 20;
 
-function paintDial(px, cx, cy, R, o){
-  var i, v, a, maj, red, len, r0, r1, lr;
-  var bw = Math.max(2, Math.round(R*0.10));
-
-  /* chrome bezel: stepped rings rather than a gradient, with a bright
-     catch across the top left and a shaded shoulder at the bottom right */
-  pxDisc(px, cx, cy, R, DC.steelDk);
-  pxDisc(px, cx, cy, R-1, DC.steel);
-  pxArc(px, cx, cy, R-1, Math.max(1,bw-1), Math.PI*0.99, Math.PI*1.94, DC.steelHi);
-  pxArc(px, cx, cy, R-1, Math.max(1,bw-1), Math.PI*0.06, Math.PI*0.84, DC.steelLo);
-  pxDisc(px, cx, cy, R-bw, DC.glassHi);
-  pxDisc(px, cx, cy, R-bw-1, DC.glass);
-
-  var trackR = R - bw - 2;
-  var redTh  = o.redFrom != null ? Math.max(2, Math.round(R*0.08)) : 0;
-  /* redline band, painted on the outer track of the face */
-  if(o.redFrom != null){
-    pxArc(px, cx, cy, trackR, redTh,
-          dialAngle(o.redFrom,o.min,o.max), dialAngle(o.max,o.min,o.max), DC.tickRed);
-  }
-
-  var steps = Math.round((o.max-o.min)/o.minor);
-  var majEvery = Math.round(o.major/o.minor);
-  var labEvery = majEvery*(o.labelEvery||1);
-  var tk = R >= 20 ? 1 : 1;
-  for(i=0;i<=steps;i++){
-    v = o.min + i*o.minor;
-    maj = (i % majEvery) === 0;
-    red = o.redFrom != null && v >= o.redFrom - 1e-6;
-    a = dialAngle(v,o.min,o.max);
-    len = o.small ? (maj ? 2 : 1)
-                  : (maj ? Math.max(3, Math.round(R*0.09)) : Math.max(1, Math.round(R*0.05)));
-    r1 = trackR - (redTh ? redTh + 1 : 1);
-    r0 = r1 - len;
-    pxRadial(px, cx, cy, a, r0, r1, maj ? 2 : 1,
-             red ? (maj ? DC.red : DC.tickRed) : (maj ? DC.tick : DC.tickDim));
-    if(maj && (i % labEvery) === 0 && o.numbers !== false){
-      lr = r0 - 3;
-      var s = String(Math.round(v));
-      pxText(px, s,
-             Math.round(cx + Math.cos(a)*lr - textW(s,o.numK||1)/2),
-             Math.round(cy + Math.sin(a)*lr - FONT_H*(o.numK||1)/2),
-             red ? '#ff8b78' : DC.num, o.numK||1);
-    }
-  }
-
-  if(o.label) pxTextC(px, o.label, cx, cy - Math.round(R*(o.small?0.46:0.42)), DC.label, 1);
-  if(o.sub)   pxTextC(px, o.sub,   cx, cy + Math.round(R*(o.small?0.44:0.34)), DC.numDim, 1);
-  /* a single crescent of glass reflection across the top left, dithered so
-     it stays pixel art rather than a soft glow */
-  var gr = trackR - Math.max(1, Math.round(R*0.10));
-  var a0 = Math.PI*1.02, a1 = Math.PI*1.62, n = Math.round((a1-a0)*gr*1.3);
-  for(i=0;i<=n;i++){
-    var ga = a0 + (a1-a0)*i/n;
-    if(i & 1) continue;
-    px(Math.round(cx+Math.cos(ga)*gr), Math.round(cy+Math.sin(ga)*gr), 1, 1, '#243040');
-  }
-}
-
-/* --- units ------------------------------------------------------------- */
-/* One place decides what the speedometer means. Both the analog face and
-   the digital readout come through here, so they can never disagree. */
+/* --- units ------------------------------------------------------------ */
+/* One place decides what the speedometer means, so the analog face and the
+   digital readout can never disagree. */
 function speedUnits(){
   var mph = save.settings.units !== 'kph';
   return mph ? { label:'MPH', conv:0.621371, step:20, minor:5 }
              : { label:'KPH', conv:1,        step:40, minor:10 };
 }
-/* The dial face is fixed, the way a real speedometer is: 0-160 MPH, or the
-   same dial in KPH. A slow car simply never gets round to the far end. */
 function speedMax(){ return save.settings.units !== 'kph' ? 160 : 260; }
 
-/* --- the whole static dash -------------------------------------------- */
-function buildDashBase(L, S){
-  var c = document.createElement('canvas');
-  c.width = L.GW*S; c.height = L.CH*S;
-  var g = c.getContext('2d');
-  g.imageSmoothingEnabled = false;
-  var px = rasterInto(g, S);
-  var u = L.u, top = L.top, i, x, y;
+/* The bezel is a turned metal ring, and a turned ring does not shade like a
+   sphere: it picks the light up twice as it comes round, once on the upper
+   left and again on the right, and goes almost black where it turns away at
+   the bottom. This is that sweep sampled off the reference at 20 degree
+   steps, walked round as short stroked arcs. */
+var BEZEL_SWEEP = [
+  0x60,0x6a,0x53,0x18,0x12,0x10,0x11,0x44,0x50,0x4b,0x5c,0x75,0x70,0x57,0x32,0x18,0x5a,0x74
+];
+function bezelRing(g, cx, cy, r, w){
+  var n = BEZEL_SWEEP.length, i, a0, a1, t, c0, c1, v;
+  g.lineWidth = w;
+  for(i=0;i<n;i++){
+    a0 = i/n*TAU; a1 = (i+1)/n*TAU;
+    c0 = BEZEL_SWEEP[i]; c1 = BEZEL_SWEEP[(i+1)%n];
+    /* two passes per step so the seam between samples disappears */
+    for(t=0;t<2;t++){
+      v = Math.round(c0 + (c1-c0)*(t+0.5)/2);
+      g.beginPath();
+      g.arc(cx, cy, r, a0+(a1-a0)*t/2 - 0.004, a0+(a1-a0)*(t+1)/2 + 0.004);
+      g.strokeStyle = 'rgb('+v+','+(v+1)+','+(v+1)+')';
+      g.stroke();
+    }
+  }
+}
 
-  /* ----------------------------------------------------- the frame ---- */
-  var H = L.housing;
-  /* the raised gauge housing first, so the flat top edge caps it cleanly */
-  px(H.x0, top-H.rise, H.x1-H.x0, H.rise, DC.base);
-  px(H.x0+2, top-H.rise, H.x1-H.x0-4, 1, DC.bevelHi);
-  px(H.x0+1, top-H.rise+1, H.x1-H.x0-2, 1, DC.bevel);
-  px(H.x0, top-H.rise+1, 1, H.rise, DC.baseLo);
-  px(H.x1-1, top-H.rise+1, 1, H.rise, DC.seam);
-  /* the shoulders where the bulge meets the flat top */
-  px(H.x0-2, top-2, 2, 2, DC.baseHi);
-  px(H.x1, top-2, 2, 2, DC.baseHi);
+function drawDialFace(g, cx, cy, R, o){
+  var i, v, a, maj, red, r0, r1, s;
 
-  px(0, top, L.GW, L.GH, DC.base);
-  px(0, top, L.GW, 1, DC.bevelHi);              /* lit bevel along the top */
-  px(0, top+1, L.GW, 1, DC.bevel);
-  px(0, top+2, L.GW, 1, DC.baseHi);
-  /* the body darkens towards the bottom in flat bands, no gradient */
-  px(0, top+Math.round(L.GH*0.34), L.GW, Math.round(L.GH*0.30), DC.baseLo);
-  px(0, top+Math.round(L.GH*0.64), L.GW, L.GH-Math.round(L.GH*0.64), DC.deep);
-  px(0, top+Math.round(L.GH*0.34), L.GW, 1, DC.seam);
-  px(0, top+Math.round(L.GH*0.64), L.GW, 1, DC.seam);
-  px(0, top+Math.round(L.GH*0.34)+1, L.GW, 1, '#2a323b');
-  px(0, top+Math.round(L.GH*0.64)+1, L.GW, 1, '#1e242b');
+  /* --- rim: a black edge, the turned ring, then the dark inner shoulder */
+  g.beginPath(); g.arc(cx, cy, R, 0, TAU);
+  g.fillStyle = '#000000'; g.fill();
+  var bw = R*0.058;
+  bezelRing(g, cx, cy, R - bw*0.6 - R*0.010, bw);
+  /* the crisp catch of light along the outer edge where the ring rolls over */
+  g.beginPath(); g.arc(cx, cy, R - R*0.014, Math.PI*1.03, Math.PI*1.86);
+  g.lineWidth = Math.max(0.8, R*0.013);
+  g.strokeStyle = 'rgba(236,243,246,.50)'; g.stroke();
+  g.beginPath(); g.arc(cx, cy, R - bw*1.2 - R*0.010, 0, TAU);
+  g.fillStyle = '#0b0e0f'; g.fill();
 
-  /* vertical panel seams, so the dash reads as mouldings bolted together */
-  var seams = [L.leftEdge+u(3), H.x0-u(3), H.x1+u(3), L.stat.x0-u(4)];
-  for(i=0;i<seams.length;i++){
-    x = seams[i];
-    if(x < u(4) || x > L.GW-u(4)) continue;
-    px(x, top+3, 1, L.GH-3, DC.seam);
-    px(x+1, top+3, 1, L.GH-3, '#2c353e');
+  /* --- matte black face, lifting very slightly through the middle --- */
+  var fr = R*0.925;
+  var fg = g.createRadialGradient(cx, cy-R*0.08, R*0.05, cx, cy, fr);
+  fg.addColorStop(0.00, '#14181a');
+  fg.addColorStop(0.55, '#0d1011');
+  fg.addColorStop(1.00, DC.glass);
+  g.beginPath(); g.arc(cx, cy, fr, 0, TAU); g.fillStyle = fg; g.fill();
+
+  /* --- tick geometry. Everything hangs off the outer tick radius, so the
+     ticks, the redline and the numbering can never drift apart. The
+     proportions are the reference's: ticks right out at the rim, numbers
+     well inside them, and a wide clear band of black between. --- */
+  var t1     = R*0.90;
+  var majLen = R*(o.small ? 0.15 : 0.10);
+  var minLen = R*(o.small ? 0.08 : 0.045);
+  var majW   = Math.max(1, R*(o.small ? 0.038 : 0.023));
+  var minW   = Math.max(0.7, R*(o.small ? 0.018 : 0.012));
+  var numSz  = o.numSize != null ? o.numSize : R*0.125;
+  var rn     = R*(o.small ? 0.65 : 0.67);              /* numbering ring */
+
+  /* the redline, as the reference paints it: short thick bars stepped
+     along the rim rather than one smooth band */
+  if(o.redFrom != null){
+    var ra0 = dialAngle(o.redFrom, o.min, o.max), ra1 = dialAngle(o.max, o.min, o.max);
+    var bars = Math.max(6, Math.round((ra1-ra0)*t1/(R*0.052)));
+    g.strokeStyle = DC.red; g.lineCap = 'butt';
+    g.lineWidth = Math.max(1.4, R*0.030);
+    for(i=0;i<bars;i++){
+      a = ra0 + (ra1-ra0)*(i+0.5)/bars;
+      g.beginPath();
+      g.moveTo(cx+Math.cos(a)*(t1-R*0.105), cy+Math.sin(a)*(t1-R*0.105));
+      g.lineTo(cx+Math.cos(a)*(t1+R*0.005), cy+Math.sin(a)*(t1+R*0.005));
+      g.stroke();
+    }
   }
 
-  /* ------------------------------------------------ left bank shells -- */
-  paintSteerShell(px, L.steerL);
-  paintSteerShell(px, L.steerR);
-  /* the five indicator lamps sit in a recessed strip above the arrows */
-  var lb = L.led, lbw = lb.n*lb.w + (lb.n-1)*lb.gap;
-  pxPanel(px, lb.x-2, lb.y-2, lbw+4, lb.h+4, DC.insetLo, null, null, DC.seam);
+  var steps = Math.round((o.max-o.min)/o.minor);
+  var majEvery = Math.round(o.major/o.minor);
+  var labEvery = majEvery*(o.labelEvery||1);
+  g.lineCap = 'butt';
+  for(i=0;i<=steps;i++){
+    v = o.min + i*o.minor;
+    maj = (i % majEvery) === 0;
+    red = o.redFrom != null && v >= o.redFrom - 1e-6;
+    a = dialAngle(v, o.min, o.max);
+    if(red && !maj) continue;
+    r1 = red ? t1 - R*0.115 : t1;
+    r0 = r1 - (maj ? majLen*0.7 : minLen);
+    g.beginPath();
+    g.moveTo(cx+Math.cos(a)*r0, cy+Math.sin(a)*r0);
+    g.lineTo(cx+Math.cos(a)*r1, cy+Math.sin(a)*r1);
+    g.lineWidth = maj ? majW : minW;
+    g.strokeStyle = red ? DC.red : (maj ? DC.tick : DC.tickDim);
+    g.stroke();
 
-  /* gear selector column */
+    /* the numbers stay white right through the redline — it is the band
+       that warns, not the numbering, and that is how the reference reads */
+    if(maj && (i % labEvery) === 0 && o.numbers !== false){
+      s = String(Math.round(v));
+      capText(g, s, cx+Math.cos(a)*rn, cy+Math.sin(a)*rn, numSz, DC.num, '400');
+    }
+  }
+
+  /* captions ride the centreline, clear of the numbering ring both sides */
+  if(o.label) capText(g, o.label, cx, cy - R*(o.small?0.16:0.255),
+                      R*(o.small?0.22:0.122), o.small ? DC.num : DC.label, '600', R*0.008);
+  if(o.sub)   capText(g, o.sub,   cx, cy + R*(o.small?0.71:0.42),
+                      R*(o.small?0.19:0.094), o.small ? DC.num : DC.numDim, '500');
+
+  /* one crescent of reflected light across the top left of the glass */
+  var gl = g.createLinearGradient(cx-fr*0.8, cy-fr*0.9, cx+fr*0.4, cy+fr*0.6);
+  gl.addColorStop(0.00, 'rgba(215,232,255,.13)');
+  gl.addColorStop(0.55, 'rgba(215,232,255,.03)');
+  gl.addColorStop(1.00, 'rgba(215,232,255,0)');
+  g.beginPath(); g.arc(cx, cy, fr*0.86, Math.PI*0.94, Math.PI*1.72);
+  g.lineWidth = fr*0.26; g.strokeStyle = gl; g.stroke();
+}
+
+/* A straight tapered pointer with a short counterweight, on a turned hub. */
+function drawNeedle(g, cx, cy, R, ang, col){
+  var len = R*0.78, tail = R*0.10;
+  var w0 = Math.max(1.2, R*0.042), w1 = Math.max(0.6, R*0.013);
+  g.save();
+  g.translate(cx, cy); g.rotate(ang);
+  g.beginPath();
+  g.moveTo(-tail, -w0*0.75); g.lineTo(-tail, w0*0.75);
+  g.lineTo(0, w0); g.lineTo(len, w1); g.lineTo(len, -w1); g.lineTo(0, -w0);
+  g.closePath();
+  g.fillStyle = col; g.fill();
+  g.beginPath();                                     /* lit upper flank */
+  g.moveTo(0, -w0); g.lineTo(len, -w1);
+  g.lineTo(len, -w1*0.1); g.lineTo(0, -w0*0.35);
+  g.closePath();
+  g.fillStyle = 'rgba(255,255,255,.30)'; g.fill();
+  g.restore();
+
+  var hr = R*0.068;
+  var hg = g.createLinearGradient(cx-hr, cy-hr, cx+hr, cy+hr);
+  hg.addColorStop(0, '#3d4446'); hg.addColorStop(0.5, DC.hub); hg.addColorStop(1, '#090c0d');
+  g.beginPath(); g.arc(cx, cy, hr, 0, TAU); g.fillStyle = hg; g.fill();
+  g.beginPath(); g.arc(cx, cy, hr*0.92, Math.PI*1.10, Math.PI*1.75);
+  g.lineWidth = Math.max(0.7, hr*0.22); g.strokeStyle = 'rgba(215,228,232,.30)'; g.stroke();
+}
+
+/* =========================================================================
+   STATIC ART
+   ========================================================================= */
+
+function buildDashBase(L, S){
+  var c = document.createElement('canvas');
+  c.width = Math.ceil(L.W*S); c.height = Math.ceil(L.CH*S);
+  var g = c.getContext('2d');
+  g.setTransform(S, 0, 0, S, 0, 0);
+  var u = L.u, X = L.X, Y = L.Y, i, x, y;
+
+  /* ------------------------------------------------------ the fascia -- */
+  var top = [], bot = [];
+  for(i=0;i<L.contour.length;i++){
+    var v = L.contour[i];
+    top.push([ X(v[0], v[2]), Y(v[1]) ]);
+  }
+  /* close the shape down the sides and along the screen's bottom edge */
+  bot = [ [L.W, L.CH], [0, L.CH] ];
+  var shape = top.concat(bot);
+
+  g.save();
+  polyPath(g, shape); g.clip();
+  /* The fascia is far darker than it looks: what reads as grey is the lit
+     top lip and the panel edges, not the moulding, which falls away to
+     nearly black within a few units of the top. */
+  g.fillStyle = vGrad(g, Y(-NRISE), L.CH, [
+    [0.00, '#3a4143'], [0.05, DC.faceHi], [0.14, '#202426'],
+    [0.34, '#181c1d'], [0.70, '#121516'], [1.00, '#08090a']
+  ]);
+  g.fillRect(0, 0, L.W, L.CH);
+  /* horizontal moulding seams: a dark cut with a lit lip under it */
+  var seams = [ Y(24), Y(48.5) ];
+  for(i=0;i<seams.length;i++){
+    g.fillStyle = 'rgba(0,0,0,.50)'; g.fillRect(0, seams[i], L.W, Math.max(1, u(0.5)));
+    g.fillStyle = 'rgba(190,205,210,.07)';
+    g.fillRect(0, seams[i]+Math.max(1, u(0.5)), L.W, Math.max(1, u(0.35)));
+  }
+  /* vertical splits where the mouldings bolt together */
+  var splits = [ X(59), X(219) ];
+  for(i=0;i<splits.length;i++){
+    g.fillStyle = 'rgba(0,0,0,.45)';
+    g.fillRect(splits[i], Y(-2), Math.max(1, u(0.4)), L.CH);
+    g.fillStyle = 'rgba(190,205,210,.06)';
+    g.fillRect(splits[i]+Math.max(1, u(0.4)), Y(-2), Math.max(1, u(0.3)), L.CH);
+  }
+  g.fillStyle = grainPattern(g); g.fillRect(0, 0, L.W, L.CH);   /* the grain */
+  /* the fascia falls away into shadow at the very bottom of the screen */
+  g.fillStyle = vGrad(g, L.CH-u(10), L.CH, [
+    [0,'rgba(0,0,0,0)'], [1,'rgba(0,0,0,.55)']
+  ]);
+  g.fillRect(0, L.CH-u(10), L.W, u(10));
+  g.restore();
+
+  /* the lit top lip, and a soft inner shoulder just under it */
+  g.beginPath();
+  g.moveTo(top[0][0], top[0][1]);
+  for(i=1;i<top.length;i++) g.lineTo(top[i][0], top[i][1]);
+  g.lineWidth = Math.max(1.4, u(0.9)); g.strokeStyle = DC.lip; g.stroke();
+  g.save();
+  g.translate(0, Math.max(1.4, u(1.1)));
+  g.beginPath();
+  g.moveTo(top[0][0], top[0][1]);
+  for(i=1;i<top.length;i++) g.lineTo(top[i][0], top[i][1]);
+  g.lineWidth = Math.max(1, u(0.7)); g.strokeStyle = 'rgba(0,0,0,.45)'; g.stroke();
+  g.restore();
+
+  /* ---------------------------------------------------- left bank ----- */
+  /* The steering bay is a raised shelf, not a hole: it stands proud of the
+     fascia so the moulding seams run behind it rather than across the keys. */
+  var LB = L.leftBay;
+  pad(g, LB.x, LB.y, LB.w, LB.h, u(5), '#232729', '#131617');
+  /* the five tell-tales, in a slot with cast dividers */
+  var lb = L.led, cw = lb.w/lb.n;
+  well(g, lb.x-u(1.6), lb.y-u(1.4), lb.w+u(3.2), lb.h+u(2.8), u(1.4), '#0d0f10');
+  for(i=1;i<lb.n;i++){
+    g.fillStyle = 'rgba(0,0,0,.65)';
+    g.fillRect(lb.x + i*cw - u(0.35), lb.y, Math.max(1, u(0.7)), lb.h);
+  }
+  /* the two steering keys: a bright cast frame around a dark textured pad */
+  drawKeyFrame(g, L.steerL, u);
+  drawKeyFrame(g, L.steerR, u);
+
+  /* ------------------------------------------------- gear selector ---- */
   var G = L.gear;
-  pxPanel(px, G.x, G.y, G.w, G.h, DC.inset, '#232b33', DC.insetLo, DC.seam);
-  pxTextFit(px, 'GEAR', G.x+G.w/2, G.y+2, G.w-2, DC.label, 1);
+  capText(g, 'GEAR', G.x+G.w/2, G.capY, u(3.7), DC.label, '500', L.U*0.10);
+  rrPath(g, G.x, G.y, G.w, G.h, u(1.8));
+  g.fillStyle = vGrad(g, G.y, G.y+G.h, [[0,'#2e3335'],[1,'#1c2022']]);
+  g.fill();
+  g.lineWidth = Math.max(1, u(0.55)); g.strokeStyle = 'rgba(170,182,186,.42)'; g.stroke();
+  for(i=1;i<G.rows;i++){                              /* row separators */
+    y = G.y + G.h*i/G.rows;
+    g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(G.x+u(0.8), y, G.w-u(1.6), Math.max(1, u(0.4)));
+    g.fillStyle = 'rgba(205,215,218,.16)';
+    g.fillRect(G.x+u(0.8), y+Math.max(1, u(0.4)), G.w-u(1.6), Math.max(1, u(0.3)));
+  }
 
-  /* ----------------------------------------------------- instruments -- */
-  paintDial(px, L.tachX, L.dialY, L.R, {
-    min:0, max:TACH_MAX, major:1, minor:0.5, redFrom:TACH_RED,
+  /* ------------------------------------------------------ instruments - */
+  drawDialFace(g, L.tachX, L.dialY, L.R, {
+    min:0, max:TACH_MAX, major:1, minor:0.25, redFrom:TACH_RED,
     label:'RPM', sub:'x1000'
   });
   var un = speedUnits(), smax = speedMax();
-  paintDial(px, L.spdX, L.dialY, L.R, {
-    min:0, max:smax, major:un.step, minor:un.minor,
-    labelEvery:1, label:un.label
+  drawDialFace(g, L.spdX, L.dialY, L.R, {
+    min:0, max:smax, major:un.step, minor:un.minor, label:un.label,
+    numSize: L.R*0.113
   });
-  paintDial(px, L.boost.x, L.boost.y, L.boost.r, {
-    /* too small to carry numbers as well as its captions: the ticks and
-       the two labels are what make it read as a boost gauge */
-    min:0, max:BOOST_MAX, major:10, minor:5, numbers:false, small:true,
-    label:'BOOST', sub:'PSI'
+  drawDialFace(g, L.boost.x, L.boost.y, L.boost.r, {
+    min:0, max:BOOST_MAX, major:10, minor:5, small:true,
+    label:'BOOST', sub:'PSI', numSize:L.boost.r*0.24
   });
 
-  /* ---------------------------------------------------- centre stack -- */
+  /* ----------------------------------------------------- centre stack - */
+  /* One housing carries the shift prompt, the two up-arrows and the rev
+     segments; the readout gets a second one under it, as on the reference. */
   var K = L.stack;
-  pxPanel(px, K.x, K.shiftY, K.w, K.shiftH, DC.insetLo, '#1d242c', null, DC.steelDk);
-  pxTextFit(px, 'SHIFT', K.x+K.w/2, K.shiftY+Math.round((K.shiftH-FONT_H)/2), K.w-2, DC.label, 1);
-  /* segment trough */
-  pxPanel(px, K.x, K.segY, K.w, K.segH, DC.insetLo, null, null, DC.seam);
-  /* digital readout housing */
-  pxPanel(px, K.x, K.boxY, K.w, K.boxH, DC.glass, null, null, DC.steel);
-  px(K.x+1, K.boxY+1, K.w-2, 1, DC.steelLo);
-  pxTextC(px, un.label, K.x+K.w/2, K.boxY+K.boxH-FONT_H-2, DC.numDim, 1);
+  stackHousing(g, K.x, K.topY, K.w, K.topH, u);
+  capText(g, 'SHIFT', K.x+K.w/2, K.shiftY+K.shiftH/2, K.shiftH*0.60, DC.label, '500', L.U*0.12);
+  g.fillStyle = 'rgba(150,165,170,.20)';
+  g.fillRect(K.x+u(1.6), K.shiftY+K.shiftH, K.w-u(3.2), Math.max(1, u(0.4)));
+  well(g, K.x+u(1.8), K.segY, K.w-u(3.6), K.segH, u(0.8), '#0c0e0f');
 
-  /* ------------------------------------------------- handbrake slot --- */
+  stackHousing(g, K.x, K.boxY, K.w, K.boxH, u);
+  well(g, K.x+u(2), K.boxY+u(2), K.w-u(4), K.boxH-u(9.5), u(1), '#000000');
+  capText(g, un.label, K.x+K.w/2, K.boxY+K.boxH-u(4.4), u(4), DC.numDim, '500', L.U*0.10);
+
+  /* ------------------------------------------------------ shifter ----- */
   var B = L.hb;
-  pxPanel(px, B.x, B.y, B.w, B.h, DC.baseLo, DC.baseHi, DC.seam, DC.seam);
-  /* the recessed slot the lever runs in */
-  var slotY = B.y + B.slotOff, slotH = B.slotH;
-  px(B.x+3, slotY, B.w-6, slotH, DC.insetLo);
-  px(B.x+3, slotY, B.w-6, 1, DC.seam);
-  px(B.x+3, slotY+slotH-1, B.w-6, 1, '#2b333c');
-  for(x=B.x+5; x<B.x+B.w-5; x+=3) px(x, slotY+1, 1, slotH-2, '#12171d');
-  px(B.x+2, B.y+B.h-3, B.w-4, 1, DC.seam);
+  pad(g, B.x, B.y, B.w, B.h, u(4), '#2c3133', '#1a1e20');
+  chamferPath(g, B.x+u(2.6), B.y+u(2.6), B.w-u(5.2), B.h-u(5.2), u(3));
+  g.fillStyle = vGrad(g, B.y, B.y+B.h, [[0,'#22272a'],[1,'#171b1d']]);
+  g.fill();
+  g.lineWidth = Math.max(1, u(0.6)); g.strokeStyle = 'rgba(0,0,0,.55)'; g.stroke();
+  g.save(); chamferPath(g, B.x+u(2.6), B.y+u(2.6), B.w-u(5.2), B.h-u(5.2), u(3)); g.clip();
+  g.fillStyle = grainPattern(g); g.fillRect(B.x, B.y, B.w, B.h);
+  g.restore();
+  /* the gate the lever runs in, cut straight through the plate */
+  rrPath(g, B.x+u(6), B.y+B.slotOff, B.w-u(12), B.slotH, B.slotH*0.28);
+  g.fillStyle = '#000000'; g.fill();
+  g.lineWidth = Math.max(1, u(0.5)); g.strokeStyle = 'rgba(160,175,180,.14)'; g.stroke();
 
-  /* ---------------------------------------------- indicator strip ----- */
+  /* ------------------------------------------------- indicator strip -- */
   var T = L.strip;
-  pxPanel(px, T.x, T.y, T.w, T.h, DC.insetLo, '#1c232a', DC.seam, DC.seam);
+  pad(g, T.x, T.y, T.w, T.h, u(5), '#1e2224', '#101314');
+  g.save(); chamferPath(g, T.x, T.y, T.w, T.h, u(5)); g.clip();
+  g.fillStyle = grainPattern(g); g.fillRect(T.x, T.y, T.w, T.h);
+  g.restore();
+  /* the two red tell-tale panels get their own recessed tiles */
+  var sl = T.w/5;
+  for(i=2;i<=3;i++){
+    var pw = sl*0.84, pxx = T.x + sl*(i+0.5) - pw/2;
+    well(g, pxx, T.y+T.h*0.14, pw, T.h*0.72, u(1.4), DC.redPanel);
+    chamferPath(g, pxx, T.y+T.h*0.14, pw, T.h*0.72, u(1.4));
+    g.lineWidth = Math.max(1, u(0.4)); g.strokeStyle = DC.redEdge; g.stroke();
+  }
 
-  /* ------------------------------------------------- status panels ---- */
+  /* ---------------------------------------------------- status tiles -- */
   var names = ['TRACTION','DIFF','THROTTLE'];
   var xs = [L.stat.x0, L.stat.x1, L.stat.x2];
   for(i=0;i<3;i++){
     var sx = xs[i], sy = L.stat.y, sw = L.stat.w, sh = L.stat.h;
-    pxPanel(px, sx, sy, sw, sh, DC.inset, '#242c35', DC.insetLo, DC.seam);
-    pxTextFit(px, names[i], sx+sw/2, sy+2, sw-4, DC.label, 1);
-    px(sx+2, sy+FONT_H+3, sw-4, 1, DC.seam);
+    pad(g, sx, sy, sw, sh, u(2.4), '#252a2c', '#121617');
+    well(g, sx+u(1.4), sy+u(7.8), sw-u(2.8), sh-u(9.2), u(1.4), '#0c0e0f');
+    capTextFit(g, names[i], sx+sw/2, sy+u(4.6), u(3.7), sw-u(3.2), DC.label, '500', 0);
   }
-  var icy = L.stat.y + Math.round(L.stat.h*0.52);
-  paintTractionIcon(px, xs[0]+Math.round(L.stat.w/2),    icy, L.U);
-  paintDiffIcon(px,     xs[1]+Math.round(L.stat.w/2),    icy, L.U);
-  paintPedalIcon(px,    xs[2]+Math.round(L.stat.w*0.70), icy, L.U);
-
+  var icy = L.stat.y + L.stat.h*0.55;
+  drawTractionIcon(g, xs[0]+L.stat.w/2,  icy, L.U);
+  drawDiffIcon(g,     xs[1]+L.stat.w/2,  icy, L.U);
+  drawPedalIcon(g,    xs[2]+L.stat.w*0.73, icy+L.U*0.6, L.U);
   return c;
 }
 
-/* ------------------------------------------------------- shell helpers */
-function paintSteerShell(px, S){
-  /* the housing the button sits in; the button face itself is live art */
-  px(S.x-1, S.y-1, S.w+2, S.h+2, DC.seam);
-  px(S.x-1, S.y-1, S.w+2, 1, DC.bevel);
+/* The centre stack's housings: a shallow chamfered box, barely proud of the
+   fascia, outlined in a thin lit edge rather than a heavy bevel. */
+function stackHousing(g, x, y, w, h, u){
+  chamferPath(g, x, y, w, h, u(2));
+  g.fillStyle = vGrad(g, y, y+h, [[0,'#1b1f21'],[1,'#0e1112']]);
+  g.fill();
+  g.lineWidth = Math.max(1, u(0.5));
+  g.strokeStyle = 'rgba(170,185,190,.30)';
+  g.stroke();
 }
 
-/* A car seen from behind with two skid trails under it, the traction
-   control tell-tale every road car uses. */
-function paintTractionIcon(px, cx, cy, U){
-  var k = Math.max(1, Math.round(U*1.1));
-  var bw = 6*k, bh = 5*k;
-  var x = cx - Math.round(bw/2), y = cy - 4*k;
-  px(x+k, y, bw-2*k, k, DC.green);             /* roof */
-  px(x, y+k, bw, 2*k, DC.green);               /* cabin */
-  px(x+k, y+k, bw-2*k, k, DC.greenLo);         /* glass */
-  px(x, y+3*k, bw, bh-3*k, DC.green);          /* body */
-  px(x-k, y+2*k, k, 2*k, DC.green);            /* mirrors */
-  px(x+bw, y+2*k, k, 2*k, DC.green);
-  /* the two skid trails, offset so they read as a wiggle */
-  px(x+k,      y+bh+k,   k, k, DC.green);
-  px(x+bw-2*k, y+bh+k,   k, k, DC.green);
-  px(x+2*k,    y+bh+2*k, k, k, DC.green);
-  px(x+bw-3*k, y+bh+2*k, k, k, DC.green);
-  px(x+k,      y+bh+3*k, k, k, DC.green);
-  px(x+bw-2*k, y+bh+3*k, k, k, DC.green);
+/* The readout is a real seven-segment display, ghost segments and all —
+   the reference's giveaway that it is an LCD and not just a number. */
+var SEG_ON = [
+  0x77,0x24,0x5D,0x6D,0x2E,0x6B,0x7B,0x25,0x7F,0x6F   /* 0-9, bits A..G */
+];
+function sevenSeg(g, s, cx, cy, h, on, off){
+  var w = h*0.60, t = h*0.145, gap = h*0.070;
+  var total = s.length*w + (s.length-1)*gap;
+  var x0 = cx - total/2, i, k, d, bits;
+  for(i=0;i<s.length;i++){
+    d = s.charCodeAt(i)-48;
+    bits = (d >= 0 && d <= 9) ? SEG_ON[d] : 0;
+    var x = x0 + i*(w+gap), y = cy - h/2;
+    /* A F B G E C D, each a flattened hexagon so the ends mitre together */
+    var segs = [
+      [x+t*0.5, y, w-t, t, 1],                     /* A top */
+      [x, y+t*0.5, t, h/2-t*0.75, 0],              /* F upper left */
+      [x+w-t, y+t*0.5, t, h/2-t*0.75, 0],          /* B upper right */
+      [x+t*0.5, y+h/2-t/2, w-t, t, 1],             /* G middle */
+      [x, y+h/2+t*0.25, t, h/2-t*0.75, 0],         /* E lower left */
+      [x+w-t, y+h/2+t*0.25, t, h/2-t*0.75, 0],     /* C lower right */
+      [x+t*0.5, y+h-t, w-t, t, 1]                  /* D bottom */
+    ];
+    for(k=0;k<7;k++){
+      var q = segs[k], lit = (bits >> (6-k)) & 1;
+      if(!lit && !off) continue;
+      g.beginPath();
+      if(q[4]){                                    /* horizontal */
+        g.moveTo(q[0]-t*0.5, q[1]+t*0.5); g.lineTo(q[0], q[1]);
+        g.lineTo(q[0]+q[2], q[1]); g.lineTo(q[0]+q[2]+t*0.5, q[1]+t*0.5);
+        g.lineTo(q[0]+q[2], q[1]+t); g.lineTo(q[0], q[1]+t);
+      } else {                                     /* vertical */
+        g.moveTo(q[0]+t*0.5, q[1]-t*0.5); g.lineTo(q[0]+t, q[1]);
+        g.lineTo(q[0]+t, q[1]+q[3]); g.lineTo(q[0]+t*0.5, q[1]+q[3]+t*0.5);
+        g.lineTo(q[0], q[1]+q[3]); g.lineTo(q[0], q[1]);
+      }
+      g.closePath();
+      g.fillStyle = lit ? on : off;
+      g.fill();
+    }
+  }
+}
+
+/* the cast frame around a steering key — bright on the top left, dark at
+   the foot, exactly the double bevel the reference gives them */
+function drawKeyFrame(g, K, u){
+  var r = u(5);
+  /* the shadow the key drops into its bay */
+  rrPath(g, K.x-u(2.2), K.y-u(2.2), K.w+u(4.4), K.h+u(4.4), r+u(1.5));
+  g.fillStyle = 'rgba(0,0,0,.60)'; g.fill();
+  /* a thin cast frame, bright where the light lands and dark underneath —
+     the reference gives these a rim, not the slab bezel it is easy to draw */
+  var fg = g.createLinearGradient(K.x, K.y, K.x+K.w*0.6, K.y+K.h);
+  fg.addColorStop(0.00, '#c6cbc6');
+  fg.addColorStop(0.24, '#868c88');
+  fg.addColorStop(0.55, '#454b4a');
+  fg.addColorStop(0.82, '#6f7573');
+  fg.addColorStop(1.00, '#33393a');
+  rrPath(g, K.x, K.y, K.w, K.h, r);
+  g.fillStyle = fg; g.fill();
+  g.lineWidth = Math.max(1, u(0.45)); g.strokeStyle = 'rgba(0,0,0,.55)'; g.stroke();
+  rrPath(g, K.x+u(1.7), K.y+u(1.7), K.w-u(3.4), K.h-u(3.4), r-u(1.2));
+  g.lineWidth = Math.max(1, u(0.5)); g.strokeStyle = 'rgba(10,14,15,.75)'; g.stroke();
+}
+
+/* --------------------------------------------------- status tile icons */
+/* A car seen from behind over two skid trails: the traction tell-tale. */
+function drawTractionIcon(g, cx, cy, U){
+  var w = U*7.6, h = U*4.0;
+  var x = cx-w/2, y = cy-U*4.2;
+  /* the car, seen from behind: a filled body under an outlined greenhouse,
+     which is what makes it read as a car and not a blob at this size */
+  g.strokeStyle = DC.green; g.fillStyle = DC.green;
+  g.lineWidth = Math.max(1.1, U*0.7); g.lineJoin = 'round'; g.lineCap = 'round';
+  g.beginPath();                                       /* roof and screen */
+  g.moveTo(x+w*0.26, y);        g.lineTo(x+w*0.74, y);
+  g.lineTo(x+w*0.84, y+h*0.42); g.lineTo(x+w*0.16, y+h*0.42);
+  g.closePath(); g.stroke();
+  g.beginPath();                                       /* body and haunches */
+  g.moveTo(x+w*0.10, y+h*0.46); g.lineTo(x+w*0.90, y+h*0.46);
+  g.lineTo(x+w, y+h*0.68);      g.lineTo(x+w, y+h);
+  g.lineTo(x, y+h);             g.lineTo(x, y+h*0.68);
+  g.closePath(); g.fill();
+  /* the two skid wiggles the tell-tale is known by */
+  g.lineWidth = Math.max(1.1, U*0.95);
+  var i, sx, yy = y+h+U*1.1;
+  for(i=0;i<2;i++){
+    sx = cx + (i ? w*0.24 : -w*0.24);
+    g.beginPath();
+    g.moveTo(sx+U*0.9, yy);
+    g.lineTo(sx-U*0.9, yy+U*1.5);
+    g.lineTo(sx+U*0.9, yy+U*2.9);
+    g.lineTo(sx-U*0.7, yy+U*4.1);
+    g.stroke();
+  }
 }
 /* Four hubs, two axles and a centre diff: the drivetrain schematic. */
-function paintDiffIcon(px, cx, cy, U){
-  var k = Math.max(1, Math.round(U*1.1));
-  var w = 8*k, h = 7*k;
-  var x = cx - Math.round(w/2), y = cy - Math.round(h/2);
-  px(x+k, y, w-2*k, k, DC.grey);               /* front axle */
-  px(x+k, y+h-k, w-2*k, k, DC.grey);           /* rear axle */
-  px(cx-Math.round(k/2), y+k, k, h-2*k, DC.grey);      /* prop shaft */
-  px(cx-2*k, Math.round(cy-1.5*k), 4*k, 3*k, DC.steel);/* centre diff */
-  px(cx-k, cy-Math.round(k/2), 2*k, k, DC.greyDim);
-  px(x, y-k, 2*k, 3*k, DC.greyLo);             /* hubs */
-  px(x+w-2*k, y-k, 2*k, 3*k, DC.greyLo);
-  px(x, y+h-2*k, 2*k, 3*k, DC.greyLo);
-  px(x+w-2*k, y+h-2*k, 2*k, 3*k, DC.greyLo);
+function drawDiffIcon(g, cx, cy, U){
+  var w = U*9.6, h = U*8.4;
+  var x = cx-w/2, y = cy-h/2;
+  var hw = U*2.0, hh = U*3.0;
+  var lx = x+hw/2, rx = x+w-hw/2, ty = y+hh/2, by = y+h-hh/2;
+  g.strokeStyle = DC.grey; g.lineWidth = Math.max(1.4, U*1.0); g.lineCap = 'butt';
+  g.beginPath();
+  g.moveTo(lx, ty); g.lineTo(rx, ty);                  /* front axle */
+  g.moveTo(lx, by); g.lineTo(rx, by);                  /* rear axle */
+  g.moveTo(cx, ty); g.lineTo(cx, by);                  /* prop shaft */
+  g.stroke();
+  g.fillStyle = DC.steel;                              /* the centre diff */
+  g.beginPath(); g.arc(cx, cy, U*1.5, 0, TAU); g.fill();
+  g.fillStyle = '#0d0f10';
+  g.beginPath(); g.arc(cx, cy, U*0.6, 0, TAU); g.fill();
+  g.fillStyle = DC.grey;                               /* the four hubs */
+  var i, px, py;
+  for(i=0;i<4;i++){
+    px = (i & 1) ? rx : lx; py = (i & 2) ? by : ty;
+    rrPath(g, px-hw/2, py-hh/2, hw, hh, U*0.7); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.22)';
+    g.fillRect(px-hw/2, py-hh/2, hw, U*0.6);
+    g.fillStyle = DC.grey;
+  }
 }
-/* A hinged throttle pedal on its floor mount. */
-function paintPedalIcon(px, cx, cy, U){
-  var k = Math.max(1, Math.round(U*1.1));
-  var w = 3*k, h = 9*k;
-  var x = cx - Math.round(w/2), y = cy - Math.round(h/2);
-  px(x-1, y-1, w+2, h+2, DC.seam);
-  px(x, y, w, h, DC.greyLo);                   /* pedal plate */
-  px(x, y, w, k, DC.steel);                    /* lit top */
-  px(x, y, 1, h, DC.grey);
-  for(var i=y+2*k; i<y+h-k; i+=2*k) px(x+1, i, w-2, 1, DC.greyDim);
-  px(x-k, y+h-2*k, k, 2*k, DC.greyDim);        /* floor hinge */
+/* A hinged throttle pedal on its floor mount, raked as it is on the car. */
+function drawPedalIcon(g, cx, cy, U){
+  var w = U*5.0, h = U*12.0;
+  var x = cx-w/2, y = cy-h/2;
+  g.save();
+  g.translate(cx, cy); g.rotate(0.20); g.translate(-cx, -cy);
+  rrPath(g, x, y, w, h, U*1.0);
+  g.fillStyle = vGrad(g, y, y+h, [[0,'#c2c9cc'],[0.45,'#7c8386'],[1,'#3e4446']]);
+  g.fill();
+  g.lineWidth = Math.max(1, U*0.55); g.strokeStyle = '#0b0d0e'; g.stroke();
+  rrPath(g, x+U*0.8, y+U*0.9, w-U*1.6, h-U*1.8, U*0.6);
+  g.lineWidth = Math.max(1, U*0.45); g.strokeStyle = 'rgba(0,0,0,.35)'; g.stroke();
+  g.fillStyle = 'rgba(0,0,0,.30)';
+  for(var i=y+U*2.0; i<y+h-U*1.2; i+=U*1.9)
+    g.fillRect(x+U*1.1, i, w-U*2.2, Math.max(1, U*0.55));
+  g.restore();
 }
 
 /* =========================================================================
-   LIVE ART
+   CONTROLS THAT MOVE
    ========================================================================= */
 
 var hudCtl = { hb:0, padUp:0, padDn:0 };
 
-/* Small pieces whose art only changes when their control does. Each keeps
-   its own bitmap so a frame costs a blit rather than a few hundred rects. */
+/* Each keeps its own bitmap and only repaints when its state changes, so a
+   frame costs three blits rather than three full re-renders. */
 var dashArt = {};
 function artPiece(name, key, w, h, S, paint){
   var a = dashArt[name];
+  w = Math.ceil(w); h = Math.ceil(h);
   if(!a || a.key !== key || a.w !== w || a.h !== h || a.S !== S){
     var c = document.createElement('canvas');
-    c.width = Math.max(1, w*S); c.height = Math.max(1, h*S);
+    c.width = Math.max(1, Math.ceil(w*S)); c.height = Math.max(1, Math.ceil(h*S));
     var g = c.getContext('2d');
-    g.imageSmoothingEnabled = false;
-    paint(rasterInto(g, S), w, h);
+    g.setTransform(S, 0, 0, S, 0, 0);
+    paint(g, w, h);
     a = dashArt[name] = { key:key, w:w, h:h, S:S, cv:c };
   }
   return a.cv;
 }
-function blitArt(g, cv, x, y, S){ g.drawImage(cv, x*S, y*S); }
-
-/* --------------------------------------------------------- needle ----- */
-function paintNeedle(px, cx, cy, R, ang, col, hi){
-  var len = Math.round(R*0.80);
-  var tail = Math.round(R*0.16);
-  var hubR = Math.max(2, Math.round(R*0.14));
-  var i, w;
-  /* the blade tapers from two cells at the hub down to one at the tip */
-  for(i=-tail; i<=len; i++){
-    w = i > len*0.55 ? 1 : 2;
-    px(Math.round(cx + Math.cos(ang)*i - (w-1)/2),
-       Math.round(cy + Math.sin(ang)*i - (w-1)/2), w, w, i < 0 ? DC.hub : col);
-  }
-  pxDisc(px, cx, cy, hubR, DC.steelLo);
-  pxDisc(px, cx, cy, Math.max(1, hubR-1), DC.hub);
-  px(cx-1, cy-hubR, 2, 1, hi || DC.steelHi);
+function blitArt(g, cv, x, y, S){
+  g.drawImage(cv, 0, 0, cv.width, cv.height,
+              x, y, cv.width/S, cv.height/S);
 }
 
-/* --------------------------------------------------- steering button -- */
-function paintSteerFace(px, w, h, right, pressed){
-  var face = pressed ? '#414c57' : '#2b333c';
-  /* stepped corners: the mockup's rounded verticals, in whole cells */
-  px(2, 0, w-4, 1, DC.steelLo);
-  px(1, 1, w-2, 1, DC.steelLo);
-  px(0, 2, w, h-4, DC.steelLo);
-  px(1, h-2, w-2, 1, DC.steelLo);
-  px(2, h-1, w-4, 1, DC.steelLo);
-  var d = pressed ? 1 : 0;
-  px(3, 2+d, w-6, h-5, face);
-  px(3, 2+d, w-6, 1, pressed ? '#59646f' : '#4d5761');   /* top bevel */
-  px(3, h-3+d, w-6, 1, '#1a2027');                        /* foot shadow */
-  px(2, 3+d, 1, h-7, pressed ? '#4d5761' : '#3d4650');
-  px(w-3, 3+d, 1, h-7, '#1a2027');
+/* -------------------------------------------------- steering key face */
+function drawKeyFace(g, w, h, right, pressed){
+  var U = h/45.7;
+  var d = pressed ? U*0.9 : 0;
+  var m = U*2.4, r = U*3.8;
+  rrPath(g, m, m+d, w-2*m, h-2*m-d*0.5, r);
+  g.fillStyle = vGrad(g, m, h-m, pressed ? [[0,'#363d40'],[1,'#1e2426']]
+                                         : [[0,'#22272a'],[1,'#111516']]);
+  g.fill();
+  g.save(); rrPath(g, m, m+d, w-2*m, h-2*m-d*0.5, r); g.clip();
+  g.fillStyle = grainPattern(g); g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(0,0,0,.40)'; g.fillRect(0, m+d, w, U*1.6);
+  g.restore();
+  g.lineWidth = Math.max(1, U*0.5); g.strokeStyle = 'rgba(0,0,0,.55)'; g.stroke();
 
-  /* solid triangle glyph, column by column so the edge stays crisp */
-  var n = Math.max(4, Math.round(w*0.42));
-  var ink = pressed ? '#f4f8fc' : '#c4ced8';
-  var cy = Math.round(h/2) + d;
-  var ax = Math.round(w/2) + (right ? -Math.round(n/2) : Math.round(n/2));
-  for(var i=0;i<n;i++){
-    var hh = (n-i)*2 - 1;
-    px(right ? ax+i : ax-i, cy - Math.floor(hh/2), 1, hh, ink);
-  }
+  /* a soft grey triangle pointing outboard, the way the reference draws it */
+  var s = w*0.22, cx = w/2 + (right ? s*0.10 : -s*0.10), cy = h/2 + d;
+  g.beginPath();
+  if(right){ g.moveTo(cx+s, cy); g.lineTo(cx-s*0.78, cy-s*1.02); g.lineTo(cx-s*0.78, cy+s*1.02); }
+  else     { g.moveTo(cx-s, cy); g.lineTo(cx+s*0.78, cy-s*1.02); g.lineTo(cx+s*0.78, cy+s*1.02); }
+  g.closePath();
+  g.fillStyle = pressed ? '#dfe5e7' : '#8b9295'; g.fill();
 }
 
-/* ------------------------------------------------------ shift paddle --
-   A tapered alloy wedge, wider at the top and raked outward, on a stalk
-   that runs down into the dash. Left is marked -, right +. */
-function paintPaddle(px, w, h, up, press, active){
-  var stalkH = Math.max(5, Math.round(h*0.24));
-  var bladeH = h - stalkH;
+/* -------------------------------------------------------- shift paddle
+   A cast blade raked outward, wide at the top and tapering into a stalk
+   that runs down behind the binnacle. Left is marked minus, right plus. */
+function drawPaddle(g, w, h, up, press, active){
   var down = press > 0.4;
-  var y, t, rowW, x0, lean;
-  var edge   = down ? '#6d5210' : '#04070a';
-  var face   = down ? '#e0a52c' : (active ? '#39424b' : '#333b43');
-  var faceHi = down ? '#ffd487' : (active ? '#4c5660' : '#434c55');
-  var bevel  = down ? '#fff0c8' : (active ? '#c6d0da' : '#98a2ac');
-  var shade  = down ? '#8a6416' : '#14191f';
-  var lean0  = Math.round(w*0.30);
+  var lean = w*0.22 * (up ? 1 : -1);
+  var bladeH = h*0.74;
+  var x0 = up ? w*0.10 : w*0.90, sgn = up ? 1 : -1;
+  /* four corners: outboard-top, inboard-top, inboard-bottom, outboard-bottom */
+  var pts = [
+    [x0 - sgn*w*0.02 + lean, h*0.02],
+    [x0 + sgn*w*0.80 + lean, h*0.10],
+    [x0 + sgn*w*0.62,        bladeH],
+    [x0 + sgn*w*0.10,        bladeH*0.98]
+  ];
+  var mid = (pts[2][0]+pts[3][0])/2;
 
-  /* Mounting stalk: a short square post on the inboard side that runs down
-     past the dash line, so the blade reads as bolted to the column. */
-  var stW = Math.max(3, Math.round(w*0.30));
-  var stX = up ? w - stW - Math.round(w*0.08) : Math.round(w*0.08);
-  px(stX-1, bladeH-2, stW+2, stalkH+2, edge);
-  px(stX, bladeH-1, stW, stalkH+1, DC.steelDk);
-  px(stX, bladeH-1, 1, stalkH+1, DC.steelLo);
-  px(stX+stW-1, bladeH-1, 1, stalkH+1, '#12171d');
+  /* the stalk, drawn first so the blade caps it */
+  g.fillStyle = '#15191a';
+  g.fillRect(mid - w*0.16, bladeH - h*0.04, w*0.32, h - bladeH + h*0.04);
+  g.fillStyle = '#2a2f31';
+  g.fillRect(mid - w*0.12, bladeH - h*0.04, w*0.24, h - bladeH + h*0.04);
 
-  /* The blade. Wide at the top, tapering down, and each row steps outward
-     so the whole wedge rakes away from the centre of the dash. `up` is the
-     left-hand blade here, the one marked minus. */
-  for(y=0; y<bladeH; y++){
-    t = y/(bladeH-1);
-    rowW = Math.max(4, Math.round(w*(1 - t*0.26)));
-    lean = Math.round(t*lean0) * (up ? 1 : -1);
-    x0 = (up ? 0 : w-rowW) + lean;
-    x0 = clamp(x0, 0, w-rowW);
-    px(x0, y, rowW, 1, edge);                            /* cast outline */
-    if(y < 1 || y > bladeH-2) continue;
-    px(x0+1, y, rowW-2, 1, t < 0.45 ? faceHi : face);    /* two-tone face */
-    px(x0+1, y, 1, 1, bevel);                            /* lit outboard edge */
-    px(x0+rowW-2, y, 1, 1, shade);                       /* shaded inboard edge */
-  }
-  px(1, 1, w-2, 1, bevel);                               /* bright top lip */
-  px(2, 2, w-4, 1, down ? '#ffdd9c' : (active ? '#8b96a1' : '#6f7983'));
+  g.save();
+  g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = w*0.18; g.shadowOffsetY = w*0.08;
+  polyPath(g, pts);
+  g.fillStyle = down ? '#e0a52c'
+                     : (active ? vGrad(g, 0, bladeH, [[0,'#3b4144'],[0.55,'#272c2e'],[1,'#191d1f']])
+                               : vGrad(g, 0, bladeH, [[0,'#33383a'],[1,'#181c1e']]));
+  g.fill();
+  g.restore();
+  g.lineWidth = Math.max(1, w*0.035);
+  g.strokeStyle = down ? '#ffd487' : 'rgba(180,192,196,.30)';
+  g.stroke();
+  /* a lit edge down the outboard flank */
+  g.beginPath();
+  g.moveTo(pts[0][0], pts[0][1]); g.lineTo(pts[3][0], pts[3][1]);
+  g.lineWidth = Math.max(1, w*0.055);
+  g.strokeStyle = down ? '#fff0c8' : 'rgba(210,222,226,.34)';
+  g.stroke();
 
-  /* The stamped marking, low on the blade and carried out with the rake. */
-  var mk = down ? '#4a3708' : (active ? '#d3dbe3' : '#8e98a2');
-  var my = Math.round(bladeH*0.70);
-  var mt = Math.max(1, Math.round(w*0.10));
-  var mw = Math.max(4, Math.round(w*0.40));
-  var mcx = Math.round(w/2) + Math.round((my/(bladeH-1))*lean0)*(up ? 1 : -1);
-  px(Math.round(mcx-mw/2), Math.round(my-mt/2), mw, mt, mk);
-  if(!up) px(Math.round(mcx-mt/2), Math.round(my-mw/2), mt, mw, mk);
+  /* the stamped marking, low on the blade and carried out with the rake */
+  var mx = (pts[2][0]+pts[3][0])/2 + lean*0.2, my = bladeH*0.70;
+  var mw = w*0.34, mt = Math.max(1.4, w*0.10);
+  g.fillStyle = down ? '#4a3708' : (active ? '#dfe6e9' : '#9aa1a4');
+  g.fillRect(mx-mw/2, my-mt/2, mw, mt);
+  if(!up) g.fillRect(mx-mt/2, my-mw/2, mt, mw);
 }
 
-/* ------------------------------------------------------- handbrake ----
-   A pull lever standing in its slot: a chromed arm on a pivot down in the
-   housing, raked back at rest and swinging up towards the driver as it is
-   pulled. The art box covers the throw as well as the lever itself. */
-function paintHandbrake(px, w, h, v, pivotUp){
-  var pivotX = Math.round(w*0.50), pivotY = h - pivotUp;
-  var ang = (58 + v*28) * Math.PI/180;              /* 58deg at rest */
+/* ------------------------------------------------------------- shifter
+   A gated lever: a turned barrel rising out of the gate on a collar,
+   raked back at rest and pulled upright as the handbrake goes on. */
+function drawShifter(g, w, h, v, gateY){
+  var px0 = w*0.50, py0 = gateY;
+  var ang = (72 - v*16) * Math.PI/180;
   var dx = Math.cos(ang), dy = -Math.sin(ang);
-  var len = pivotY - Math.max(4, Math.round(h*0.14));
-  var i, gx, gy;
+  var len = gateY - h*0.30;
   var on = v > 0.5;
-  var shaftHi = on ? '#f2f7fb' : DC.steelHi;
+  var tx = px0 + dx*len, ty = py0 + dy*len;
+  /* A proper gear lever is a thick barrel, not a wand: the reference's is a
+     quarter of the gate plate across, with a turned highlight down one
+     flank and a domed cap on top. */
+  var aw = w*0.105;
+  var nx = -dy, ny = dx;                       /* the barrel's across vector */
 
-  /* pivot boss down in the slot */
-  px(pivotX-2, pivotY-1, 5, 3, DC.steelDk);
-  px(pivotX-1, pivotY, 3, 1, DC.steelLo);
+  g.save();
+  /* the collar the barrel turns in, sitting down in the gate */
+  g.beginPath();
+  g.ellipse(px0, py0, aw*1.35, aw*0.62, 0, 0, TAU);
+  g.fillStyle = '#202527'; g.fill();
+  g.lineWidth = Math.max(1, w*0.008); g.strokeStyle = 'rgba(180,192,196,.28)'; g.stroke();
 
-  /* The arm: four cells across, dark on both flanks with a bright column
-     of turned steel down the middle, so it reads as a round chromed bar. */
-  var aw = Math.max(3, Math.round(w*0.13));
-  for(i=0;i<=len;i++){
-    gx = Math.round(pivotX + dx*i); gy = Math.round(pivotY + dy*i);
-    px(gx-aw, gy-1, aw*2+1, 2, DC.seam);            /* cast outline */
-    px(gx-aw+1, gy-1, aw*2-1, 2, DC.steelDk);
-    px(gx-1, gy-1, 2, 2, DC.steelLo);
-    px(gx, gy-1, 1, 2, shaftHi);                    /* the catch of light */
+  g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = w*0.05; g.shadowOffsetX = w*0.015;
+  /* the barrel, shaded across its width so it reads as round */
+  var bg = g.createLinearGradient(px0-nx*aw, py0-ny*aw, px0+nx*aw, py0+ny*aw);
+  bg.addColorStop(0.00, '#101415');
+  bg.addColorStop(0.26, on ? '#6d6248' : '#5b6265');
+  bg.addColorStop(0.44, on ? '#ffd487' : '#c3cacd');
+  bg.addColorStop(0.62, on ? '#8a7440' : '#4d5456');
+  bg.addColorStop(1.00, '#0b0e0f');
+  g.beginPath(); g.lineCap = 'round';
+  g.moveTo(px0, py0); g.lineTo(tx, ty);
+  g.lineWidth = aw*2; g.strokeStyle = bg; g.stroke();
+  g.restore();
+  /* the machined grip rings up the shaft */
+  g.save();
+  g.beginPath(); g.lineCap = 'round';
+  g.moveTo(px0, py0); g.lineTo(tx, ty);
+  g.lineWidth = aw*2; g.strokeStyle = 'rgba(0,0,0,0)'; g.stroke();
+  g.clip();
+  g.strokeStyle = 'rgba(0,0,0,.30)'; g.lineWidth = Math.max(1, w*0.010);
+  for(var i=0.18;i<0.95;i+=0.13){
+    var mx = px0 + dx*len*i, my = py0 + dy*len*i;
+    g.beginPath();
+    g.moveTo(mx-nx*aw, my-ny*aw); g.lineTo(mx+nx*aw, my+ny*aw);
+    g.stroke();
   }
-  gx = Math.round(pivotX + dx*len); gy = Math.round(pivotY + dy*len);
-  var gw = Math.max(5, Math.round(w*0.30)), gh = Math.max(6, Math.round(h*0.22));
-  var gx0 = Math.round(gx-gw/2), gy0 = gy-gh;
-  px(gx0-1, gy0-1, gw+2, gh+2, DC.seam);            /* rubber grip */
-  px(gx0, gy0, gw, gh, on ? DC.amberLo : '#2b323a');
-  px(gx0, gy0, gw, 1, on ? DC.amber : '#69747f');
-  px(gx0, gy0, 1, gh, on ? DC.amber : '#4f5963');
-  px(gx0+gw-1, gy0, 1, gh, '#12171d');
-  for(i=gy0+2; i<gy0+gh-1; i+=2)                    /* moulded ribs */
-    px(gx0+1, i, gw-2, 1, on ? '#6d4b12' : '#1e242b');
-  px(gx0+1, gy0-2, gw-2, 2, on ? DC.amber : DC.grey);   /* release button */
-  px(gx0+1, gy0-3, gw-2, 1, DC.seam);
+  g.restore();
+  /* the domed cap */
+  g.beginPath(); g.ellipse(tx, ty, aw*1.02, aw*0.80, ang, 0, TAU);
+  var kg = g.createLinearGradient(tx-nx*aw, ty-ny*aw, tx+nx*aw, ty+ny*aw);
+  kg.addColorStop(0, '#3f4547');
+  kg.addColorStop(0.40, on ? '#ffd487' : '#cfd6d8');
+  kg.addColorStop(1, '#14181a');
+  g.fillStyle = kg; g.fill();
+  g.lineWidth = Math.max(1, w*0.008); g.strokeStyle = 'rgba(0,0,0,.5)'; g.stroke();
 }
 
-/* ------------------------------------------------- indicator icons ---- */
-function paintArrowGlyph(px, cx, cy, k, right, col){
-  var n = 3*k;
-  for(var i=0;i<n;i++){
-    var hh = (n-i)*2 - 1;
-    px(right ? cx-Math.round(n/2)+i : cx+Math.round(n/2)-i, cy-Math.floor(hh/2), 1, hh, col);
+/* ---------------------------------------------------- indicator glyphs */
+function glyphArrow(g, cx, cy, s, right, col){
+  g.beginPath();
+  if(right){
+    g.moveTo(cx+s, cy);
+    g.lineTo(cx+s*0.10, cy-s*0.72); g.lineTo(cx+s*0.10, cy-s*0.30);
+    g.lineTo(cx-s,      cy-s*0.30); g.lineTo(cx-s,      cy+s*0.30);
+    g.lineTo(cx+s*0.10, cy+s*0.30); g.lineTo(cx+s*0.10, cy+s*0.72);
+  } else {
+    g.moveTo(cx-s, cy);
+    g.lineTo(cx-s*0.10, cy-s*0.72); g.lineTo(cx-s*0.10, cy-s*0.30);
+    g.lineTo(cx+s,      cy-s*0.30); g.lineTo(cx+s,      cy+s*0.30);
+    g.lineTo(cx-s*0.10, cy+s*0.30); g.lineTo(cx-s*0.10, cy+s*0.72);
   }
-  px(right ? cx-2*k : cx-k, cy-Math.round(k/2), 3*k, Math.max(1,k), col);
+  g.closePath();
+  g.fillStyle = col; g.fill();
 }
-/* The headlamp tell-tale: a D-shaped lamp bowl throwing three beams. */
-function paintHeadlightGlyph(px, cx, cy, k, col){
-  var x = cx - 4*k, y = cy - 3*k;
-  px(x, y, 2*k, 6*k, col);                       /* back of the bowl */
-  px(x+2*k, y+k, k, 4*k, col);                   /* the domed lens */
-  px(x+3*k, y+2*k, k, 2*k, col);
-  for(var i=0;i<3;i++) px(x+5*k, y+k+i*2*k, 3*k, Math.max(1,k), col);
-}
-/* Belted occupant: a seated figure with the sash cut across the chest.
-   Drawn from a bitmap so the silhouette survives at any icon size. */
-var BELT_ART = [
-  '0011000',
-  '0011000',
-  '0000000',
-  '0111010',
-  '1110110',
-  '1101010',
-  '1111110',
-  '1110000',
-  '1110000'
-];
-function paintBeltGlyph(px, cx, cy, k, col){
-  var x = cx - Math.round(BELT_ART[0].length*k/2);
-  var y = cy - Math.round(BELT_ART.length*k/2);
-  for(var r=0;r<BELT_ART.length;r++){
-    var row = BELT_ART[r], run = 0;
-    for(var c=0;c<=row.length;c++){
-      if(c < row.length && row.charAt(c) === '1'){ run++; continue; }
-      if(run){ px(x+(c-run)*k, y+r*k, run*k, k, col); run = 0; }
-    }
+/* The headlamp tell-tale: a D-shaped bowl throwing three beams. */
+function glyphHeadlight(g, cx, cy, s, col){
+  g.strokeStyle = col; g.fillStyle = col;
+  g.lineWidth = Math.max(1.2, s*0.16); g.lineCap = 'butt';
+  g.beginPath();
+  g.moveTo(cx-s*0.55, cy-s*0.8); g.lineTo(cx-s*0.15, cy-s*0.8);
+  g.arc(cx-s*0.15, cy, s*0.8, -Math.PI/2, Math.PI/2);
+  g.lineTo(cx-s*0.55, cy+s*0.8); g.closePath();
+  g.stroke();
+  var i;
+  for(i=0;i<3;i++){
+    g.beginPath();
+    g.moveTo(cx+s*0.55, cy-s*0.46+i*s*0.46);
+    g.lineTo(cx+s*1.15, cy-s*0.46+i*s*0.46);
+    g.stroke();
   }
+}
+/* Belted occupant: a seated figure with the sash across the chest. */
+function glyphBelt(g, cx, cy, s, col){
+  g.fillStyle = col; g.strokeStyle = col;
+  g.lineWidth = Math.max(1.2, s*0.20); g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath(); g.arc(cx-s*0.10, cy-s*0.78, s*0.26, 0, TAU); g.fill();
+  g.beginPath();                                   /* torso + thigh + shin */
+  g.moveTo(cx-s*0.34, cy-s*0.40); g.lineTo(cx-s*0.14, cy+s*0.18);
+  g.lineTo(cx+s*0.40, cy+s*0.20);
+  g.stroke();
+  g.beginPath();
+  g.moveTo(cx-s*0.34, cy-s*0.40); g.lineTo(cx-s*0.34, cy+s*0.72);
+  g.lineTo(cx+s*0.20, cy+s*0.72);
+  g.stroke();
+  g.beginPath();                                   /* the sash */
+  g.moveTo(cx+s*0.34, cy-s*0.72); g.lineTo(cx-s*0.24, cy+s*0.10);
+  g.lineWidth = Math.max(1.2, s*0.16);
+  g.stroke();
 }
 /* Parking brake: a circled P inside a broken ring. */
-function paintParkGlyph(px, cx, cy, k, col){
-  var r = 4*k;
-  pxRing(px, cx, cy, r, Math.max(1, k), col);
-  px(cx-r, cy-Math.round(k/2), Math.max(1,k), k, DC.insetLo);   /* the two breaks */
-  px(cx+r-k+1, cy-Math.round(k/2), Math.max(1,k), k, DC.insetLo);
-  pxText(px, 'P', cx-Math.round(1.5*k), cy-Math.round(2.5*k), col, k);
+function glyphPark(g, cx, cy, s, col){
+  g.strokeStyle = col; g.lineWidth = Math.max(1.2, s*0.15);
+  g.beginPath(); g.arc(cx, cy, s, Math.PI*0.10, Math.PI*0.90); g.stroke();
+  g.beginPath(); g.arc(cx, cy, s, Math.PI*1.10, Math.PI*1.90); g.stroke();
+  g.beginPath(); g.arc(cx, cy, s*0.62, 0, TAU); g.stroke();
+  capText(g, 'P', cx, cy, s*0.92, col, '700');
 }
 
 /* =========================================================================
@@ -2546,189 +2764,189 @@ function paintParkGlyph(px, cx, cy, k, col){
 function ensureDash(){
   var el = document.getElementById('dash-cv');
   if(!el) return false;
-  var S = Math.max(1, Math.round(Math.min(window.devicePixelRatio || 1, 2)));
-  var key = Math.round(view.w)+'x'+Math.round(view.h)+'@'+S+'/'+
+  var S = Math.min(window.devicePixelRatio || 1, 3);
+  var key = Math.round(view.w)+'x'+Math.round(view.h)+'@'+S.toFixed(2)+'/'+
             save.settings.units+'/'+Math.round(speedMax());
   if(key !== dash.key || dash.cv !== el || !dash.base){
     var L = dashLayout();
     dash.cv = el; dash.L = L; dash.S = S;
-    el.width = L.GW*S; el.height = L.CH*S;
-    el.style.width = (L.GW*L.PX)+'px';
-    el.style.height = (L.CH*L.PX)+'px';
-    el.style.left = L.originX+'px';
+    el.width = Math.ceil(L.W*S); el.height = Math.ceil(L.CH*S);
+    el.style.width = L.W+'px';
+    el.style.height = L.CH+'px';
+    el.style.left = '0px';
     dash.g = el.getContext('2d');
     dash.base = buildDashBase(L, S);
     dash.key = key;
     dashArt = {};
     layoutHitBoxes(L);
-    document.documentElement.style.setProperty('--dash-h', (L.GH*L.PX)+'px');
+    document.documentElement.style.setProperty('--dash-h', ((NH+NRISE)*L.U)+'px');
   }
-  dash.g.imageSmoothingEnabled = false;
+  dash.g.setTransform(dash.S, 0, 0, dash.S, 0, 0);
   return true;
 }
 
 function drawDash(r){
   if(!ensureDash()) return;
   var L = dash.L, S = dash.S, g = dash.g, u = L.u, i, x, y;
-  var px = rasterInto(g, S);
-  g.clearRect(0, 0, L.GW*S, L.CH*S);
-  g.drawImage(dash.base, 0, 0);
+  g.clearRect(0, 0, L.W, L.CH);
+  g.drawImage(dash.base, 0, 0, dash.base.width, dash.base.height, 0, 0, L.W, L.CH);
 
-  var spd  = r ? Math.abs(r.car.fwd) : 0;
-  var thr  = r ? r.throttle : 0;
-  var un   = speedUnits();
+  var spd = r ? Math.abs(r.car.fwd) : 0;
+  var thr = r ? r.throttle : 0;
+  var un  = speedUnits();
+  var rpm = dash.nRpm;
 
-  /* ---------------------------------------------------- steering ------ */
-  var sl = artPiece('steerL', input.left?1:0, L.steerL.w, L.steerL.h, S, function(p,w,h){
-    paintSteerFace(p, w, h, false, input.left);
+  /* ---------------------------------------------------- steering keys - */
+  var kl = artPiece('steerL', input.left?1:0, L.steerL.w, L.steerL.h, S, function(gg,w,h){
+    drawKeyFace(gg, w, h, false, input.left);
   });
-  blitArt(g, sl, L.steerL.x, L.steerL.y, S);
-  var sr = artPiece('steerR', input.right?1:0, L.steerR.w, L.steerR.h, S, function(p,w,h){
-    paintSteerFace(p, w, h, true, input.right);
+  blitArt(g, kl, L.steerL.x, L.steerL.y, S);
+  var kr = artPiece('steerR', input.right?1:0, L.steerR.w, L.steerR.h, S, function(gg,w,h){
+    drawKeyFace(gg, w, h, true, input.right);
   });
-  blitArt(g, sr, L.steerR.x, L.steerR.y, S);
+  blitArt(g, kr, L.steerR.x, L.steerR.y, S);
 
-  /* ------------------------------------------------------- LED bar ---- */
-  /* five lamps that fill with road speed, the dash's rev-and-go tell-tale */
-  var lb = L.led, lit = Math.round(clamp(spd/Math.max(1,(r?r.stats.topSpeed:200)),0,1)*lb.n);
+  /* ------------------------------------------------------- tell-tales - */
+  /* Five ignition tell-tales. They come on with the car and stay on, which
+     is what the reference shows and what a lamp row on a fascia does; the
+     rightmost one blinks out under a shift prompt so the row still says
+     something. */
+  var lb = L.led, cw = lb.w/lb.n;
   for(i=0;i<lb.n;i++){
-    x = lb.x + i*(lb.w+lb.gap);
-    px(x, lb.y, lb.w, lb.h, i < lit ? DC.green : DC.greenDim);
-    if(i < lit) px(x, lb.y, lb.w, 1, '#b6ffc2');
-  }
-
-  /* --------------------------------------------------- gear selector -- */
-  var G = L.gear;
-  var rows = gearRows(r);
-  for(i=0;i<rows.length;i++){
-    var ry = G.y + u(9) + i*G.rowH;
-    var on = rows[i].on;
-    pxText(px, rows[i].t, G.x+u(4), ry, on ? DC.amber : DC.greyDim, 1);
+    x = lb.x + i*cw + cw*0.16;
+    var on = !(i === lb.n-1 && rpm > 0.93);
+    rrPath(g, x, lb.y+lb.h*0.12, cw*0.68, lb.h*0.76, lb.h*0.20);
+    g.fillStyle = on ? DC.green : DC.greenDim; g.fill();
     if(on){
-      px(G.x+G.w-u(5), ry+1, Math.max(2,u(3)), FONT_H-2, DC.amber);  /* position marker */
-      px(G.x+u(3), ry-1, u(9), FONT_H+2, 'rgba(255,180,50,.10)');
+      rrPath(g, x+cw*0.09, lb.y+lb.h*0.20, cw*0.50, lb.h*0.30, lb.h*0.14);
+      g.fillStyle = DC.greenHi; g.fill();
     }
   }
 
-  /* ------------------------------------------------------ tachometer -- */
-  var rpm = dash.nRpm;
-  paintNeedle(px, L.tachX, L.dialY, L.R,
-              dialAngle(clamp(rpm*TACH_SCALE, 0, TACH_MAX), 0, TACH_MAX),
-              rpm >= 1 ? DC.needleHi : DC.needle);
+  /* ---------------------------------------------------- gear selector - */
+  /* The selector reads out in the letter, not in a highlight: the chosen
+     row goes amber and a small cast tab rides out of the slot beside it. */
+  var G = L.gear, rows = gearRows(r), rh = G.h/G.rows;
+  for(i=0;i<rows.length;i++){
+    y = G.y + i*rh;
+    capText(g, rows[i].t, G.x+G.w*0.5, y+rh*0.5, rh*0.68,
+            rows[i].on ? DC.amber : '#b6bcbe', rows[i].on ? '700' : '500');
+    if(rows[i].on){
+      rrPath(g, G.x+G.w-u(0.6), y+rh*0.26, u(3.2), rh*0.48, u(0.7));
+      g.fillStyle = vGrad(g, y, y+rh, [[0,'#b0b6b8'],[1,'#565c5e']]); g.fill();
+      g.lineWidth = Math.max(1, u(0.35)); g.strokeStyle = 'rgba(0,0,0,.55)'; g.stroke();
+    }
+  }
 
-  /* ------------------------------------------------------ speedometer - */
-  var shown = dash.nSpd * un.conv;
-  var smax = speedMax();
-  paintNeedle(px, L.spdX, L.dialY, L.R,
-              dialAngle(clamp(shown, 0, smax), 0, smax), DC.needle);
+  /* ------------------------------------------------------- instruments */
+  drawNeedle(g, L.tachX, L.dialY, L.R,
+             dialAngle(clamp(rpm*TACH_SCALE, 0, TACH_MAX), 0, TACH_MAX),
+             rpm >= 1 ? DC.needleHi : DC.needle);
+  var shown = dash.nSpd * un.conv, smax = speedMax();
+  drawNeedle(g, L.spdX, L.dialY, L.R,
+             dialAngle(clamp(shown, 0, smax), 0, smax), DC.needle);
+  drawNeedle(g, L.boost.x, L.boost.y, L.boost.r,
+             dialAngle(clamp(dash.nBoost, 0, BOOST_MAX), 0, BOOST_MAX), DC.needle);
 
-  /* ----------------------------------------------------- boost gauge -- */
-  paintNeedle(px, L.boost.x, L.boost.y, L.boost.r,
-              dialAngle(clamp(dash.nBoost, 0, BOOST_MAX), 0, BOOST_MAX), DC.needle);
-
-  /* ----------------------------------------------------- centre stack - */
+  /* ------------------------------------------------------ centre stack */
   var K = L.stack;
-  /* two up-chevrons, lit when the box wants a gear or a paddle was tapped */
   var wantUp = r && rpm > 0.93;
-  var chW = Math.max(5, Math.round(K.w*0.30)), chGap = Math.round(K.w*0.10);
-  var chX = Math.round(K.x + K.w/2 - chW - chGap/2);
+  var lit2 = wantUp || hudCtl.padUp > 0.15;
+  var chW = K.w*0.21, chGap = K.w*0.14;
   for(i=0;i<2;i++){
-    var on2 = wantUp || hudCtl.padUp > 0.15;
-    paintChevron(px, chX + i*(chW+chGap), K.chevY, chW, K.chevH,
-                 on2 ? DC.blueHi : DC.blue, on2);
+    x = K.x + K.w/2 - chW - chGap/2 + i*(chW+chGap);
+    g.beginPath();
+    g.moveTo(x+chW/2, K.chevY);
+    g.lineTo(x+chW,   K.chevY+K.chevH);
+    g.lineTo(x,       K.chevY+K.chevH);
+    g.closePath();
+    g.fillStyle = lit2 ? DC.blueHi : DC.blue; g.fill();
   }
   /* the segment row under them tracks revs */
-  var segN = 5, segW = Math.max(2, Math.floor((K.w-4-(segN-1)*2)/segN));
+  var segN = 5, segW = (K.w-u(2.4)-(segN-1)*u(0.9))/segN;
   var segLit = Math.round(clamp(rpm/1.08,0,1)*segN);
   for(i=0;i<segN;i++){
-    x = K.x + 2 + i*(segW+2);
-    px(x, K.segY+1, segW, K.segH-2, DC.greyDim);
-    if(i < segLit)
-      px(x, K.segY+1, segW, K.segH-2, i < segN-2 ? DC.green : (i < segN-1 ? DC.amber : DC.red));
+    x = K.x + u(1.2) + i*(segW+u(0.9));
+    rrPath(g, x, K.segY+u(0.9), segW, K.segH-u(1.8), u(0.5));
+    g.fillStyle = i < segLit
+      ? (i < segN-2 ? DC.green : (i < segN-1 ? DC.amber : DC.red))
+      : '#20262a';
+    g.fill();
   }
-  /* digital readout: the same number the analog face is pointing at */
+  /* the digital readout: the same number the analog face is pointing at */
   var txt = String(Math.round(Math.max(0, shown)));
-  var k = Math.max(1, Math.min(3, Math.floor((K.boxH-FONT_H-6)/FONT_H)));
-  while(textW(txt,k) > K.w-4 && k > 1) k--;
-  pxTextC(px, txt, K.x+K.w/2, K.boxY+3, DC.num, k);
+  var digH = K.boxH*0.27;
+  if(txt.length > 2) digH *= 2/txt.length;
+  sevenSeg(g, txt, K.x+K.w/2, K.boxY+u(2)+(K.boxH-u(9.5))/2, digH,
+           DC.num, 'rgba(210,225,230,.055)');
 
-  /* -------------------------------------------------------- handbrake - */
+  /* ---------------------------------------------------------- shifter - */
   var B = L.hb;
   var hbq = Math.round(hudCtl.hb*8);
-  var hbArtH = B.rise + B.h;
-  var hbPivot = B.h - B.slotOff - Math.round(B.slotH/2);
-  var hbCv = artPiece('hb', hbq, B.w, hbArtH, S, function(p,w,h){
-    paintHandbrake(p, w, h, hbq/8, hbPivot);
+  var art = artPiece('hb', hbq, B.w, B.h+B.rise, S, function(gg,w,h){
+    drawShifter(gg, w, h, hbq/8, B.rise + B.slotOff + B.slotH*0.5);
   });
-  blitArt(g, hbCv, B.x, B.y-B.rise, S);
+  blitArt(g, art, B.x, B.y-B.rise, S);
 
-  /* ---------------------------------------------------- indicator strip */
-  var T = L.strip, ik = Math.max(1, Math.round(L.U*1.4));
-  var slots = 5, sy = T.y + Math.round(T.h/2);
-  var slotW = T.w/slots;
-  var sxAt = function(n){ return Math.round(T.x + slotW*(n+0.5)); };
-  paintArrowGlyph(px, sxAt(0), sy, ik, false, input.left ? DC.amber : DC.grey);
-  paintHeadlightGlyph(px, sxAt(1), sy, ik, DC.green);
-  /* the belt lamp keeps its own red-tinted panel, as on the mockup */
-  var bw2 = Math.round(slotW*0.86), bx2 = Math.round(sxAt(2)-bw2/2);
-  px(bx2, T.y+1, bw2, T.h-2, DC.redPanel);
-  px(bx2, T.y+1, bw2, 1, '#5a2018');
-  paintBeltGlyph(px, sxAt(2), sy, ik, DC.red);
-  paintParkGlyph(px, sxAt(3), sy, ik, hudCtl.hb > 0.4 ? '#ff6a58' : DC.redLo);
-  paintArrowGlyph(px, sxAt(4), sy, ik, true, input.right ? DC.amber : DC.grey);
+  /* -------------------------------------------------- indicator strip - */
+  var T = L.strip, sl = T.w/5, sy = T.y + T.h*0.5;
+  var gs = T.h*0.30;
+  var sxAt = function(n){ return T.x + sl*(n+0.5); };
+  glyphArrow(g, sxAt(0), sy, gs*1.15, false, input.left ? DC.amber : DC.grey);
+  glyphHeadlight(g, sxAt(1), sy, gs, DC.green);
+  glyphBelt(g, sxAt(2), sy, gs*1.20, DC.red);
+  glyphPark(g, sxAt(3), sy, gs*0.95, hudCtl.hb > 0.4 ? '#ff6a58' : DC.red);
+  glyphArrow(g, sxAt(4), sy, gs*1.15, true, input.right ? DC.amber : DC.grey);
 
   /* ------------------------------------------------------ status bars -
-     Every panel carries the same row of segment bars underneath: how much
-     grip is left, how evenly the drive is going down, and how far the
-     auto-throttle currently has the pedal. All three are readouts. */
+     Every tile carries the same row of segments: how much grip is left, how
+     evenly the drive is going down, and how far the auto-throttle has the
+     pedal. All three are readouts, nothing here feeds the physics. */
   var slip = r ? clamp(Math.abs(r.car.lat)/95 + r.car.wheelSpin*0.5, 0, 1) : 0;
   var vals = [1-slip, r ? clamp(1-Math.abs(r.car.steer)*0.45, 0, 1) : 1, thr];
   var xs = [L.stat.x0, L.stat.x1, L.stat.x2];
-  var bn = 4, bgap = Math.max(1, u(1));
-  var bw3 = Math.max(2, Math.floor((L.stat.w - 6 - (bn-1)*bgap)/bn));
-  var bh3 = Math.max(2, u(3));
-  var by = L.stat.y + L.stat.h - bh3 - 2;
+  var bn = 4, bgap = u(0.9);
+  var bw = (L.stat.w - u(4.8) - (bn-1)*bgap)/bn;
+  var bh = u(2.6), by = L.stat.y + L.stat.h - bh - u(2.4);
   for(i=0;i<3;i++){
     var nlit = Math.round(clamp(vals[i],0,1)*bn);
     for(var b=0;b<bn;b++){
-      x = xs[i] + 3 + b*(bw3+bgap);
-      px(x, by, bw3, bh3, b < nlit ? DC.green : DC.greenDim);
-      if(b < nlit) px(x, by, bw3, 1, '#b6ffc2');
+      x = xs[i] + u(2.4) + b*(bw+bgap);
+      rrPath(g, x, by, bw, bh, u(0.4));
+      g.fillStyle = b < nlit ? DC.green : DC.greenDim; g.fill();
     }
   }
-  /* the THROTTLE panel's vertical segments, standing beside its pedal */
-  var tw = Math.max(2, u(4)), tgap = Math.max(1, u(1));
-  var tx = L.stat.x2 + u(4);
-  var ty = L.stat.y + Math.round(L.stat.h*0.30);
-  var tSeg = Math.max(2, Math.round((L.stat.h*0.42 - 2*tgap)/3));
-  for(i=0;i<3;i++){
-    var lit3 = thr > (2-i)/3;
-    px(tx, ty + i*(tSeg+tgap), tw, tSeg, lit3 ? DC.green : DC.greenDim);
-    if(lit3) px(tx, ty + i*(tSeg+tgap), tw, 1, '#b6ffc2');
+  /* the THROTTLE tile's three tall bars, standing beside its pedal */
+  var tgap = u(0.8), tn = 3;
+  var tw = (L.stat.w*0.44 - (tn-1)*tgap)/tn;
+  var tx = L.stat.x2 + u(3.0);
+  var tTop = L.stat.y + u(9.4), tBot = by - u(1.4);
+  for(i=0;i<tn;i++){
+    /* each bar fills from the bottom, so the block reads as a level */
+    var full = tBot - tTop;
+    var fill = clamp(thr*tn - i, 0, 1)*full;
+    g.fillStyle = DC.greenDim;
+    g.fillRect(tx + i*(tw+tgap), tTop, tw, full);
+    if(fill > 0){
+      g.fillStyle = DC.green;
+      g.fillRect(tx + i*(tw+tgap), tBot-fill, tw, fill);
+    }
   }
 
   /* ---------------------------------------------------------- paddles - */
   var manual = save.settings.transmission === 'manual';
   var pu = artPiece('padU', Math.round(hudCtl.padUp*4)+'/'+(manual?1:0),
-                    L.padR.w, L.padR.h, S, function(p,w,h){
-    paintPaddle(p, w, h, false, hudCtl.padUp, manual);
+                    L.padR.w, L.padR.h, S, function(gg,w,h){
+    drawPaddle(gg, w, h, false, hudCtl.padUp, manual);
   });
   blitArt(g, pu, L.padR.x, L.padR.y, S);
   var pd = artPiece('padD', Math.round(hudCtl.padDn*4)+'/'+(manual?1:0),
-                    L.padL.w, L.padL.h, S, function(p,w,h){
-    paintPaddle(p, w, h, true, hudCtl.padDn, manual);
+                    L.padL.w, L.padL.h, S, function(gg,w,h){
+    drawPaddle(gg, w, h, true, hudCtl.padDn, manual);
   });
   blitArt(g, pd, L.padL.x, L.padL.y, S);
 }
 
-function paintChevron(px, x, y, w, h, col, lit){
-  var n = Math.min(Math.round(h*0.8), Math.round(w/2));
-  for(var i=0;i<n;i++){
-    var ww = 1 + i*2;
-    px(Math.round(x + w/2 - ww/2), y + i, ww, 1, col);
-  }
-  if(lit) px(Math.round(x+w/2), y, 1, 1, '#ffffff');
-}
 
 /* The five-row selector from the mockup. P, R and N are real states; the
    two numeric rows are a moving window on the gearbox, so a six-speed car
@@ -2797,11 +3015,11 @@ var HIT_PAD = 16;
 
 var hitBoxes = [];
 function layoutHitBoxes(L){
-  var S = L.PX, ox = L.originX, oy = L.originY;
+  var ox = L.originX, oy = L.originY;
   var box = function(id, kind, rect, extra){
     return { id:id, kind:kind, key:extra,
-             x: ox + rect.x*S, y: oy + rect.y*S,
-             w: rect.w*S, h: rect.h*S };
+             x: ox + rect.x, y: oy + rect.y,
+             w: rect.w, h: rect.h };
   };
   hitBoxes = [
     box('left',  'hold', L.steerL, 'left'),
