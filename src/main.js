@@ -2001,15 +2001,16 @@ function dashLayout(){
   var L = { PX:PX, GW:GW, GH:GH, OVER:OVER, U:U, u:u, CH:GH+OVER, top:OVER };
   var top = OVER;
 
-  /* ------------------------------------------------------- left bank */
-  var lx = u(8);
-  L.steerL = { x:lx,               y:top+u(17), w:u(17), h:u(34) };
-  L.steerR = { x:lx+u(19),         y:top+u(17), w:u(17), h:u(34) };
-  L.led    = { x:lx+u(5), y:top+u(11), n:5, w:u(4), h:u(3), gap:u(3) };
-  L.gear   = { x:lx+u(50), y:top+u(12), w:u(20), h:u(41), rowH:u(6) };
-  L.leftEdge = L.gear.x + L.gear.w;
+  /* How far the two edge banks are inset. On a screen wider than the design
+     needs, they walk in by a third of the surplus rather than staying pinned
+     to the glass, so a 20:9 phone does not leave a dead gap in the middle of
+     the dash while still keeping the arrows inside easy thumb reach. */
+  var spread = Math.max(0, GW - u(DASH_NOM_W));
+  var inset  = u(6) + Math.round(spread*0.34);
 
-  /* -------------------------------------------------- centre binnacle */
+  /* -------------------------------------------------- centre binnacle
+     Laid out first: the gear column and the lever hang off it, the way
+     they sit against the binnacle on the mockup. */
   var C = Math.round(GW/2);
   L.C = C;
   L.R = u(28);
@@ -2021,7 +2022,9 @@ function dashLayout(){
               chevY: top+u(9),  chevH:u(7),
               segY:  top+u(18), segH:u(5),
               boxY:  top+u(26), boxH:u(21) };
-  L.boost = { x:C+u(86), y:top+u(38), r:u(15) };
+  /* the boost gauge tucks under the speedo's outer shoulder, and has to
+     stay clear of the status panels' top edge */
+  L.boost = { x:C+u(86), y:top+u(34), r:u(14) };
   L.housing = { x0:L.tachX-L.R-u(4), x1:L.spdX+L.R+u(4), rise:u(9) };
   /* paddles: mounted just outboard of the dial pair, breaking up into the
      world above the dash line */
@@ -2029,14 +2032,26 @@ function dashLayout(){
   L.padL = { x:C-u(82)-Math.round(L.padW/2), y:top-u(26), w:L.padW, h:L.padH };
   L.padR = { x:C+u(82)-Math.round(L.padW/2), y:top-u(26), w:L.padW, h:L.padH };
 
+  /* ------------------------------------------------------- left bank */
+  var lx = inset;
+  L.steerL = { x:lx,       y:top+u(17), w:u(17), h:u(34) };
+  L.steerR = { x:lx+u(19), y:top+u(17), w:u(17), h:u(34) };
+  L.led    = { x:lx+u(5), y:top+u(11), n:5, w:u(4), h:u(3), gap:u(3) };
+  L.gear   = { x:L.tachX-L.R-u(6)-u(20), y:top+u(12), w:u(20), h:u(41), rowH:u(6) };
+  L.leftEdge = L.steerR.x + L.steerR.w;
+
   /* ------------------------------------------------------ right bank */
-  var rx = GW - u(6);
-  var sw = u(27), sg = u(2);
+  var rx = GW - inset;
+  var sw = u(30), sg = u(2);
   L.stat = { y:top+u(52), h:u(24), w:sw, gap:sg };
   L.stat.x2 = rx - sw;
   L.stat.x1 = L.stat.x2 - sw - sg;
   L.stat.x0 = L.stat.x1 - sw - sg;
-  L.hb = { x:rx-u(42), y:top+u(25), w:u(36), h:u(16), rise:u(20) };
+  /* the lever sits between the boost gauge and the panels, never on top of
+     either, however tight the grid gets */
+  var hbW = u(36);
+  var hbX = Math.min(rx - u(6) - hbW, Math.max(L.boost.x + L.boost.r + u(3), L.stat.x2));
+  L.hb = { x:hbX, y:top+u(25), w:hbW, h:u(16), rise:u(20) };
   L.hb.slotOff = Math.round(L.hb.h*0.34);
   L.hb.slotH   = Math.max(3, Math.round(L.hb.h*0.30));
 
@@ -2104,7 +2119,8 @@ function paintDial(px, cx, cy, R, o){
     maj = (i % majEvery) === 0;
     red = o.redFrom != null && v >= o.redFrom - 1e-6;
     a = dialAngle(v,o.min,o.max);
-    len = maj ? Math.max(3, Math.round(R*0.09)) : Math.max(1, Math.round(R*0.05));
+    len = o.small ? (maj ? 2 : 1)
+                  : (maj ? Math.max(3, Math.round(R*0.09)) : Math.max(1, Math.round(R*0.05)));
     r1 = trackR - (redTh ? redTh + 1 : 1);
     r0 = r1 - len;
     pxRadial(px, cx, cy, a, r0, r1, maj ? 2 : 1,
@@ -2119,8 +2135,8 @@ function paintDial(px, cx, cy, R, o){
     }
   }
 
-  if(o.label) pxTextC(px, o.label, cx, cy - Math.round(R*0.42), DC.label, 1);
-  if(o.sub)   pxTextC(px, o.sub,   cx, cy + Math.round(R*0.34), DC.numDim, 1);
+  if(o.label) pxTextC(px, o.label, cx, cy - Math.round(R*(o.small?0.46:0.42)), DC.label, 1);
+  if(o.sub)   pxTextC(px, o.sub,   cx, cy + Math.round(R*(o.small?0.44:0.34)), DC.numDim, 1);
   /* a single crescent of glass reflection across the top left, dithered so
      it stays pixel art rather than a soft glow */
   var gr = trackR - Math.max(1, Math.round(R*0.10));
@@ -2209,7 +2225,9 @@ function buildDashBase(L, S){
     labelEvery:1, label:un.label
   });
   paintDial(px, L.boost.x, L.boost.y, L.boost.r, {
-    min:0, max:BOOST_MAX, major:10, minor:5, numbers:false,
+    /* too small to carry numbers as well as its captions: the ticks and
+       the two labels are what make it read as a boost gauge */
+    min:0, max:BOOST_MAX, major:10, minor:5, numbers:false, small:true,
     label:'BOOST', sub:'PSI'
   });
 
