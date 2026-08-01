@@ -191,7 +191,11 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
    over it: --msg-bottom is the car's roof line, refreshed as the camera
    moves, and the text grows upward from there. */
 #big-msg{position:absolute;left:0;right:0;bottom:var(--msg-bottom,52%);text-align:center;font-size:clamp(30px,10vh,74px);
-  font-weight:700;letter-spacing:6px;color:#fff;text-shadow:0 4px 0 #000,0 0 26px rgba(255,180,50,.55);opacity:0;transition:opacity .2s;}
+  font-weight:700;letter-spacing:6px;color:#fff;
+  /* a hard offset shadow, the way the reference stamps the countdown
+     onto the road, rather than a glow that fogs the gravel under it */
+  text-shadow:0 5px 0 #000,3px 5px 0 #000,-3px 5px 0 #000;
+  opacity:0;transition:opacity .2s;}
 #big-msg.show{opacity:1;}
 #hud-split{position:absolute;left:50%;top:calc(96px + env(safe-area-inset-top));transform:translateX(-50%);font-size:clamp(11px,2.3vh,16px);font-weight:700;letter-spacing:2px;opacity:0;transition:opacity .25s;}
 #hud-split.show{opacity:1;}
