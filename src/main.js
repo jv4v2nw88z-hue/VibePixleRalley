@@ -12,11 +12,16 @@ var clamp = function(v,a,b){ return v<a?a:(v>b?b:v); };
 var lerp  = function(a,b,t){ return a+(b-a)*t; };
 var TAU = Math.PI*2;
 
-/* deterministic hash-based PRNG (so scenery/track are identical every run) */
+/* Deterministic hash-based PRNG, so scenery and surfaces are identical
+   every run. The multiplies go through Math.imul: a plain `*` on a 32-bit
+   hash overflows 2^53 and silently drops the low bits, which correlates the
+   output with its inputs — the road mottle came out banked down one side of
+   the ribbon and the grain tile grew diagonal streaks. */
 function rnd2(x,y,salt){
-  var h = (x*374761393 + y*668265263 + (salt||0)*2147483647) | 0;
-  h = (h ^ (h>>13)) * 1274126177;
-  h = (h ^ (h>>16)) >>> 0;
+  var h = (Math.imul(x|0, 374761393) + Math.imul(y|0, 668265263) +
+           Math.imul(salt|0, 1442695041)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = (h ^ (h >>> 16)) >>> 0;
   return h / 4294967296;
 }
 function mulberry(seed){
@@ -32,10 +37,10 @@ function mulberry(seed){
 /* ---------------------------------------------------------------- surfaces */
 var SURFACES = {
   tarmac:{ name:'TARMAC', grip:1.34, roll:0.34, color:'#3b3d40', color2:'#45484b', dust:'#7d7f82', edge:'#d8d8d2' },
-  gravel:{ name:'GRAVEL', grip:1.00, roll:0.60, color:'#6f5430', color2:'#816540', dust:'#c2a97e', edge:'#54401f' },
+  gravel:{ name:'GRAVEL', grip:1.00, roll:0.60, color:'#725730', color2:'#8a6c44', grit:'#b09a76', dust:'#c2a97e', edge:'#54401f' },
   snow:  { name:'SNOW',   grip:0.74, roll:0.72, color:'#d5e2ee', color2:'#c3d4e4', dust:'#ffffff', edge:'#9fb4c8' },
   ice:   { name:'ICE',    grip:0.46, roll:0.26, color:'#a9cbe0', color2:'#bcd9ea', dust:'#e6f4ff', edge:'#87aec6' },
-  mud:   { name:'MUD',    grip:0.80, roll:0.95, color:'#4c3d28', color2:'#5f4f36', dust:'#8a7350', edge:'#3b2f1e' }
+  mud:   { name:'MUD',    grip:0.80, roll:0.95, color:'#4c3d28', color2:'#5f4f36', grit:'#6c5c44', dust:'#8a7350', edge:'#3b2f1e' }
 };
 /* off-track surface per stage theme */
 var OFFTRACK = {
@@ -48,7 +53,7 @@ var OFFTRACK = {
 var CARS = [
   { id:'hatch', name:'KESTREL 1.6 GTI', cls:'GROUP N', price:0,
     topSpeed:300, accel:190, handling:36, gripBase:1.00, sprite:'hatch',
-    paint:'#d8452f', blurb:'Cheap, light, honest. A proper starter rally hatch.' },
+    paint:'#c02a1d', blurb:'Cheap, light, honest. A proper starter rally hatch.' },
   { id:'rally', name:'FALCON RS EVO', cls:'GROUP A', price:5200,
     topSpeed:392, accel:268, handling:52, gripBase:1.12, sprite:'rally',
     paint:'#1f6fd0', blurb:'Turbo four, real diff, made for loose surfaces.' },
@@ -105,8 +110,8 @@ var LIVERIES = [
   { id:2, name:'RALLY #7' },
   { id:3, name:'CHEVRON' }
 ];
-var PAINTS = ['#d8452f','#e8892b','#f2d02c','#4fae3f','#1f6fd0','#7b3fbf','#f0f0e6','#2b2f33','#0e8f86','#c9367f'];
-var ACCENTS = { '#d8452f':'#ffffff','#e8892b':'#20242a','#f2d02c':'#20242a','#4fae3f':'#ffffff','#1f6fd0':'#ffd23f',
+var PAINTS = ['#c02a1d','#e8892b','#f2d02c','#4fae3f','#1f6fd0','#7b3fbf','#f0f0e6','#2b2f33','#0e8f86','#c9367f'];
+var ACCENTS = { '#c02a1d':'#ffffff','#e8892b':'#20242a','#f2d02c':'#20242a','#4fae3f':'#ffffff','#1f6fd0':'#ffd23f',
                 '#7b3fbf':'#ffffff','#f0f0e6':'#1f6fd0','#2b2f33':'#ffb432','#0e8f86':'#ffffff','#c9367f':'#ffffff' };
 
 /* ---------------------------------------------------------------- stages
@@ -446,8 +451,11 @@ function buildScenery(track){
         var s2 = rand()<0.5 ? -1 : 1;
         var bias = rand(); bias *= bias;             /* crowd towards the edge */
         var lat2 = nd.hw + 30 + bias*230;
-        var type = isSnow ? (rand()<0.72?0:4) : (isMountain ? (rand()<0.45?1:0) : (rand()<0.86?0:4));
-        var size = type===0 ? 22+rand()*22 : 10+rand()*9;
+        var type = isSnow ? (rand()<0.72?0:4) : (isMountain ? (rand()<0.45?1:0) : (rand()<0.90?0:4));
+        /* Measured off the reference: its bright top faces run about
+           sixteen screen pixels across at the median and rarely past
+           fifty, which lands a clump here between twenty and forty-five. */
+        var size = type===0 ? 23+rand()*21 : 11+rand()*9;
         var solid = lat2 < nd.hw + 96;   /* only the near ones can be clipped */
         props.push(mkProp(nd.x+nx*lat2*s2, nd.y+ny*lat2*s2, type, size, i, solid, rand()));
       }
@@ -537,102 +545,138 @@ function angDiff(a,b){
 var CAR_SPRITES = {
   /* KESTREL 1.6 GTI - narrow track, tall glasshouse, short overhangs */
   hatch: [
-    '......................',
-    '.......SSSSSSSS.......',
-    '.....CYYBBBBBBYYC.....',
-    '....CBBBBBBBBBBBBC....',
-    '...TTBBBBBBBBBBBBTT...',
-    '...TTBBBBBBBBBBBBTT...',
-    '...TTBBBHHHHHHBBBTT...',
-    '...TTBBBBBBBBBBBBTT...',
-    '...BBBBBBBBBBBBBBBB...',
-    '...BBSSSSSSSSSSSSBB...',
-    '...BBBGGGGGGGGGGBBB...',
-    '...DBBGGGGGGGGGGBBD...',
-    '...DBBGGGGGGGGGGBBD...',
-    '...BBBGGGGGGGGGGBBB...',
-    '...BBBBBBBBBBBBBBBB...',
-    '...BBBBBBBBBBBBBBBB...',
-    '...BBBBBBBBBBBBBBBB...',
-    '...BBBGGGGGGGGGGBBB...',
-    '...BBBGGGGGGGGGGBBB...',
-    '...BBBGGGGGGGGGGBBB...',
-    '...BBSSSSSSSSSSSSBB...',
-    '...TTBBBBBBBBBBBBTT...',
-    '...TTBBBBBBBBBBBBTT...',
-    '...TTBBBBBBBBBBBBTT...',
-    '...BBBBBBBBBBBBBBBB...',
-    '....CBBBBBBBBBBBBC....',
-    '....CRRBBBBBBBBRRC....',
-    '.....SSSSSSSSSSSS.....',
-    '.......SSSSSSSS.......',
-    '......................'
+    '............................',
+    '............................',
+    '...........SSSSSS...........',
+    '.........SSSSSSSSSS.........',
+    '........CCCCCCCCCCCC........',
+    '.......YYBBBBBBBBBBYY.......',
+    '......BBBBBBBBBBBBBBBB......',
+    '....TTBBBBBBBBBBBBBBBBTT....',
+    '...TTBBBBBBBBBBBBBBBBBBTT...',
+    '...TTBBBBBHHHHHHHHBBBBBTT...',
+    '...TTBBBBBHHHHHHHHBBBBBTT...',
+    '...TTBBBBBHHHHHHHHBBBBBTT...',
+    '...TTBBBBBHHHHHHHHBBBBBTT...',
+    '.....BBBBBHHHHHHHHBBBBB.....',
+    '.....BBBBBBBBBBBBBBBBBB.....',
+    '.....BSSSSSSSSSSSSSSSSB.....',
+    '.....BBBggggggggggggBBB.....',
+    '.....DBBggggggggggggBBD.....',
+    '.....DBBGGGGGGGGGGGGBBD.....',
+    '.....BBBGGGGGGGGGGGGBBB.....',
+    '.....BBBGGGGGGGGGGGGBBB.....',
+    '.....BBBBHHHHHHHHHHBBBB.....',
+    '.....BBBBHHHHHHHHHHBBBB.....',
+    '.....BBBBHHHHHHHHHHBBBB.....',
+    '.....BBBBHHHHHHHHHHBBBB.....',
+    '.....BBBBHHHHHHHHHHBBBB.....',
+    '.....BBBggggggggggggBBB.....',
+    '.....BBBggggggggggggBBB.....',
+    '.....BBBGGGGGGGGGGGGBBB.....',
+    '.....BBBGGGGGGGGGGGGBBB.....',
+    '.....BSSSSSSSSSSSSSSSSB.....',
+    '...TTBBBBBBBBBBBBBBBBBBTT...',
+    '...TTBBBBBBBBBBBBBBBBBBTT...',
+    '...TTBBBBBBBBBBBBBBBBBBTT...',
+    '...TTBBBBBBBBBBBBBBBBBBTT...',
+    '....TTBBBBBBBBBBBBBBBBTT....',
+    '......CCCCCCCCCCCCCCCC......',
+    '.......RRBBBBBBBBBBRR.......',
+    '........SSSSSSSSSSSS........',
+    '...........SSSSSS...........',
+    '............................',
+    '............................'
   ],
   /* FALCON RS EVO - wider track, bonnet vents, boot spoiler */
   rally: [
-    '......................',
-    '......SSSSSSSSSS......',
-    '....CYYBBBBBBBBYYC....',
-    '...CBBBBBBBBBBBBBBC...',
-    '..TTBBBBBBBBBBBBBBTT..',
-    '..TTBBBBBBBBBBBBBBTT..',
-    '..TTBBBSSSSSSSSBBBTT..',
-    '..TTBBBSSSSSSSSBBBTT..',
-    '..TTBBBBBBBBBBBBBBTT..',
-    '..BBBBBBBBBBBBBBBBBB..',
-    '..BBSSSSSSSSSSSSSSBB..',
-    '..BBBGGGGGGGGGGGGBBB..',
-    '..DBBGGGGGGGGGGGGBBD..',
-    '..DBBGGGGGGGGGGGGBBD..',
-    '..BBBGGGGGGGGGGGGBBB..',
-    '..BBBBBBBBBBBBBBBBBB..',
-    '..BBBBHHHHHHHHHHBBBB..',
-    '..BBBBBBBBBBBBBBBBBB..',
-    '..BBBGGGGGGGGGGGGBBB..',
-    '..BBBGGGGGGGGGGGGBBB..',
-    '..BBSSSSSSSSSSSSSSBB..',
-    '..TTBBBBBBBBBBBBBBTT..',
-    '..TTBBBBBBBBBBBBBBTT..',
-    '..TTBBBBBBBBBBBBBBTT..',
-    '..BBBBBBBBBBBBBBBBBB..',
-    '...CBBBBBBBBBBBBBBC...',
-    '...CRRBBBBBBBBBBRRC...',
-    '....SSSSSSSSSSSSSS....',
-    '......SSSSSSSSSS......',
-    '......................'
+    '............................',
+    '............................',
+    '..........SSSSSSS...........',
+    '.........SSSSSSSSSS.........',
+    '........CCCCCCCCCCCCC.......',
+    '......YYBBBBBBBBBBBBYY......',
+    '...TTBBBBBBBBBBBBBBBBBBTT...',
+    '...TTBBBBBBBBBBBBBBBBBBTT...',
+    '..TTBBBBBBBBBBBBBBBBBBBBTT..',
+    '..TTBBBBBBSSSSSSSSSBBBBBTT..',
+    '..TTBBBBBBSSSSSSSSSBBBBBTT..',
+    '..TTBBBBBBSSSSSSSSSBBBBBTT..',
+    '..TTBBBBBBSSSSSSSSSBBBBBTT..',
+    '....BBBBBBSSSSSSSSSBBBBB....',
+    '....BBBBBBBBBBBBBBBBBBBB....',
+    '....BSSSSSSSSSSSSSSSSSSB....',
+    '....BBBggggggggggggggBBB....',
+    '....DBBggggggggggggggBBD....',
+    '....DBBGGGGGGGGGGGGGGBBD....',
+    '....BBBGGGGGGGGGGGGGGBBB....',
+    '....BBBGGGGGGGGGGGGGGBBB....',
+    '....BBBBHHHHHHHHHHHBBBBB....',
+    '....BBBBHHHHHHHHHHHBBBBB....',
+    '....BBBBHHHHHHHHHHHBBBBB....',
+    '....BBBBHHHHHHHHHHHBBBBB....',
+    '....BBBBHHHHHHHHHHHBBBBB....',
+    '....BBBggggggggggggggBBB....',
+    '....BBBggggggggggggggBBB....',
+    '....BBBGGGGGGGGGGGGGGBBB....',
+    '....BBBGGGGGGGGGGGGGGBBB....',
+    '..TTBSSSSSSSSSSSSSSSSSSBTT..',
+    '..TTBBBBBBBBBBBBBBBBBBBBTT..',
+    '..TTBBBBBBBBBBBBBBBBBBBBTT..',
+    '..TTBBBBBBBBBBBBBBBBBBBBTT..',
+    '...TTBBBBBBBBBBBBBBBBBBTT...',
+    '...TTBBBBBBBBBBBBBBBBBBTT...',
+    '.....CCCCCCCCCCCCCCCCCC.....',
+    '.......RRBBBBBBBBBBRR.......',
+    '........SSSSSSSSSSSS........',
+    '..........SSSSSSS...........',
+    '............................',
+    '............................'
   ],
   /* VULCAN WRC - widest track, full aero, roof scoop and diffuser */
   wrc: [
-    '.....SSSSSSSSSSSS.....',
-    '...CYYBBBBBBBBBBYYC...',
-    '..CBBBBBBBBBBBBBBBBC..',
-    '.TTBBBBBBBBBBBBBBBBTT.',
-    '.TTBBBBBBBBBBBBBBBBTT.',
-    '.TTBBBBDDDDDDDDBBBBTT.',
-    '.TTBBBBDDDDDDDDBBBBTT.',
-    '.TTBBBBBBBBBBBBBBBBTT.',
-    '.BBBBBBBBBBBBBBBBBBBB.',
-    '.BBSSSSSSSSSSSSSSSSBB.',
-    '.BBBGGGGGGGGGGGGGGBBB.',
-    '.DBBGGGGGGGGGGGGGGBBD.',
-    '.DBBGGGGGGGGGGGGGGBBD.',
-    '.BBBGGGGGGGGGGGGGGBBB.',
-    '.BBBBBBBBBBBBBBBBBBBB.',
-    '.BBBBBDDDDDDDDDDBBBBB.',
-    '.BBBBBBBBBBBBBBBBBBBB.',
-    '.BBBGGGGGGGGGGGGGGBBB.',
-    '.BBBGGGGGGGGGGGGGGBBB.',
-    '.BBSSSSSSSSSSSSSSSSBB.',
-    '.TTBBBBBBBBBBBBBBBBTT.',
-    '.TTBBBBBBBBBBBBBBBBTT.',
-    '.TTBBBBBBBBBBBBBBBBTT.',
-    '.BBBBBBBBBBBBBBBBBBBB.',
-    '..CBBBBBBBBBBBBBBBBC..',
-    '..CRRBBBBBBBBBBBBRRC..',
-    '...SSSSSSSSSSSSSSSS...',
-    '...KKKSSSSSSSSSSKKK...',
-    '......................',
-    '......................'
+    '............................',
+    '............................',
+    '..........SSSSSSSS..........',
+    '.........SSSSSSSSSS.........',
+    '.......CCCCCCCCCCCCCC.......',
+    '......YYBBBBBBBBBBBBYY......',
+    '...TTBBBBBBBBBBBBBBBBBBTT...',
+    '..TTBBBBBBBBBBBBBBBBBBBBTT..',
+    '..TTBBBBBBBBBBBBBBBBBBBBTT..',
+    '.TTBBBBBBDDDDDDDDDDBBBBBBTT.',
+    '.TTBBBBBBDDDDDDDDDDBBBBBBTT.',
+    '.TTBBBBBBDDDDDDDDDDBBBBBBTT.',
+    '.TTBBBBBBDDDDDDDDDDBBBBBBTT.',
+    '.TTBBBBBBDDDDDDDDDDBBBBBBTT.',
+    '...BBBBBBBBBBBBBBBBBBBBBB...',
+    '...BSSSSSSSSSSSSSSSSSSSSB...',
+    '...BBBggggggggggggggggBBB...',
+    '...DBBggggggggggggggggBBD...',
+    '...DBBGGGGGGGGGGGGGGGGBBD...',
+    '...BBBGGGGGGGGGGGGGGGGBBB...',
+    '...BBBGGGGGGGGGGGGGGGGBBB...',
+    '...BBBBBDDDDDDDDDDDDBBBBB...',
+    '...BBBBBDDDDDDDDDDDDBBBBB...',
+    '...BBBBBDDDDDDDDDDDDBBBBB...',
+    '...BBBBBDDDDDDDDDDDDBBBBB...',
+    '...BBBBBDDDDDDDDDDDDBBBBB...',
+    '...BBBggggggggggggggggBBB...',
+    '...BBBggggggggggggggggBBB...',
+    '...BBBGGGGGGGGGGGGGGGGBBB...',
+    '.TTBBBGGGGGGGGGGGGGGGGBBBTT.',
+    '.TTBSSSSSSSSSSSSSSSSSSSSBTT.',
+    '.TTBBBBBBBBBBBBBBBBBBBBBBTT.',
+    '.TTBBBBBBBBBBBBBBBBBBBBBBTT.',
+    '..TTBBBBBBBBBBBBBBBBBBBBTT..',
+    '..TTBBBBBBBBBBBBBBBBBBBBTT..',
+    '..TTBBBBBBBBBBBBBBBBBBBBTT..',
+    '.....CCCCCCCCCCCCCCCCCC.....',
+    '......RRBBBBBBBBBBBBRR......',
+    '.......SSSSSSSSSSSSSS.......',
+    '..........SSSSSSSS..........',
+    '............................',
+    '............................'
   ]
 };
 
@@ -650,14 +694,14 @@ function shade(hex, amt){
 function carPalette(paint, damageTier){
   return {
     body:   paint,
-    lite:   shade(paint, 0.13),
-    hi:     shade(paint, 0.26),
+    lite:   shade(paint, 0.055),
+    hi:     shade(paint, 0.13),
     dark:   shade(paint,-0.15),
     darker: shade(paint,-0.28),
     deep:   shade(paint,-0.44),
     accent: ACCENTS[paint] || '#ffffff',
-    glass:      damageTier>=1 ? '#5c6a72' : '#1b2226',
-    glassLite:  damageTier>=1 ? '#78868e' : '#2b353b',
+    glass:      damageTier>=1 ? '#5c6a72' : '#14191c',
+    glassLite:  damageTier>=1 ? '#78868e' : '#26313a',
     tyre:'#141516', tyreLite:'#26292c',
     chrome:'#b9bec4', chromeDark:'#767b82',
     lamp:'#ffe9a8', tail:'#e8352a', black:'#171a1c', white:'#f2f2ea'
@@ -719,6 +763,10 @@ function renderCarSprite(carId, paint, livery, damageTier, scale){
       else if(ch==='S') col = c.darker;
       else if(ch==='D') col = c.deep;
       else if(ch==='G') col = c.glass;
+      /* the top of a screen catches the sky; the rest stays black. Two rows
+         of reflection is all it takes to stop the glass reading as a hole
+         cut in the roof. */
+      else if(ch==='g') col = c.glassLite;
       else if(ch==='K') col = c.black;
       else if(ch==='T') col = c.tyre;
       else if(ch==='C') col = c.chromeDark;
@@ -731,20 +779,25 @@ function renderCarSprite(carId, paint, livery, damageTier, scale){
   }
 
   /* damage: cracked screen, then dents & scorch */
-  if(damageTier>=1){
+  var R = function(fx, fy, fw, fh){                 /* grid fractions, so the
+     dents land in the same place whatever the sprite map's resolution is */
+    g.fillRect(Math.round(fx*w)*scale, Math.round(fy*h)*scale,
+               Math.max(1, Math.round(fw*w))*scale, Math.max(1, Math.round(fh*h))*scale);
+  };
+  if(damageTier>=1){                                 /* cracked screen */
     g.fillStyle = 'rgba(20,24,28,.85)';
     var cx0 = Math.floor(w/2)*scale;
-    for(var i=0;i<7;i++){
-      g.fillRect(cx0 - Math.round((i-3)*0.9)*scale, (10 + Math.floor(i*0.3))*scale, scale, scale);
-    }
+    for(var i=0;i<7;i++)
+      g.fillRect(cx0 - Math.round((i-3)*0.9)*scale,
+                 Math.round(h*0.42 + i*0.35)*scale, scale, scale);
   }
-  if(damageTier>=2){
+  if(damageTier>=2){                                 /* dents and scorch */
     g.fillStyle = 'rgba(30,26,22,.72)';
-    g.fillRect(2*scale, 6*scale, scale*2, scale*3);
-    g.fillRect((w-4)*scale, 20*scale, scale*2, scale*3);
-    g.fillRect(4*scale, 23*scale, scale*3, scale);
+    R(0.11, 0.20, 0.07, 0.07);
+    R(0.82, 0.66, 0.07, 0.07);
+    R(0.18, 0.76, 0.11, 0.03);
     g.fillStyle = 'rgba(0,0,0,.5)';
-    g.fillRect(5*scale, 3*scale, scale*3, scale*2);
+    R(0.22, 0.10, 0.11, 0.05);
   }
   /* The shadow is the car's own silhouette, not a rectangle behind it — a
      hard box offset under the sprite is the single loudest tell that a
@@ -1521,56 +1574,70 @@ function getCarSide(carId, opts){
    handful of cubes at deterministic offsets, painted back to front so the
    near ones overlap the far ones the way stacked foliage does. */
 var CANOPY_PAL = {
-  forest:  { sh:'#152608', dk:'#22400e', md:'#345715', tp:'#4c7a1e', hi:'#639a28', sp:'#8bb845' },
-  mountain:{ sh:'#152710', dk:'#274018', md:'#385a22', tp:'#4e7a30', hi:'#66963f', sp:'#8cb768' },
-  snowpass:{ sh:'#16301f', dk:'#25473a', md:'#3b6a58', tp:'#8fb4ad', hi:'#cfe2ef', sp:'#ffffff' }
+  forest:  { sh:'#0a1706', dk:'#16290b', side:'#2f4c12', tp:'#4e7018', hi:'#5a8020',
+             rim:'#6c9430', sp:'#86a832', spHi:'#9dc03e', speck:'#182b0a' },
+  mountain:{ sh:'#0c1a0a', dk:'#1a2c12', side:'#31461f', tp:'#4a6a2e', hi:'#557a34',
+             rim:'#688a45', sp:'#7d9c58', spHi:'#94b06c', speck:'#1c2c12' },
+  snowpass:{ sh:'#0f1c18', dk:'#1c332b', side:'#365a4c', tp:'#6e948c', hi:'#84a89f',
+             rim:'#a7c4bd', sp:'#d4e5ee', spHi:'#ffffff', speck:'#24403a' }
 };
+/* One bush, the way the reference draws it: a cube seen from just above the
+   horizon, so it shows a big lit top face and a short dark front face. On
+   the top face sits a second, brighter tier set back into the near corner,
+   which throws its own little hook of shade — that motif is what makes the
+   reference's foliage read as leaves rather than as boxes. */
+function drawBlock(g, pal, x, y, w, lit){
+  var ht = w*0.76, hs = w*0.22;
+  g.fillStyle = pal.dk;                              /* cast into the clump */
+  g.fillRect(x + w*0.10, y + ht*0.14, w, ht+hs);
+  g.fillStyle = pal.side;                            /* the front face */
+  g.fillRect(x, y + ht, w, hs);
+  g.fillStyle = lit ? pal.hi : pal.tp;               /* the lit top */
+  g.fillRect(x, y, w, ht);
+  g.fillStyle = pal.rim;                             /* rim along top and left */
+  g.fillRect(x, y, w, Math.max(1, w*0.045));
+  g.fillRect(x, y, Math.max(1, w*0.045), ht);
+  /* the raised tier, and the hook of shade under its near corner */
+  var tw = w*0.30, tx = x + w*0.15, ty = y + ht*0.12;
+  g.fillStyle = pal.side;
+  g.fillRect(tx + tw*0.22, ty + tw*0.24, tw, tw*0.92);
+  g.fillStyle = pal.sp;
+  g.fillRect(tx, ty, tw, tw*0.86);
+  g.fillStyle = pal.spHi;
+  g.fillRect(tx, ty, tw*0.72, tw*0.30);
+  g.fillStyle = pal.speck;                           /* two leaf specks */
+  g.fillRect(x + w*0.10, y + ht*0.72, Math.max(1, w*0.05), Math.max(1, w*0.05));
+  g.fillRect(x + w*0.72, y + ht*0.74, Math.max(1, w*0.05), Math.max(1, w*0.05));
+}
+
 function drawCanopy(g, s, seed, theme){
   var pal = CANOPY_PAL[theme] || CANOPY_PAL.forest;
   var sd = Math.round(seed*997);
   var i, a, b, c;
 
-  /* First the undergrowth: a spread of dark green that seats the clump in
-     the grass. Without it the blocks float, which is the tell that gives a
-     scattered-square treeline away. */
-  for(i=0;i<5;i++){
+  /* The clump sits in a pool of deep shade. The reference's treeline is
+     almost black between the bushes, and that separation is what stops a
+     bank of foliage collapsing into one flat green mass. */
+  for(i=0;i<4;i++){
     a = rnd2(sd, i, 71); b = rnd2(sd, i, 73); c = rnd2(sd, i, 79);
-    var uw = s*(0.42 + c*0.42);
+    var uw = s*(0.46 + c*0.44);
     g.fillStyle = i & 1 ? pal.sh : pal.dk;
-    g.fillRect((a-0.5)*s*1.05 - uw/2, (b-0.5)*s*1.05 - uw/2, uw, uw*0.86);
+    g.fillRect((a-0.5)*s*0.90 - uw/2, (b-0.5)*s*0.90 - uw/2, uw, uw*0.84);
   }
-  /* the whole clump drops one shadow, not one per block */
-  g.fillStyle = 'rgba(0,0,0,.32)';
-  g.fillRect(-s*0.34 + s*0.20, -s*0.34 + s*0.24, s*0.80, s*0.74);
+  g.fillStyle = 'rgba(0,0,0,.34)';
+  g.fillRect(-s*0.30 + s*0.18, -s*0.30 + s*0.26, s*0.74, s*0.70);
 
-  var n = 4 + Math.floor(rnd2(sd, 3, 53)*3);
+  var n = 2 + Math.floor(rnd2(sd, 3, 53)*3);
   var blocks = [];
   for(i=0;i<n;i++){
     a = rnd2(sd, i, 59); b = rnd2(sd, i, 61); c = rnd2(sd, i, 67);
-    blocks.push({ x:(a-0.5)*s*0.58, y:(b-0.5)*s*0.58, w:s*(0.44+c*0.26),
-                  lit: rnd2(sd, i, 83) });
+    blocks.push({ x:(a-0.5)*s*0.52, y:(b-0.5)*s*0.52, w:s*(0.50+c*0.24),
+                  lit: rnd2(sd, i, 83) > 0.55 });
   }
   blocks.sort(function(p,q){ return p.y - q.y; });   /* back to front */
-
-  for(i=0;i<blocks.length;i++){
-    var bl = blocks[i], w = bl.w, d = Math.max(1, w*0.34);
-    var x0 = bl.x - w/2, y0 = bl.y - w/2;
-    /* Each block is a cube seen from above and slightly to the north west:
-       a face falling away to the south east, a mid band where it turns, and
-       a lit top with a small catch of light in its corner. */
-    g.fillStyle = pal.sh;
-    g.fillRect(x0 + d*0.5, y0 + d*0.7, w, w*0.92);
-    g.fillStyle = pal.dk;
-    g.fillRect(x0 + d*0.25, y0 + d*0.4, w, w*0.86);
-    g.fillStyle = pal.md;
-    g.fillRect(x0, y0 + d*0.30, w, w*0.74);
-    g.fillStyle = bl.lit > 0.62 ? pal.hi : pal.tp;
-    g.fillRect(x0, y0, w, w*0.66);
-    if(bl.lit > 0.30){
-      g.fillStyle = pal.sp;
-      g.fillRect(x0 + w*0.18, y0 + w*0.12, w*0.22, w*0.18);
-    }
-  }
+  for(i=0;i<blocks.length;i++)
+    drawBlock(g, pal, blocks[i].x - blocks[i].w/2, blocks[i].y - blocks[i].w/2,
+              blocks[i].w, blocks[i].lit);
 }
 
 function drawProp(g, p, theme){
@@ -1906,7 +1973,7 @@ var DC = {
   recess:'#141719', recessLo:'#0a0c0d',
   steel:'#a9afb2', steelHi:'#e6ebee', steelLo:'#61686b', steelDk:'#2c3133',
   glass:'#090b0c', glassHi:'#1b1e20',
-  tick:'#eef2f4', tickDim:'#9aa1a4',
+  tick:'#f2f6f8', tickDim:'#c8d0d3',
   num:'#ffffff', numDim:'#aeb5b8',
   needle:'#df2f21', needleHi:'#ff6a52', hub:'#1d2123',
   amber:'#ffab26', amberLo:'#7a5410',
@@ -2085,7 +2152,7 @@ function dashLayout(){
   L.leftBay= { x:X(4,'L'),    y:Y(3.4), w:u(53.6), h:u(59) };
 
   /* ---------------------------------------------------- centre bank */
-  L.R      = u(29.5);
+  L.R      = u(28.6);
   L.dialY  = Y(19.7);
   L.tachX  = X(108);
   L.spdX   = X(190);
@@ -2104,7 +2171,7 @@ function dashLayout(){
   /* ------------------------------------------------------ right bank */
   /* the boost gauge belongs to the binnacle, not the right bank: it has to
      stay tucked under the speedo's shoulder however wide the screen gets */
-  L.boost  = { x:X(231.6), y:Y(35), r:u(11.7) };
+  L.boost  = { x:X(231.6), y:Y(35), r:u(13.4) };
   L.hb     = { x:X(252.3,'R'), y:Y(19.5), w:u(42), h:u(24.1),
                rise:u(21), slotOff:u(9.4), slotH:u(6.3) };
   var sw = u(21.5), sg = u(1.4);
@@ -2150,7 +2217,7 @@ function speedMax(){ return save.settings.units !== 'kph' ? 160 : 260; }
    the bottom. This is that sweep sampled off the reference at 20 degree
    steps, walked round as short stroked arcs. */
 var BEZEL_SWEEP = [
-  0x60,0x6a,0x53,0x18,0x12,0x10,0x11,0x44,0x50,0x4b,0x5c,0x75,0x70,0x57,0x32,0x18,0x5a,0x74
+  0x74,0x80,0x66,0x22,0x18,0x16,0x18,0x55,0x63,0x5e,0x70,0x8c,0x86,0x6a,0x3e,0x22,0x6e,0x8a
 ];
 function bezelRing(g, cx, cy, r, w){
   var n = BEZEL_SWEEP.length, i, a0, a1, t, c0, c1, v;
@@ -2197,10 +2264,10 @@ function drawDialFace(g, cx, cy, R, o){
      proportions are the reference's: ticks right out at the rim, numbers
      well inside them, and a wide clear band of black between. --- */
   var t1     = R*0.90;
-  var majLen = R*(o.small ? 0.15 : 0.10);
-  var minLen = R*(o.small ? 0.08 : 0.045);
-  var majW   = Math.max(1, R*(o.small ? 0.038 : 0.023));
-  var minW   = Math.max(0.7, R*(o.small ? 0.018 : 0.012));
+  var majLen = R*(o.small ? 0.13 : 0.066);
+  var minLen = R*(o.small ? 0.07 : 0.050);
+  var majW   = Math.max(1, R*(o.small ? 0.034 : 0.019));
+  var minW   = Math.max(0.6, R*(o.small ? 0.015 : 0.0095));
   var numSz  = o.numSize != null ? o.numSize : R*0.125;
   var rn     = R*(o.small ? 0.65 : 0.67);              /* numbering ring */
 
@@ -2208,14 +2275,14 @@ function drawDialFace(g, cx, cy, R, o){
      along the rim rather than one smooth band */
   if(o.redFrom != null){
     var ra0 = dialAngle(o.redFrom, o.min, o.max), ra1 = dialAngle(o.max, o.min, o.max);
-    var bars = Math.max(6, Math.round((ra1-ra0)*t1/(R*0.052)));
+    var bars = Math.max(8, Math.round((ra1-ra0)*t1/(R*0.030)));
     g.strokeStyle = DC.red; g.lineCap = 'butt';
-    g.lineWidth = Math.max(1.4, R*0.030);
+    g.lineWidth = Math.max(1.6, R*0.026);
     for(i=0;i<bars;i++){
       a = ra0 + (ra1-ra0)*(i+0.5)/bars;
       g.beginPath();
-      g.moveTo(cx+Math.cos(a)*(t1-R*0.105), cy+Math.sin(a)*(t1-R*0.105));
-      g.lineTo(cx+Math.cos(a)*(t1+R*0.005), cy+Math.sin(a)*(t1+R*0.005));
+      g.moveTo(cx+Math.cos(a)*(t1-R*0.085), cy+Math.sin(a)*(t1-R*0.085));
+      g.lineTo(cx+Math.cos(a)*(t1+R*0.012), cy+Math.sin(a)*(t1+R*0.012));
       g.stroke();
     }
   }
@@ -2230,8 +2297,8 @@ function drawDialFace(g, cx, cy, R, o){
     red = o.redFrom != null && v >= o.redFrom - 1e-6;
     a = dialAngle(v, o.min, o.max);
     if(red && !maj) continue;
-    r1 = red ? t1 - R*0.115 : t1;
-    r0 = r1 - (maj ? majLen*0.7 : minLen);
+    r1 = red ? t1 - R*0.095 : t1;
+    r0 = r1 - (maj ? majLen*0.65 : minLen);
     g.beginPath();
     g.moveTo(cx+Math.cos(a)*r0, cy+Math.sin(a)*r0);
     g.lineTo(cx+Math.cos(a)*r1, cy+Math.sin(a)*r1);
@@ -2264,7 +2331,7 @@ function drawDialFace(g, cx, cy, R, o){
 
 /* A straight tapered pointer with a short counterweight, on a turned hub. */
 function drawNeedle(g, cx, cy, R, ang, col){
-  var len = R*0.78, tail = R*0.10;
+  var len = R*0.78, tail = R*0.055;
   var w0 = Math.max(1.2, R*0.042), w1 = Math.max(0.6, R*0.013);
   g.save();
   g.translate(cx, cy); g.rotate(ang);
@@ -2387,7 +2454,7 @@ function buildDashBase(L, S){
 
   /* ------------------------------------------------------ instruments - */
   drawDialFace(g, L.tachX, L.dialY, L.R, {
-    min:0, max:TACH_MAX, major:1, minor:0.25, redFrom:TACH_RED,
+    min:0, max:TACH_MAX, major:1, minor:0.2, redFrom:TACH_RED,
     label:'RPM', sub:'x1000'
   });
   var un = speedUnits(), smax = speedMax();
@@ -2449,9 +2516,9 @@ function buildDashBase(L, S){
   var xs = [L.stat.x0, L.stat.x1, L.stat.x2];
   for(i=0;i<3;i++){
     var sx = xs[i], sy = L.stat.y, sw = L.stat.w, sh = L.stat.h;
-    pad(g, sx, sy, sw, sh, u(2.4), '#252a2c', '#121617');
-    well(g, sx+u(1.4), sy+u(7.8), sw-u(2.8), sh-u(9.2), u(1.4), '#0c0e0f');
-    capTextFit(g, names[i], sx+sw/2, sy+u(4.6), u(3.7), sw-u(3.2), DC.label, '500', 0);
+    pad(g, sx, sy, sw, sh, u(1.4), '#252a2c', '#121617');
+    well(g, sx+u(1.2), sy+u(7.4), sw-u(2.4), sh-u(8.6), u(1.0), '#0b0d0e');
+    capTextFit(g, names[i], sx+sw/2, sy+u(4.3), u(3.3), sw-u(6.5), DC.label, '500', 0);
   }
   var icy = L.stat.y + L.stat.h*0.55;
   drawTractionIcon(g, xs[0]+L.stat.w/2,  icy, L.U);
@@ -2517,53 +2584,71 @@ function sevenSeg(g, s, cx, cy, h, on, off){
 /* the cast frame around a steering key — bright on the top left, dark at
    the foot, exactly the double bevel the reference gives them */
 function drawKeyFrame(g, K, u){
-  var r = u(5);
+  var c = u(4.5);
   /* the shadow the key drops into its bay */
-  rrPath(g, K.x-u(2.2), K.y-u(2.2), K.w+u(4.4), K.h+u(4.4), r+u(1.5));
-  g.fillStyle = 'rgba(0,0,0,.60)'; g.fill();
-  /* a thin cast frame, bright where the light lands and dark underneath —
-     the reference gives these a rim, not the slab bezel it is easy to draw */
+  chamferPath(g, K.x-u(2.4), K.y-u(2.4), K.w+u(4.8), K.h+u(4.8), c+u(1.6));
+  g.fillStyle = 'rgba(0,0,0,.62)'; g.fill();
+  /* A cast rim, chamfered the way an injection-moulded surround is, bright
+     where the light lands and dark underneath — and with a groove cut
+     inside it, which is what the reference's keys are read by. */
   var fg = g.createLinearGradient(K.x, K.y, K.x+K.w*0.6, K.y+K.h);
-  fg.addColorStop(0.00, '#c6cbc6');
-  fg.addColorStop(0.24, '#868c88');
-  fg.addColorStop(0.55, '#454b4a');
-  fg.addColorStop(0.82, '#6f7573');
-  fg.addColorStop(1.00, '#33393a');
-  rrPath(g, K.x, K.y, K.w, K.h, r);
+  fg.addColorStop(0.00, '#cfd4ce');
+  fg.addColorStop(0.20, '#8d938e');
+  fg.addColorStop(0.52, '#4a504e');
+  fg.addColorStop(0.80, '#767c79');
+  fg.addColorStop(1.00, '#2e3435');
+  chamferPath(g, K.x, K.y, K.w, K.h, c);
   g.fillStyle = fg; g.fill();
-  g.lineWidth = Math.max(1, u(0.45)); g.strokeStyle = 'rgba(0,0,0,.55)'; g.stroke();
-  rrPath(g, K.x+u(1.7), K.y+u(1.7), K.w-u(3.4), K.h-u(3.4), r-u(1.2));
-  g.lineWidth = Math.max(1, u(0.5)); g.strokeStyle = 'rgba(10,14,15,.75)'; g.stroke();
+  g.lineWidth = Math.max(1, u(0.45)); g.strokeStyle = 'rgba(0,0,0,.6)'; g.stroke();
+  chamferPath(g, K.x+u(1.5), K.y+u(1.5), K.w-u(3), K.h-u(3), c-u(1));
+  g.lineWidth = Math.max(1, u(0.8)); g.strokeStyle = 'rgba(8,11,12,.85)'; g.stroke();
+  chamferPath(g, K.x+u(2.4), K.y+u(2.4), K.w-u(4.8), K.h-u(4.8), c-u(1.6));
+  g.lineWidth = Math.max(1, u(0.45)); g.strokeStyle = 'rgba(190,198,194,.35)'; g.stroke();
 }
 
 /* --------------------------------------------------- status tile icons */
 /* A car seen from behind over two skid trails: the traction tell-tale. */
 function drawTractionIcon(g, cx, cy, U){
-  var w = U*7.6, h = U*4.0;
-  var x = cx-w/2, y = cy-U*4.2;
+  var w = U*6.2, h = U*4.2;
+  var x = cx-w/2, y = cy-U*5.0;
   /* the car, seen from behind: a filled body under an outlined greenhouse,
      which is what makes it read as a car and not a blob at this size */
+  /* The reference etches the car rather than filling it: a trapezoid
+     greenhouse on a squarer body, with the tile's own black showing between
+     them — a solid green lozenge reads as a blob at this size. */
+  /* The lamp every car uses: an arched roof drawn in outline sitting on a
+     solid body, with a mirror stub each side and two stubby legs under it —
+     then a pair of Z-shaped skid marks that never cross each other. */
   g.strokeStyle = DC.green; g.fillStyle = DC.green;
-  g.lineWidth = Math.max(1.1, U*0.7); g.lineJoin = 'round'; g.lineCap = 'round';
-  g.beginPath();                                       /* roof and screen */
-  g.moveTo(x+w*0.26, y);        g.lineTo(x+w*0.74, y);
-  g.lineTo(x+w*0.84, y+h*0.42); g.lineTo(x+w*0.16, y+h*0.42);
-  g.closePath(); g.stroke();
-  g.beginPath();                                       /* body and haunches */
-  g.moveTo(x+w*0.10, y+h*0.46); g.lineTo(x+w*0.90, y+h*0.46);
-  g.lineTo(x+w, y+h*0.68);      g.lineTo(x+w, y+h);
-  g.lineTo(x, y+h);             g.lineTo(x, y+h*0.68);
-  g.closePath(); g.fill();
-  /* the two skid wiggles the tell-tale is known by */
-  g.lineWidth = Math.max(1.1, U*0.95);
-  var i, sx, yy = y+h+U*1.1;
+  g.lineWidth = Math.max(1.2, U*0.75); g.lineJoin = 'round'; g.lineCap = 'butt';
+  g.beginPath();                                       /* the greenhouse */
+  g.moveTo(x+w*0.20, y+h*0.46);
+  g.lineTo(x+w*0.26, y+h*0.14);
+  g.quadraticCurveTo(x+w*0.28, y+h*0.04, x+w*0.40, y+h*0.04);
+  g.lineTo(x+w*0.60, y+h*0.04);
+  g.quadraticCurveTo(x+w*0.72, y+h*0.04, x+w*0.74, y+h*0.14);
+  g.lineTo(x+w*0.80, y+h*0.46);
+  g.stroke();
+  rrPath(g, x+w*0.08, y+h*0.42, w*0.84, h*0.42, h*0.10);
+  g.fill();                                            /* the solid body */
+  g.fillRect(x,          y+h*0.46, w*0.10, h*0.16);    /* the mirror stubs */
+  g.fillRect(x+w*0.90,   y+h*0.46, w*0.10, h*0.16);
+  g.fillRect(x+w*0.16,   y+h*0.82, w*0.14, h*0.20);    /* the legs */
+  g.fillRect(x+w*0.70,   y+h*0.82, w*0.14, h*0.20);
+  g.fillStyle = '#0b0d0e';                             /* two dark windows */
+  g.fillRect(x+w*0.20, y+h*0.52, w*0.16, h*0.16);
+  g.fillRect(x+w*0.64, y+h*0.52, w*0.16, h*0.16);
+
+  g.strokeStyle = DC.green;
+  g.lineWidth = Math.max(1.3, U*1.05); g.lineJoin = 'miter'; g.lineCap = 'butt';
+  var i, sx, sg, yy = y+h*1.24;
   for(i=0;i<2;i++){
-    sx = cx + (i ? w*0.24 : -w*0.24);
+    sg = i ? 1 : -1; sx = cx + sg*w*0.40;
     g.beginPath();
-    g.moveTo(sx+U*0.9, yy);
-    g.lineTo(sx-U*0.9, yy+U*1.5);
-    g.lineTo(sx+U*0.9, yy+U*2.9);
-    g.lineTo(sx-U*0.7, yy+U*4.1);
+    g.moveTo(sx + sg*U*1.0, yy);
+    g.lineTo(sx - sg*U*0.9, yy+U*1.7);
+    g.lineTo(sx + sg*U*0.9, yy+U*3.3);
+    g.lineTo(sx - sg*U*1.0, yy+U*4.9);
     g.stroke();
   }
 }
@@ -2573,16 +2658,16 @@ function drawDiffIcon(g, cx, cy, U){
   var x = cx-w/2, y = cy-h/2;
   var hw = U*2.0, hh = U*3.0;
   var lx = x+hw/2, rx = x+w-hw/2, ty = y+hh/2, by = y+h-hh/2;
-  g.strokeStyle = DC.grey; g.lineWidth = Math.max(1.4, U*1.0); g.lineCap = 'butt';
+  g.strokeStyle = DC.grey; g.lineWidth = Math.max(1.2, U*0.8); g.lineCap = 'butt';
   g.beginPath();
   g.moveTo(lx, ty); g.lineTo(rx, ty);                  /* front axle */
   g.moveTo(lx, by); g.lineTo(rx, by);                  /* rear axle */
   g.moveTo(cx, ty); g.lineTo(cx, by);                  /* prop shaft */
   g.stroke();
   g.fillStyle = DC.steel;                              /* the centre diff */
-  g.beginPath(); g.arc(cx, cy, U*1.5, 0, TAU); g.fill();
-  g.fillStyle = '#0d0f10';
-  g.beginPath(); g.arc(cx, cy, U*0.6, 0, TAU); g.fill();
+  g.beginPath(); g.arc(cx, cy, U*1.0, 0, TAU); g.fill();
+  g.fillStyle = '#0b0d0e';
+  g.beginPath(); g.arc(cx, cy, U*0.38, 0, TAU); g.fill();
   g.fillStyle = DC.grey;                               /* the four hubs */
   var i, px, py;
   for(i=0;i<4;i++){
@@ -2595,7 +2680,7 @@ function drawDiffIcon(g, cx, cy, U){
 }
 /* A hinged throttle pedal on its floor mount, raked as it is on the car. */
 function drawPedalIcon(g, cx, cy, U){
-  var w = U*5.0, h = U*12.0;
+  var w = U*5.2, h = U*11.0;
   var x = cx-w/2, y = cy-h/2;
   g.save();
   g.translate(cx, cy); g.rotate(0.20); g.translate(-cx, -cy);
@@ -2642,19 +2727,19 @@ function blitArt(g, cv, x, y, S){
 function drawKeyFace(g, w, h, right, pressed){
   var U = h/45.7;
   var d = pressed ? U*0.9 : 0;
-  var m = U*2.4, r = U*3.8;
-  rrPath(g, m, m+d, w-2*m, h-2*m-d*0.5, r);
-  g.fillStyle = vGrad(g, m, h-m, pressed ? [[0,'#363d40'],[1,'#1e2426']]
-                                         : [[0,'#22272a'],[1,'#111516']]);
+  var m = U*3.4, r = U*3.2;
+  chamferPath(g, m, m+d, w-2*m, h-2*m-d*0.5, r);
+  g.fillStyle = vGrad(g, m, h-m, pressed ? [[0,'#2f3639'],[1,'#181d1f']]
+                                         : [[0,'#1b2022'],[1,'#0c1011']]);
   g.fill();
-  g.save(); rrPath(g, m, m+d, w-2*m, h-2*m-d*0.5, r); g.clip();
+  g.save(); chamferPath(g, m, m+d, w-2*m, h-2*m-d*0.5, r); g.clip();
   g.fillStyle = grainPattern(g); g.fillRect(0, 0, w, h);
   g.fillStyle = 'rgba(0,0,0,.40)'; g.fillRect(0, m+d, w, U*1.6);
   g.restore();
   g.lineWidth = Math.max(1, U*0.5); g.strokeStyle = 'rgba(0,0,0,.55)'; g.stroke();
 
   /* a soft grey triangle pointing outboard, the way the reference draws it */
-  var s = w*0.22, cx = w/2 + (right ? s*0.10 : -s*0.10), cy = h/2 + d;
+  var s = w*0.195, cx = w/2 + (right ? s*0.10 : -s*0.10), cy = h/2 + d;
   g.beginPath();
   if(right){ g.moveTo(cx+s, cy); g.lineTo(cx-s*0.78, cy-s*1.02); g.lineTo(cx-s*0.78, cy+s*1.02); }
   else     { g.moveTo(cx-s, cy); g.lineTo(cx+s*0.78, cy-s*1.02); g.lineTo(cx+s*0.78, cy+s*1.02); }
@@ -2737,11 +2822,11 @@ function drawShifter(g, w, h, v, gateY){
   g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = w*0.05; g.shadowOffsetX = w*0.015;
   /* the barrel, shaded across its width so it reads as round */
   var bg = g.createLinearGradient(px0-nx*aw, py0-ny*aw, px0+nx*aw, py0+ny*aw);
-  bg.addColorStop(0.00, '#101415');
-  bg.addColorStop(0.26, on ? '#6d6248' : '#5b6265');
-  bg.addColorStop(0.44, on ? '#ffd487' : '#c3cacd');
-  bg.addColorStop(0.62, on ? '#8a7440' : '#4d5456');
-  bg.addColorStop(1.00, '#0b0e0f');
+  bg.addColorStop(0.00, '#07090a');
+  bg.addColorStop(0.28, on ? '#3f3720' : '#242a2c');
+  bg.addColorStop(0.46, on ? '#8a7440' : '#4e5457');
+  bg.addColorStop(0.64, on ? '#332d18' : '#1b2022');
+  bg.addColorStop(1.00, '#050708');
   g.beginPath(); g.lineCap = 'round';
   g.moveTo(px0, py0); g.lineTo(tx, ty);
   g.lineWidth = aw*2; g.strokeStyle = bg; g.stroke();
@@ -2752,8 +2837,8 @@ function drawShifter(g, w, h, v, gateY){
   g.moveTo(px0, py0); g.lineTo(tx, ty);
   g.lineWidth = aw*2; g.strokeStyle = 'rgba(0,0,0,0)'; g.stroke();
   g.clip();
-  g.strokeStyle = 'rgba(0,0,0,.30)'; g.lineWidth = Math.max(1, w*0.010);
-  for(var i=0.18;i<0.95;i+=0.13){
+  g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = Math.max(1, w*0.012);
+  for(var i=0.12;i<0.96;i+=0.075){
     var mx = px0 + dx*len*i, my = py0 + dy*len*i;
     g.beginPath();
     g.moveTo(mx-nx*aw, my-ny*aw); g.lineTo(mx+nx*aw, my+ny*aw);
@@ -2763,9 +2848,10 @@ function drawShifter(g, w, h, v, gateY){
   /* the domed cap */
   g.beginPath(); g.ellipse(tx, ty, aw*1.02, aw*0.80, ang, 0, TAU);
   var kg = g.createLinearGradient(tx-nx*aw, ty-ny*aw, tx+nx*aw, ty+ny*aw);
-  kg.addColorStop(0, '#3f4547');
-  kg.addColorStop(0.40, on ? '#ffd487' : '#cfd6d8');
-  kg.addColorStop(1, '#14181a');
+  kg.addColorStop(0, '#6b7274');
+  kg.addColorStop(0.38, on ? '#ffd487' : '#d6dcde');
+  kg.addColorStop(0.72, on ? '#8a7440' : '#767d7f');
+  kg.addColorStop(1, '#2a3032');
   g.fillStyle = kg; g.fill();
   g.lineWidth = Math.max(1, w*0.008); g.strokeStyle = 'rgba(0,0,0,.5)'; g.stroke();
 }
@@ -2887,12 +2973,15 @@ function drawDash(r){
      something. */
   var lb = L.led, cw = lb.w/lb.n;
   for(i=0;i<lb.n;i++){
-    x = lb.x + i*cw + cw*0.16;
+    x = lb.x + i*cw + cw*0.17;
     var on = !(i === lb.n-1 && rpm > 0.93);
-    rrPath(g, x, lb.y+lb.h*0.12, cw*0.68, lb.h*0.76, lb.h*0.20);
-    g.fillStyle = on ? DC.green : DC.greenDim; g.fill();
+    var lw = cw*0.66, lh = lb.h*0.74, ly = lb.y + lb.h*0.13;
+    rrPath(g, x, ly, lw, lh, lb.h*0.12);
+    g.fillStyle = on ? DC.greenLo : DC.greenDim; g.fill();     /* the lens rim */
     if(on){
-      rrPath(g, x+cw*0.09, lb.y+lb.h*0.20, cw*0.50, lb.h*0.30, lb.h*0.14);
+      rrPath(g, x+lw*0.16, ly+lh*0.14, lw*0.68, lh*0.72, lb.h*0.08);
+      g.fillStyle = DC.green; g.fill();
+      rrPath(g, x+lw*0.22, ly+lh*0.20, lw*0.46, lh*0.26, lb.h*0.06);
       g.fillStyle = DC.greenHi; g.fill();
     }
   }
@@ -3659,7 +3748,10 @@ function renderRace(){
   var dxc = c.x - r.camX, dyc = c.y - r.camY;
   var carDrop = (dyc*Math.cos(r.camA) - dxc*Math.sin(r.camA)) * scale;
   var carHalf = CAR_WORLD_LEN*scale*0.55;
-  var deck = H - dashBandH() - carHalf - 6;    /* housing top, less the car */
+  /* The reference leaves a clear margin of road between the car's tail and
+     the top of the binnacle rather than parking it on the moulding, so the
+     deck is pulled up a further slice of the frame. */
+  var deck = H - dashBandH() - carHalf - H*0.075;
   if(focal + carDrop > deck) focal = clamp(deck - carDrop, H*0.30, H*0.62);
 
   /* park the countdown and the big messages just above the car's roof */
@@ -3697,18 +3789,22 @@ function renderRace(){
    into a tile and laid down as a pattern. The tile is deliberately large
    and carries its own tufts and stones, so the repeat never announces
    itself at the zoom the game is actually played at. */
+/* Sampled off the reference. Its verge is far darker than it looks at a
+   glance — a hair over a tenth luminance — and its variation is fine and
+   many-toned rather than two colours in big patches, which is what lets the
+   foliage read against it at all. */
 var GROUND_PAL = {
-  forest:  { base:'#2b4413',
-             grain:['#24390f91','#33501891','#1c300a91','#3a5a1c91'],
-             tuft:['#4d7822','#5d8c2b'], stone:['#5f6357','#7b7f71'] },
-  mountain:{ base:'#4a4a45',
-             grain:['#41413c91','#55554f91','#38383391','#5f5f5891'],
-             tuft:['#5c6045','#6d7152'], stone:['#7a7a70','#94948a'] },
-  snowpass:{ base:'#e9f2fa',
-             grain:['#f3f8fc91','#dde8f291','#ffffff91','#d3e0ee91'],
+  forest:  { base:'#1e330f',
+             grain:['#132207','#1a2e0d','#22360f','#2a4212','#345016','#0f1c05','#25390f','#3b5c1b'],
+             tuft:['#3f6a1a','#4e8221'], stone:['#5b5f52','#787c6d'] },
+  mountain:{ base:'#43433e',
+             grain:['#3c3c37','#4a4a44','#35352f','#4f4f49','#313129','#52524b'],
+             tuft:['#54583d','#656949'], stone:['#75756b','#8f8f85'] },
+  snowpass:{ base:'#e4eef8',
+             grain:['#eef5fb','#d9e5f0','#f7fbff','#cfdcea','#e8f1f9','#dde9f4'],
              tuft:['#cfe0ef','#e4eef8'], stone:['#a8b6c4','#c3ced9'] }
 };
-var GROUND_TILE = 256, GROUND_CELL = 4;
+var GROUND_TILE = 258, GROUND_CELL = 3;
 var groundTiles = {};
 function groundPattern(g, theme){
   var t = groundTiles[theme];
@@ -3722,22 +3818,27 @@ function groundPattern(g, theme){
     var n = GROUND_TILE/GROUND_CELL, x, y, v;
     for(y=0;y<n;y++) for(x=0;x<n;x++){
       v = rnd2(x, y, 31);
-      if(v > 0.62) continue;                        /* leave some base showing */
+      if(v > 0.78) continue;                        /* leave some base showing */
       tg.fillStyle = pal.grain[Math.floor(rnd2(x,y,37)*pal.grain.length)];
       tg.fillRect(x*GROUND_CELL, y*GROUND_CELL, GROUND_CELL, GROUND_CELL);
     }
-    /* tufts: a three-blade sprig, and the odd stone, scattered on the grain */
+    /* Tufts and stones. The reference's verge is thick with little sprigs —
+       they are half of what makes it read as grass rather than a texture —
+       so they go down often, in two sizes, with the odd stone between. */
     for(y=0;y<n;y+=3) for(x=0;x<n;x+=3){
       v = rnd2(x, y, 41);
       var px = x*GROUND_CELL, py = y*GROUND_CELL, k = GROUND_CELL;
-      if(v > 0.972){
-        tg.fillStyle = pal.tuft[v > 0.986 ? 1 : 0];
+      if(v > 0.858){
+        var big = v > 0.952;
+        tg.fillStyle = 'rgba(0,0,0,.22)';
+        tg.fillRect(px+k, py+(big?4:3)*k, k*2, k);
+        tg.fillStyle = pal.tuft[big ? 1 : 0];
         tg.fillRect(px,     py+k,   k, k*2);
-        tg.fillRect(px+k,   py,     k, k*3);
+        tg.fillRect(px+k,   py,     k, k*(big?4:3));
         tg.fillRect(px+2*k, py+k,   k, k*2);
-        tg.fillRect(px+k,   py+3*k, k, k);
-      } else if(v > 0.960){
-        tg.fillStyle = 'rgba(0,0,0,.30)';
+        if(big){ tg.fillRect(px-k, py+2*k, k, k*2); tg.fillRect(px+3*k, py+2*k, k, k*2); }
+      } else if(v > 0.836){
+        tg.fillStyle = 'rgba(0,0,0,.34)';
         tg.fillRect(px+k, py+2*k, k*3, k*2);
         tg.fillStyle = pal.stone[0];
         tg.fillRect(px, py+k, k*3, k*2);
@@ -3768,9 +3869,16 @@ var mottleCache = {};
 function ROAD_MOTTLE(S){
   var m = mottleCache[S.name];
   if(!m){
+    /* A loose surface is stones, not paint: as well as the ramp either side
+       of the base colour there are pale grit and dark wet patches, which is
+       what gives the reference's dirt its pebbled look rather than a wash. */
     m = mottleCache[S.name] = [
-      S.color2, shade(S.color,-0.035), shade(S.color, 0.030), shade(S.color,-0.070),
-      shade(S.color, 0.055), shade(S.color,-0.105), S.color, shade(S.color,-0.015)
+      S.color2, shade(S.color,-0.045), shade(S.color, 0.045), shade(S.color,-0.085),
+      shade(S.color, 0.080), shade(S.color,-0.125), S.color, shade(S.color,-0.020),
+      S.grit || shade(S.color, 0.110), shade(S.color,-0.165), shade(S.color, 0.150),
+      S.color2, shade(S.color, 0.060), shade(S.color,-0.060),
+      S.grit || shade(S.color, 0.130), shade(S.color,-0.200),
+      S.grit || shade(S.color, 0.150), shade(S.color, 0.100)
     ];
   }
   return m;
@@ -3793,10 +3901,10 @@ function drawApron(g, nd, S, dir){
   g.save(); g.clip();
   var mot = ROAD_MOTTLE(S);
   for(var t=0;t<26;t++){
-    for(var q=0;q<14;q++){
+    for(var q=0;q<64;q++){
       var lat = (rnd2(t,q,3)*2-1)*nd.hw;
       var run = rnd2(t,q,13)*len;
-      var sz = 3 + rnd2(t,q,5)*6;
+      var sz = 1.5 + rnd2(t,q,5)*3.2;
       g.fillStyle = mot[Math.floor(rnd2(t,q,23)*mot.length)];
       g.fillRect(nd.x + nx*lat + dx*run - sz/2, nd.y + ny*lat + dy*run - sz/2, sz, sz);
     }
@@ -3845,10 +3953,10 @@ function drawRoad(g, r, viewR){
       var nd3 = nodes[t];
       var nxx = Math.cos(nd3.a), nyy = Math.sin(nd3.a);
       var dxx = Math.sin(nd3.a), dyy = -Math.cos(nd3.a);
-      for(var q=0;q<14;q++){
+      for(var q=0;q<64;q++){
         var lat = (rnd2(t,q,3)*2-1)*nd3.hw;
         var run = (rnd2(t,q,17)-0.5)*NODE_STEP;
-        var sz = 3 + rnd2(t,q,5)*6;
+        var sz = 1.5 + rnd2(t,q,5)*3.2;
         g.fillStyle = mot[Math.floor(rnd2(t,q,23)*mot.length)];
         g.fillRect(nd3.x + nxx*lat + dxx*run - sz/2,
                    nd3.y + nyy*lat + dyy*run - sz/2, sz, sz);
@@ -3884,8 +3992,8 @@ function drawRoad(g, r, viewR){
     i = end;
   }
 
-  drawBanner(g, nodes[0], '#f2f2ea', '#20242a');
-  drawBanner(g, nodes[nodes.length-1], '#f2f2ea', '#20242a');
+  drawBanner(g, nodes[0], '#d9d9d1', '#171818');
+  drawBanner(g, nodes[nodes.length-1], '#d9d9d1', '#171818');
 }
 
 /* Two rows of square checks, laid across the road and no wider than it —
@@ -3898,8 +4006,8 @@ function drawBanner(g, nd, ca, cb){
     var lat = -nd.hw + i*w;
     for(var k=0;k<2;k++){
       g.fillStyle = ((i+k)%2===0) ? ca : cb;
-      var bx = nd.x + nx*lat + dx*(k*w - w);
-      var by = nd.y + ny*lat + dy*(k*w - w);
+      var bx = nd.x + nx*lat + dx*(k*w - w*2.15);
+      var by = nd.y + ny*lat + dy*(k*w - w*2.15);
       g.save(); g.translate(bx,by); g.rotate(nd.a);
       g.fillRect(0, 0, w+0.6, w+0.6);
       g.restore();
@@ -3966,10 +4074,27 @@ function drawCar(g, r){
   g.restore();
 }
 
+/* the world canvas has no rounded-rect helper of its own; the dash's one is
+   defined further down the file, so keep a small local copy here */
+function roundRectPath(g, x, y, w, h, r){
+  r = Math.min(r, w/2, h/2);
+  g.beginPath();
+  g.moveTo(x+r, y);
+  g.arcTo(x+w, y,   x+w, y+h, r);
+  g.arcTo(x+w, y+h, x,   y+h, r);
+  g.arcTo(x,   y+h, x,   y,   r);
+  g.arcTo(x,   y,   x+w, y,   r);
+  g.closePath();
+}
+
 function drawMinimap(g, r, W, H){
   var nodes = r.track.nodes;
-  var mw = Math.min(120, W*0.19), mh = mw;
-  var x0 = W - mw - 10, y0 = 46;          /* top right, under the pause button */
+  /* Sized off the viewport height, like every other overlay panel, so the
+     map holds the fifth of the frame the reference gives it whatever the
+     aspect. It sits under the pause button, hard against the right edge. */
+  var pad = H*0.016;
+  var mw = H*0.196, mh = mw;
+  var x0 = W - mw - pad - H*0.016, y0 = H*0.085 + pad;
   /* fit whole track */
   if(!r.mapBox){
     var minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
@@ -3985,12 +4110,13 @@ function drawMinimap(g, r, W, H){
   var ox = x0 + mw/2 - ((bb.minx+bb.maxx)/2)*s;
   var oy = y0 + mh/2 - ((bb.miny+bb.maxy)/2)*s;
   g.save();
-  g.fillStyle = 'rgba(8,11,7,.55)';
-  g.fillRect(x0-6, y0-6, mw+12, mh+12);
-  g.strokeStyle = 'rgba(60,74,56,.85)'; g.lineWidth = 2;
-  g.strokeRect(x0-6, y0-6, mw+12, mh+12);
-  g.globalAlpha = 0.85;
-  g.strokeStyle = '#c9d3c2'; g.lineWidth = 2;
+  var br = H*0.010;                                  /* matches the DOM panels */
+  roundRectPath(g, x0-pad, y0-pad, mw+2*pad, mh+2*pad, br);
+  g.fillStyle = '#050b06'; g.fill();
+  g.strokeStyle = '#3a4139'; g.lineWidth = Math.max(1.4, H*0.0029); g.stroke();
+  g.globalAlpha = 0.88;
+  g.strokeStyle = '#c9d3c2'; g.lineWidth = Math.max(1.4, H*0.0032);
+  g.lineJoin = 'round'; g.lineCap = 'round';
   g.beginPath();
   for(var k=0;k<nodes.length;k+=6){
     var px = ox+nodes[k].x*s, py = oy+nodes[k].y*s;
@@ -3999,7 +4125,8 @@ function drawMinimap(g, r, W, H){
   g.stroke();
   g.globalAlpha = 1;
   g.fillStyle = '#ffb432';
-  g.fillRect(ox+r.car.x*s-3, oy+r.car.y*s-3, 6, 6);
+  var mk = Math.max(4, H*0.016);
+  g.fillRect(ox+r.car.x*s-mk/2, oy+r.car.y*s-mk/2, mk, mk);
   g.restore();
 }
 

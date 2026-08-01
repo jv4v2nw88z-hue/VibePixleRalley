@@ -159,10 +159,23 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 /* ---------- HUD ---------- */
 #hud{position:absolute;inset:0;z-index:20;pointer-events:none;
   padding:calc(6px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));}
-.hud-box{position:absolute;background:rgba(8,11,7,.62);border:2px solid rgba(60,74,56,.85);border-radius:4px;padding:4px 8px;}
-#hud-timer{top:calc(6px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);text-align:center;}
-#hud-timer .t{font-size:clamp(17px,4.2vh,30px);font-weight:700;letter-spacing:2px;color:var(--amber);text-shadow:0 0 10px rgba(255,180,50,.4);}
-#hud-timer .d{font-size:clamp(9px,1.7vh,12px);letter-spacing:1px;}
+/* Every overlay panel is sized in vh, not pixels. The reference is a 3:2
+   frame and its panels take a fixed share of the height — a fifth for the
+   stage card, a fifth for the map — so pinning them to CSS pixels made them
+   shrink to stamps on a tall viewport and swell on a short one. Measured off
+   the reference at 1024 tall: 2px of border is 0.2vh, 19px of type is 1.9vh. */
+.hud-box{position:absolute;
+  /* the reference's cards are opaque, not tinted glass: #0c110b behind a
+     bevelled grey rim that catches the light along its top edge */
+  background:linear-gradient(180deg,#0d120c,#0a0f0a);
+  border:0.29vh solid #394039;border-top-color:#4a4c49;border-bottom-color:#0e130e;
+  border-radius:1vh;padding:0.7vh 1.5vh;
+  box-shadow:0 0.3vh 0.9vh rgba(0,0,0,.45);}
+#hud-timer{top:1.2vh;left:50%;transform:translateX(-50%);text-align:center;
+  min-width:24vh;padding:0.6vh 1.8vh 0.9vh;}
+#hud-timer .t{font-size:4.1vh;font-weight:700;letter-spacing:0.45vh;color:var(--amber);
+  text-shadow:0 0 1.2vh rgba(255,180,50,.35);line-height:1.15;}
+#hud-timer .d{font-size:2.15vh;letter-spacing:0.2vh;line-height:1.25;color:#e6e9e2;}
 /* The dashboard. One canvas, sized and positioned entirely from JS so the
    grid scales by a whole number of device pixels, pinned to the true
    bottom of the viewport with no letterbox gap under it. It is a little
@@ -175,9 +188,10 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
    be nearest-neighbour scaled the way the world above it is. */
 #dash-cv{position:absolute;bottom:0;left:0;display:block;pointer-events:auto;
   touch-action:none;}
-#hud-left{top:calc(6px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));min-width:118px;}
-#hud-left .nm{font-size:10px;color:var(--muted);letter-spacing:1px;}
-.meter{height:6px;background:#0d110c;border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-top:3px;}
+#hud-left{top:calc(1.2vh + env(safe-area-inset-top));left:calc(1.6vh + env(safe-area-inset-left));
+  width:24.6vh;padding:1.1vh 1.7vh 1.3vh;}
+#hud-left .nm{font-size:1.9vh;color:#b1b2ac;letter-spacing:0.22vh;line-height:1.5;}
+.meter{height:1.2vh;background:#040605;border:0.2vh solid #3a3b3a;border-radius:0.45vh;overflow:hidden;margin-top:0.5vh;}
 .meter i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#2f7a3c,var(--green));}
 .meter i.dmg{background:linear-gradient(90deg,#c8820f,var(--red));}
 #hud-note{position:absolute;top:calc(52px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
@@ -216,7 +230,11 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 }
 .pad.act{background:linear-gradient(180deg,rgba(255,196,87,.55),rgba(224,146,26,.5));
   border-color:#ffd487;color:#1a1200;}
-#p-pause{right:calc(8px + env(safe-area-inset-right));top:calc(6px + env(safe-area-inset-top));width:44px;height:34px;font-size:12px;pointer-events:auto;}
+#p-pause{right:calc(1.6vh + env(safe-area-inset-right));top:calc(2.2vh + env(safe-area-inset-top));
+  width:7.9vh;height:5.3vh;font-size:2.5vh;letter-spacing:0.3vh;border-radius:1vh;
+  background:linear-gradient(180deg,#121613,#0b0f0b);
+  border:0.29vh solid #394039;border-top-color:#4a4c49;border-bottom-color:#0e130e;
+  box-shadow:0 0.3vh 0.9vh rgba(0,0,0,.45);color:#dfe6d8;pointer-events:auto;}
 /* the tilt strip parks above the dash, whatever height the dash took */
 #tilt-bar{position:absolute;left:50%;transform:translateX(-50%);
   bottom:calc(var(--dash-h, 160px) + 12px);
