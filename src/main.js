@@ -3,7 +3,7 @@ import './style.css';
 (function(){
 'use strict';
 /* =========================================================================
-   RALLY PIXEL — data: cars, upgrades, tires, stages, persistence
+   RALLY PIXEL - data: cars, upgrades, tires, stages, persistence
    ========================================================================= */
 
 var SAVE_KEY = 'rallypixel.save.v1';
@@ -234,7 +234,7 @@ function carIndex(id){ for(var i=0;i<CARS.length;i++) if(CARS[i].id===id) return
 /* ------------------------------------------------------- shop preview
    Tapping something in the garage equips it as a preview instead of buying
    it: a shadow copy of that car's save entry with the one item already
-   applied. Nothing reaches `save` — or localStorage — until PURCHASE is
+   applied. Nothing reaches `save` - or localStorage - until PURCHASE is
    confirmed, so CANCEL and backing out of the garage both just drop the
    copy and the car snaps back to its last paid-for state.
 
@@ -243,13 +243,13 @@ function carIndex(id){ for(var i=0;i<CARS.length;i++) if(CARS[i].id===id) return
    `cs` is the shadow car entry and `current` is which car would be in use,
    which is how an unowned car can stand in the bay before it is bought.
    Because the preview IS the post-purchase state, committing is a straight
-   hand-over of the copy — the preview and the thing you pay for can never
+   hand-over of the copy - the preview and the thing you pay for can never
    drift apart. */
 var preview = null;
 
 function cloneCarSave(cs){ return JSON.parse(JSON.stringify(cs)); }
 
-/* the car the garage should show — previewed if there is one, else in use */
+/* the car the garage should show - previewed if there is one, else in use */
 function shopCarId(){ return preview ? preview.current : save.current; }
 /* a car's entry as the garage should show it, preview folded in */
 function shopCarSave(carId){
@@ -308,7 +308,7 @@ function fmtDelta(d){
 }
 function fmtMoney(n){ return 'CR ' + Math.round(n).toLocaleString('en-US'); }
 /* =========================================================================
-   TRACK BUILDER — walks the segment list into a centreline of nodes,
+   TRACK BUILDER - walks the segment list into a centreline of nodes,
    then scatters scenery, hazards and pacenotes along it.
    ========================================================================= */
 
@@ -426,7 +426,7 @@ function buildScenery(track){
       }
     }
 
-    /* loose rocks / stumps just off the racing line — genuine hazards */
+    /* loose rocks / stumps just off the racing line - genuine hazards */
     if(rand() < 0.055){
       var side = rand()<0.5 ? -1 : 1;
       var lat = nd.hw + 28 + rand()*30;
@@ -510,17 +510,17 @@ function angDiff(a,b){
   return d;
 }
 /* =========================================================================
-   PIXEL SPRITES — everything is drawn with canvas primitives, so there are
+   PIXEL SPRITES - everything is drawn with canvas primitives, so there are
    still no external asset files.
 
    Each car has TWO sprite sets:
 
-     1. TOP-DOWN  — a flat character map, used for in-race rendering. Kept
+     1. TOP-DOWN  - a flat character map, used for in-race rendering. Kept
         deliberately simple: it is only ever seen small and rotating.
 
-     2. SIDE VIEW — built from independent, individually swappable layers
+     2. SIDE VIEW - built from independent, individually swappable layers
         (chassis / wheels / hood / livery / glass / trim). A later pass can
-        replace one layer — say WHEEL_STYLES.rally or SIDE_LAYERS.hood —
+        replace one layer - say WHEEL_STYLES.rally or SIDE_LAYERS.hood -
         or nudge opts.rideHeight, without touching any of the others.
 
    Top-down legend:
@@ -530,7 +530,7 @@ function angDiff(a,b){
    ========================================================================= */
 
 var CAR_SPRITES = {
-  /* KESTREL 1.6 GTI — narrow track, tall glasshouse, short overhangs */
+  /* KESTREL 1.6 GTI - narrow track, tall glasshouse, short overhangs */
   hatch: [
     '................',
     '....KKKKKKKK....',
@@ -561,7 +561,7 @@ var CAR_SPRITES = {
     '....KKKKKKKK....',
     '................'
   ],
-  /* FALCON RS EVO — wider track, bonnet vents, boot spoiler */
+  /* FALCON RS EVO - wider track, bonnet vents, boot spoiler */
   rally: [
     '................',
     '...KKKKKKKKKK...',
@@ -592,7 +592,7 @@ var CAR_SPRITES = {
     '.SSSSSSSSSSSSSS.',
     '.SS..........SS.'
   ],
-  /* VANTOR WRC-X — box arches, roof scoop, full-width wing */
+  /* VANTOR WRC-X - box arches, roof scoop, full-width wing */
   wrc: [
     '..KKKKKKKKKKKK..',
     '.KKKKKKKKKKKKKK.',
@@ -659,7 +659,7 @@ function liveryColorAt(livery, px, py, w, h, accent){
   if(livery===1){                                   /* twin bonnet-to-boot stripes */
     var d = Math.abs(px - mid);
     if(d >= 1 && d <= 2.5) return accent;
-  } else if(livery===2){                            /* rally #7 — side panels + door roundel */
+  } else if(livery===2){                            /* rally #7 - side panels + door roundel */
     if(px <= 3 || px >= w-4) return accent;
     if(py >= 12 && py <= 16 && (px <= 5 || px >= w-6)) return accent;
   } else if(livery===3){                            /* chevron */
@@ -672,7 +672,7 @@ function liveryColorAt(livery, px, py, w, h, accent){
   return null;
 }
 
-/* Returns {canvas, w, h, scale} — a top-down car pointing UP (-Y). */
+/* Returns {canvas, w, h, scale} - a top-down car pointing UP (-Y). */
 function renderCarSprite(carId, paint, livery, damageTier, scale){
   var map = CAR_SPRITES[carDef(carId).sprite];
   var h = map.length, w = map[0].length;
@@ -737,7 +737,7 @@ function getCarSprite(carId, paint, livery, damageTier, scale){
 }
 
 /* =========================================================================
-   SIDE VIEW — modular, layered, nose to the right.
+   SIDE VIEW - modular, layered, nose to the right.
 
    Geometry lives in CAR_SIDE as a pixel grid: a roofline profile, a sill,
    wheel positions and a few named regions. Layers read that spec, so a part
@@ -837,7 +837,7 @@ function buildSideModel(spec, o, sg){
 /* --------------------------------------------------- round-shape helpers
    Everything circular in the side view (tyres, rims, turbo housings) is
    plotted from angles so the stair-stepping stays consistent. Canvas Y
-   grows downward, so PI..1.5PI is the upper-left quadrant — the lit side. */
+   grows downward, so PI..1.5PI is the upper-left quadrant - the lit side. */
 function ringPx(m, cx, cy, ang, rad, col, w, h){
   m.px(cx + Math.round(Math.cos(ang)*rad),
        cy + Math.round(Math.sin(ang)*rad), w||1, h||1, col);
@@ -853,8 +853,8 @@ var SHD_A0 = Math.PI*0.10, SHD_A1 = Math.PI*0.56;         /* lower-right, dark *
    spent on tyres). WHEEL_STYLES stays as whole-wheel presets so anything
    selecting via opts.wheels keeps working.
 
-   Treads share one carcass — black outer wall, rubber inner, a sheen on the
-   lit side and a shadow opposite — then lay their own block pattern over it,
+   Treads share one carcass - black outer wall, rubber inner, a sheen on the
+   lit side and a shadow opposite - then lay their own block pattern over it,
    so a compound reads by its texture and not just by its tint. */
 function tyreCarcass(m, w, rubber, sheen, shadow){
   m.disc(w.cx, w.axleY, w.r,   m.colors.black);
@@ -863,7 +863,7 @@ function tyreCarcass(m, w, rubber, sheen, shadow){
   arcRun(m, w.cx, w.axleY, w.r-1, SHD_A0, SHD_A1, 12, shadow);
   arcRun(m, w.cx, w.axleY, w.r-2, LIT_A0+0.4, LIT_A1-0.4, 6, sheen);
 }
-/* repeated marks around the circumference — the tread blocks */
+/* repeated marks around the circumference - the tread blocks */
 function treadBlocks(m, w, n, rad, col, bw, bh, phase){
   for(var a=0;a<n;a++)
     ringPx(m, w.cx, w.axleY, a*TAU/n + (phase||0), rad, col, bw||1, bh||1);
@@ -898,7 +898,7 @@ var WHEEL_TREADS = {
 };
 
 /* ------------------------------------------------------------ rim helpers
-   Race rims take the car's accent, except when that accent is near-white —
+   Race rims take the car's accent, except when that accent is near-white -
    a white rim on a light car vanishes, so those fall back to rally gold. */
 function rimLipColor(accent){
   var c = accent.replace('#','');
@@ -1037,7 +1037,7 @@ function drawSideChassis(g, m){
   /* nose and tail turn away from the light, so both ends darken off */
   for(x=s.x0;x<=s.x0+2;x++) shadeEnd(m, x, (s.x0+3-x)/4);
   for(x=s.x1-2;x<=s.x1;x++) shadeEnd(m, x, (x-s.x1+3)/4);
-  /* panel shut lines — only below the glass, so they read as door gaps */
+  /* panel shut lines - only below the glass, so they read as door gaps */
   for(var k=0;k<s.shuts.length;k++){
     var sx = s.shuts[k], t = Math.max(s.belt-1, m.topAt(sx)+1), b = m.bottomAt(sx);
     if(b - t > 2) m.px(sx, t+dy, 1, b-t-2, c.dark);
@@ -1061,7 +1061,7 @@ function drawSideChassis(g, m){
 /* --------------------------------------------------------------- glass */
 function drawSideGlass(g, m){
   var s = m.spec, c = m.colors, dy = m.dy;
-  /* "strip the interior, lexan glass" — so at higher weight tiers it is */
+  /* "strip the interior, lexan glass" - so at higher weight tiers it is */
   var gMain = m.opts.lexan ? '#9db2c0' : c.glass;
   var gLite = m.opts.lexan ? '#c0d2dc' : c.glassLite;
   for(var i=0;i<s.windows.length;i++){
@@ -1351,7 +1351,7 @@ function drawSideShadow(g, m){
   m.px(s.x0+8, s.ground+2, s.x1-s.x0-15, 1, 'rgba(0,0,0,.14)');
 }
 
-/* Layer table and draw order — either can be re-pointed by a later pass. */
+/* Layer table and draw order - either can be re-pointed by a later pass. */
 var SIDE_LAYERS = {
   shadow:  drawSideShadow,
   wells:   drawSideWells,
@@ -1365,7 +1365,7 @@ var SIDE_LAYERS = {
 };
 var SIDE_LAYER_ORDER = ['shadow','wells','wheels','chassis','hood','livery','glass','kit','trim'];
 
-/* Returns {canvas, w, h, pw, ph, spec, opts} — a side-on car facing RIGHT. */
+/* Returns {canvas, w, h, pw, ph, spec, opts} - a side-on car facing RIGHT. */
 function renderCarSide(carId, opts){
   var def = carDef(carId), spec = CAR_SIDE[def.sprite];
   opts = opts || {};
@@ -1404,7 +1404,7 @@ function renderCarSide(carId, opts){
 }
 
 /* ---------------------------------------------------------------------
-   Upgrade reflection — turns a car's equipped upgrades into side-view
+   Upgrade reflection - turns a car's equipped upgrades into side-view
    sprite options. Presentational only: nothing here feeds back into
    stats, pricing or handling, it just picks which layers get drawn.
      suspension -> chassis ride height: stock sits tall on its springs, each
@@ -1425,7 +1425,7 @@ var SUSP_RIDE   = [3, 2, 1, -1];      /* +ve lifts the body off the wheels */
 
 function carSideOpts(carId, extra){
   /* shopCarSave, not save.cars, so an unpaid shop preview shows on the car
-     through this same renderer — there is no second preview sprite path */
+     through this same renderer - there is no second preview sprite path */
   var def = carDef(carId), cs = shopCarSave(carId), u = cs.up;
   var spec = CAR_SIDE[def.sprite];
   var tyreLvl = clamp(cs.tires[cs.fitted]|0, 0, 3);
@@ -1541,10 +1541,10 @@ function drawProp(g, p, theme){
   g.restore();
 }
 /* =========================================================================
-   ENGINE — canvas, input, physics, camera, rendering, race loop
+   ENGINE - canvas, input, physics, camera, rendering, race loop
    ========================================================================= */
 
-/* on-track car length in world units — held constant so sprite-grid
+/* on-track car length in world units - held constant so sprite-grid
    changes stay purely visual and never alter the driving footprint */
 var CAR_WORLD_LEN = 72;
 
@@ -1734,7 +1734,7 @@ function audioEngine(rpm, load, slip, running){
     oscBody.frequency.setTargetAtTime(f, t, 0.035);
     oscSub.frequency.setTargetAtTime(f*0.5, t, 0.035);
     oscWhine.frequency.setTargetAtTime(f*3.02, t, 0.035);
-    /* filter opens with revs — flat drone at idle, growl at the top */
+    /* filter opens with revs - flat drone at idle, growl at the top */
     toneFilter.frequency.setTargetAtTime(260 + r*r*2600, t, 0.05);
     whineGain.gain.setTargetAtTime(0.05 + load*0.11 + r*0.05, t, 0.06);
     /* volume rises with both throttle and revs, weighted to revs */
@@ -1802,7 +1802,7 @@ function audioBeep(freq, dur){
 function audioStopAll(){ audioEngine(0,0,0,false); }
 
 /* =========================================================================
-   HUD — DASHBOARD
+   HUD - DASHBOARD
 
    One canvas across the foot of the screen carries the whole dash. It is
    painted on an integer pixel grid: every element is a run of whole cells
@@ -1828,16 +1828,15 @@ var DC = {
   base:'#242b33', baseHi:'#2f3841', baseLo:'#1a2028', deep:'#12171d',
   seam:'#0a0d11', bevel:'#5c6874', bevelHi:'#8e9caa',
   inset:'#161c23', insetLo:'#0b0f14',
-  steel:'#98a3af', steelHi:'#d7e0e9', steelTop:'#f1f5fa',
-  steelLo:'#5a646f', steelDk:'#2f3740',
+  steel:'#98a3af', steelHi:'#d7e0e9', steelLo:'#5a646f', steelDk:'#2f3740',
   glass:'#070a0e', glassHi:'#101620',
   tick:'#e9eff5', tickDim:'#8d99a5', tickRed:'#c8362a',
   num:'#f2f6fa', numDim:'#b0bbc6',
   needle:'#dd3327', needleHi:'#ff7a60', hub:'#242b32',
-  amber:'#ffb432', amberLo:'#8a5f1a', amberDim:'#4d3a12',
+  amber:'#ffb432', amberLo:'#8a5f1a',
   green:'#5fe070', greenLo:'#2c7a38', greenDim:'#183220',
-  red:'#e0463a', redLo:'#7a2018', redPanel:'#3a1410', redDim:'#2a0f0c',
-  blue:'#3f7fe0', blueHi:'#8cbcff', blueDim:'#16233a',
+  red:'#e0463a', redLo:'#7a2018', redPanel:'#3a1410',
+  blue:'#3f7fe0', blueHi:'#8cbcff',
   grey:'#7d8791', greyLo:'#4a535c', greyDim:'#333b44', label:'#c3ccd5'
 };
 
@@ -1870,7 +1869,8 @@ var FONT = {
   '-':['000','000','111','000','000'], '+':['010','010','111','010','010'],
   '/':['001','001','010','100','100'], ':':['0','1','0','1','0'],
   '(':['01','10','10','10','01'], ')':['10','01','01','01','10'],
-  'X1':['101','010','101'] /* unused placeholder, keeps the map homogeneous */
+  /* lower case x doubles as the multiplication sign on the tacho */
+  'x':['000','101','010','101','000']
 };
 var FONT_H = 5;
 
@@ -1983,7 +1983,7 @@ var DASH_NOM_W = 300, DASH_NOM_H = 79, DASH_NOM_OVER = 30;
 function dashPixel(vh){ return clamp(Math.round(vh/300), 2, 4); }
 
 var dash = { cv:null, g:null, base:null, L:null, key:'', S:1,
-             nRpm:0, nSpd:0, nBoost:0, heat:0 };
+             nRpm:0, nSpd:0, nBoost:0 };
 
 function dashLayout(){
   var vw = view.w || window.innerWidth || 800;
@@ -2028,7 +2028,7 @@ function dashLayout(){
   L.housing = { x0:L.tachX-L.R-u(4), x1:L.spdX+L.R+u(4), rise:u(9) };
   /* paddles: mounted just outboard of the dial pair, breaking up into the
      world above the dash line */
-  L.padW = u(19); L.padH = u(38); L.padStalk = u(9);
+  L.padW = u(19); L.padH = u(38);
   L.padL = { x:C-u(82)-Math.round(L.padW/2), y:top-u(26), w:L.padW, h:L.padH };
   L.padR = { x:C+u(82)-Math.round(L.padW/2), y:top-u(26), w:L.padW, h:L.padH };
 
@@ -2217,7 +2217,7 @@ function buildDashBase(L, S){
   /* ----------------------------------------------------- instruments -- */
   paintDial(px, L.tachX, L.dialY, L.R, {
     min:0, max:TACH_MAX, major:1, minor:0.5, redFrom:TACH_RED,
-    label:'RPM', sub:'X1000'
+    label:'RPM', sub:'x1000'
   });
   var un = speedUnits(), smax = speedMax();
   paintDial(px, L.spdX, L.dialY, L.R, {
@@ -2333,7 +2333,7 @@ function paintPedalIcon(px, cx, cy, U){
    LIVE ART
    ========================================================================= */
 
-var hudCtl = { hb:0, padUp:0, padDn:0, steerL:0, steerR:0, throttle:0 };
+var hudCtl = { hb:0, padUp:0, padDn:0 };
 
 /* Small pieces whose art only changes when their control does. Each keeps
    its own bitmap so a frame costs a blit rather than a few hundred rects. */
@@ -2767,8 +2767,6 @@ function updateHudControls(dt){
     /* boost follows revs under load and bleeds off the moment it is shut */
     var wantB = BOOST_MAX * clamp(race.rpm*1.05, 0, 1) * race.throttle;
     dash.nBoost += (wantB - dash.nBoost) * clamp(dt*(wantB > dash.nBoost ? 4 : 9), 0, 1);
-    var heating = race.rpm > 0.98 ? 1 : (race.rpm > 0.86 ? 0.35 : 0);
-    dash.heat = clamp(dash.heat + (heating ? dt*0.30*heating : -dt*0.20), 0, 1);
   }
   drawDash(race);
 }
@@ -2776,7 +2774,7 @@ function updateHudControls(dt){
 /* force a full repaint, e.g. when a race starts or the viewport changes */
 function resetHudControls(){
   hudCtl.hb = hudCtl.padUp = hudCtl.padDn = 0;
-  dash.nRpm = dash.nSpd = dash.nBoost = dash.heat = 0;
+  dash.nRpm = dash.nSpd = dash.nBoost = 0;
   dash.key = '';
   dashArt = {};
   drawDash(race);
@@ -2873,7 +2871,7 @@ function releaseAllControls(){
 
 /* ------------------------------------------------------------- gearbox
    Six speeds. GEAR_SPANS is the fraction of the car's top speed reached at
-   the redline in each gear, so engine revs are speed/(top*span) — revs fall
+   the redline in each gear, so engine revs are speed/(top*span) - revs fall
    on an upshift and climb on a downshift, the way they should.
 
    The spans are exactly the bands the automatic box has always used, so
@@ -3119,14 +3117,14 @@ function stepRace(dt){
     c.wheelSpin *= Math.pow(0.05, dt);
   }
   if(hb){
-    /* handbrake: locks the rears — big slowdown, and the tail comes round */
+    /* handbrake: locks the rears - big slowdown, and the tail comes round */
     if(c.fwd > 0) c.fwd = Math.max(0, c.fwd - 300*dt);
     else if(driving && c.fwd > -70) c.fwd -= 70*dt;   /* reverse, to recover */
   }
   /* rolling resistance + aero */
   c.fwd -= c.fwd * roll * 0.30 * dt;
   c.fwd -= c.fwd * Math.abs(c.fwd) * 0.00022 * dt;
-  /* sliding sideways scrubs speed — the rally trade-off */
+  /* sliding sideways scrubs speed - the rally trade-off */
   if(Math.abs(c.fwd) > 1){
     var scrub = Math.abs(c.lat) * 0.55 * dt;
     c.fwd -= Math.min(Math.abs(c.fwd), scrub) * Math.sign(c.fwd);
@@ -3138,7 +3136,7 @@ function stepRace(dt){
   var speedFrac = clamp(spd/260, 0, 1.4);
   var grab = clamp(spd/45, 0, 1);
   var handFactor = S.handling/46;
-  /* how hard the fronts can bite depends on the surface and the tyres —
+  /* how hard the fronts can bite depends on the surface and the tyres -
      this is what makes ice feel like ice and gravel tyres worth buying */
   var bite = clamp(0.52 + 0.48*grip, 0.48, 1.32);
   var yawRate = c.steer * 2.05 * handFactor * bite * grab / (1 + spd/430);
@@ -3150,7 +3148,7 @@ function stepRace(dt){
   var latGrip = grip * (hb ? 0.26 : 1) * (1 - c.wheelSpin*0.28);
   var latK = 4.4 * latGrip;
   c.lat *= Math.exp(-latK*dt);
-  /* the car is pushed sideways as it rotates — that is what makes the slide */
+  /* the car is pushed sideways as it rotates - that is what makes the slide */
   c.lat -= yawRate * c.fwd * dt * (1.0 - Math.min(0.55, latGrip*0.32));
 
   /* limit total slide so it never becomes uncontrollable */
@@ -3598,7 +3596,7 @@ function drawMinimap(g, r, W, H){
 }
 
 /* ------------------------------------------------------------------ HUD */
-/* the DOM half of the HUD — speed, revs and gear all live on the canvas
+/* the DOM half of the HUD - speed, revs and gear all live on the canvas
    cluster now, which paints itself from updateHudControls each frame */
 function updateHUD(r){
   r = r || race;
@@ -3653,7 +3651,7 @@ function frame(ts){
   }
 }
 /* =========================================================================
-   SCENES — canvas-drawn backdrops for the garage and the parking lot.
+   SCENES - canvas-drawn backdrops for the garage and the parking lot.
 
    Both are painted once into a small offscreen canvas at chunky "scene
    pixel" resolution, then blitted up with smoothing off, so they sit at the
@@ -3664,7 +3662,7 @@ function frame(ts){
 
 var sceneCache = {};
 
-/* one scene pixel, in CSS px — also the scale the side-view car is drawn at */
+/* one scene pixel, in CSS px - also the scale the side-view car is drawn at */
 function scenePx(){ return clamp(Math.round(view.h/96), 3, 6); }
 
 function sceneLayer(key, w, h, paint){
@@ -3937,7 +3935,7 @@ function drawLotScene(dt){
 }
 
 /* =========================================================================
-   UI — screens, stage select, garage, parking lot, settings, results
+   UI - screens, stage select, garage, parking lot, settings, results
    ========================================================================= */
 
 var SCREENS = ['menu','stages','garage','lot','settings','results'];
@@ -3945,7 +3943,7 @@ var currentScreen = 'menu';
 
 var screenTimers = {};
 function showScreen(name){
-  /* leaving the garage at all — BACK, parking lot, starting a stage — counts
+  /* leaving the garage at all - BACK, parking lot, starting a stage - counts
      as cancelling: the preview is dropped and nothing was ever charged */
   if(name !== 'garage') clearPreview();
   for(var i=0;i<SCREENS.length;i++){
@@ -4094,13 +4092,13 @@ var garageTab = 'upgrades';
 /* --------------------------------------------------- preview lifecycle */
 
 /* Equip a shop item as an unpaid preview. Only one runs at a time, so
-   picking something else silently drops the previous one — still no charge. */
+   picking something else silently drops the previous one - still no charge. */
 function startPreview(pv){
   preview = pv;
   audioBeep(620, 0.05);
   renderGarage();
 }
-/* drop the preview without a sound — used when the screen changes under us */
+/* drop the preview without a sound - used when the screen changes under us */
 function clearPreview(){ preview = null; }
 
 function cancelPreview(){
@@ -4125,8 +4123,8 @@ function commitPreview(){
   renderGarage();
 }
 
-/* Free, instantly reversible actions — fitting tyres, taking another car
-   out, gear ratios — drop any preview first, so a pending purchase can
+/* Free, instantly reversible actions - fitting tyres, taking another car
+   out, gear ratios - drop any preview first, so a pending purchase can
    never be committed on top of a car entry that moved underneath it. */
 function shopAction(fn){
   return function(e){
@@ -4292,7 +4290,7 @@ function renderUpgrades(body){
         if(on){ btn.textContent = 'FITTED'; btn.classList.add('pv'); }
         else {
           btn.textContent = fmtMoney(cost);
-          /* still tappable when it is out of reach — you can look at it,
+          /* still tappable when it is out of reach - you can look at it,
              the PURCHASE button in the bar is what locks out */
           if(save.money < cost) btn.classList.add('cant'); else btn.classList.add('primary');
         }
@@ -4318,7 +4316,7 @@ function renderUpgrades(body){
    stats used for stage gating. */
 function renderGearing(body){
   /* ratios are a free setting, written straight to the save, so this reads
-     the real entry — the steppers cancel any preview before they write */
+     the real entry - the steppers cancel any preview before they write */
   var carId = shopCarId(), cs = save.cars[carId], st = computeStats(carId, shopCarSave(carId));
 
   var head = document.createElement('div');
@@ -4476,7 +4474,7 @@ function renderPaint(body){
   var hint = document.createElement('div');
   hint.className = 'up-desc';
   hint.style.marginTop = '10px';
-  hint.textContent = 'Paint and decals are free, but they still go on as a preview — try them on the car, then APPLY to keep it or CANCEL to go back.';
+  hint.textContent = 'Paint and decals are free, but they still go on as a preview - try them on the car, then APPLY to keep it or CANCEL to go back.';
   wrap.appendChild(hint);
   body.appendChild(wrap);
 }
@@ -4655,7 +4653,7 @@ function renderSettings(){
 
   var about = document.createElement('div');
   about.className = 'set-row';
-  about.innerHTML = '<div class="hint">RALLY PIXEL — the throttle drives itself. Keyboard: arrows or A / D to steer, SHIFT, DOWN or SPACE for the handbrake, E / Q to change gear in manual, ESC to pause.</div>';
+  about.innerHTML = '<div class="hint">RALLY PIXEL - the throttle drives itself. Keyboard: arrows or A / D to steer, SHIFT, DOWN or SPACE for the handbrake, E / Q to change gear in manual, ESC to pause.</div>';
   b.appendChild(about);
 }
 function segRow(label, hint, opts, value, onPick){
