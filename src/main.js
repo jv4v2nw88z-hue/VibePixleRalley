@@ -2046,6 +2046,14 @@ function hudPainter(cv, gw, gh, cssScale){
 var HUDC = {
   steel:'#9aa2a8', steelHi:'#c6ccd1', steelLo:'#5c6167',
   dark:'#20262a', black:'#12161a', rubber:'#2b3036', rubberHi:'#3c434a',
+  /* the dashboard moulding: flat bands, no gradient, so the contoured
+     silhouette stays the same pixel language as everything standing on it */
+  railLip:'#8f9dad', railHi:'#2a323c', railMid:'#181e26',
+  railLo:'#10151b', railDeep:'#0b0f14', railEdge:'#05070a',
+  /* wheel paddles: the dash greys again, flat-shaded */
+  padEdge:'#05070a', padHi:'#6d7a86', padFace:'#39424c', padLo:'#232a32',
+  padGrip:'#2c343d', padOn:'#c98a2a', padOnHi:'#ffd487',
+  padInk:'#c9d2da', padInkOff:'#5b636b', padOnInk:'#241d0a',
   amber:'#ffb432', amberLo:'#a8721a', green:'#7ef08a', warn:'#ff5a4a',
   dim:'#575e63', dimLo:'#3a4045',
   /* Instrument faces. Every value here was sampled straight off the
@@ -2240,6 +2248,13 @@ function dialAngle(v, min, max){ return DIAL_A0 + DIAL_SWEEP*clamp((v-min)/(max-
    same 1.0 threshold the gearbox and the shift bar use. */
 var TACH_MAX = 9, TACH_RED = 7, TACH_SCALE = 7;
 
+/* Boost gauge. Cosmetic dash atmosphere only: the needle is read off the
+   revs the tacho is already showing, so nothing new is computed and the
+   physics neither feeds it nor reads it. Spool comes on part way up the
+   range and the needle lags, the way a real turbo does. */
+var TURBO_MAX = 20;
+function turboTarget(rpm){ return clamp((rpm - 0.30)/0.62, 0, 1) * TURBO_MAX; }
+
 /* Speed is km/h everywhere inside the game — the physics, the car stats and
    the stage targets all stay in it. These only decide what the dial and the
    readout SHOW. Each unit carries the full-scale the reference dial uses and
@@ -2256,7 +2271,7 @@ function spdShow(kmh){ return kmh * spdUnit().per; }
 var cluster = {
   cv:null, g:null, base:null, L:null, key:'',
   S:1, W:0, H:0, kmhMax:240, dispMax:240, unit:'kmh',
-  nRpm:0, nKmh:0, heat:0
+  nRpm:0, nKmh:0, nPsi:0, heat:0
 };
 
 /* Re-cut the speedo for whatever unit is selected, and force the face to be
@@ -2286,17 +2301,25 @@ var CLUSTER_BOTTOM = 4;                       /* px above the safe-area edge */
    steering tabs (44 each) + gaps. The throttle used to sit on the other
    side; now that it lives in the panel's own pedal bay, the left run is on
    its own in setting this, so it is trimmed to what it actually needs. */
+/* How much of the viewport height one dial takes. The dials are the dash:
+   this single number drives the whole band — every column, the docked runs,
+   the moulding's hump and the camera's headroom are fractions of the
+   diameter it produces. Raise it and the whole assembly grows together. */
+var DIAL_VH = 0.335;
+
 var DOCK_GAP = 2;
 /* the fixed-width run each side of the panel; the pedal block on the right
-   scales with the dial, so it is added to the right one at layout time */
-var DOCK_LEFT_W  = 44 + 44 + 44 + 3*DOCK_GAP;   /* shift tab, then the arrows */
-var DOCK_RIGHT_W = 44 + 40 + 2*DOCK_GAP;        /* shift tab, then the lever */
+   scales with the dial, so it is added to the right one at layout time.
+   The shift paddles used to head each run — they hang in their own gutters
+   inside the panel now, so neither run carries them. */
+var DOCK_LEFT_W  = 66 + 66 + 2*DOCK_GAP;        /* the two steering arrows */
+var DOCK_RIGHT_W = 44 + DOCK_GAP;               /* the lever */
 var DOCK_REACH = DOCK_LEFT_W;                   /* floor for the slack check */
 
 function layoutDashControls(){
   var side = [
-    { dir:-1, ids:['p-shiftdn','p-right','p-left'] },   /* −, then the arrows */
-    { dir: 1, ids:['p-shiftup','p-hbrake','p-pedals'] }  /* +, lever, pedals */
+    { dir:-1, ids:['p-right','p-left'] },                /* the arrows */
+    { dir: 1, ids:['p-hbrake','p-pedals'] }              /* lever, pedals */
   ];
   var L = cluster.L || clusterLayout();
   var half = L.W/2, shift = L.shift || 0, s, i, el, w, off, dir, run;
@@ -2326,6 +2349,18 @@ function layoutDashControls(){
       el.style.transform = 'translateX(' + (dir*(off + w/2) + shift).toFixed(1) + 'px)';
       off += w + DOCK_GAP;
     }
+  }
+
+  /* The paddles are not part of either run: they hang in their own gutters
+     inside the panel, outboard of each dial, and stand above the bar the way
+     the dials do. Positioned straight off the panel's own geometry. */
+  var lift = L.H - (L.padTop + L.padH);       /* canvas px above the foot */
+  var pair = [['p-shiftdn', L.padLX], ['p-shiftup', L.padRX]];
+  for(i=0;i<pair.length;i++){
+    el = document.getElementById(pair[i][0]);
+    if(!el) continue;
+    el.style.transform = 'translate(' + (pair[i][1] - half + shift).toFixed(1) +
+                         'px,' + (-lift).toFixed(1) + 'px)';
   }
 }
 
@@ -2360,49 +2395,62 @@ function clusterLayout(){
      carries the pedal block, which is 0.72 D, so that side works out at
      1.90 D + 11 + DOCK_RIGHT_W + 0.72 D and is the deeper of the two. */
   var half = (vw - safeInsetX())/2 - 4;
+  /* Column run, as fractions of the dial diameter:
+       gear 0.52 + paddle gutter 0.28 + tacho 1 + console 0.46
+     + speedo 1 + paddle gutter 0.28 + turbo 0.44  =  3.98 D
+     plus the padding and six gaps. Half the panel is 1.99 D + 15, and the
+     deeper docked run is the right one — lever plus the pedal block, which
+     is 0.72 D — so the width cap falls out of 2.71 D. */
   var maxD = Math.min(
-    Math.floor((half - 11 - DOCK_RIGHT_W - DOCK_GAP) / 2.62),
-    Math.floor((half - 11 - DOCK_LEFT_W) / 1.90));
-  /* Columns run left to right exactly as on the reference cluster: pedal bay,
-     gear widget, tacho, the console module, speedo, lamp panel. As fractions
-     of the dial diameter that is 0.70 + 1 + 0.40 + 1 + 0.70 = 3.80 D, plus
-     the padding and four gaps. The pedals used to head this run; they are
-     docked out past the handbrake now, which is what leaves the rest of it
-     symmetric about the dials. */
-  var D = Math.min(clamp(Math.round(vh*0.25), 62, 116) - 2*pad, maxD);
+    Math.floor((half - 15 - DOCK_RIGHT_W - DOCK_GAP) / 2.71),
+    Math.floor((half - 15 - DOCK_LEFT_W) / 1.99));
+  /* The dials are the dash. They are sized off the viewport height and read
+     as the dominant instruments, standing proud of the bar and breaking up
+     into the road the way a real binnacle does. */
+  var D = Math.min(clamp(Math.round(vh*DIAL_VH), 78, 170) - 2*pad, maxD);
   D = Math.max(40, D);
-  /* The dash is a flat bar with the two dials standing proud of it, as on
-     the reference: the bar's top edge runs BELOW the tops of the dials, so
-     the circles break its outline instead of sitting inset in a rectangle.
-     `rise` is how far they clear it; everything else lives in the band. */
-  var rise = Math.round(D*0.34);
-  var wg = Math.round(D*0.70);                /* gear widget */
-  var wa = Math.round(D*0.40);                /* console module */
-  var wl = Math.round(D*0.70);                /* lamp panel */
-  var W = 2*pad + wg + 2*D + wa + wl + 4*gap;
-  var H = D + 2*pad;
+  /* The bar's top edge runs BELOW the tops of the dials, so the circles
+     break its outline instead of sitting inset in a rectangle. `rise` is
+     where that edge falls in the canvas; the dials clear it by 0.25 D. */
+  var rise = pad + Math.round(D*0.25);
+  /* The band carries on below the dials — that deck is what the lamp row
+     and the contoured moulding need, and it is what lifts the dials up the
+     screen rather than leaving them sat on the bottom edge. */
+  var deck = Math.round(D*0.35);
+  var wg = Math.round(D*0.52);                /* gear widget */
+  var wp = Math.round(D*0.28);                /* paddle gutter, each side */
+  var wa = Math.round(D*0.46);                /* console module */
+  var wt = Math.round(D*0.44);                /* turbo gauge */
+  var W = 2*pad + wg + 2*wp + 2*D + wa + wt + 6*gap;
+  var H = pad + D + deck;
 
   var x = pad;
   var L = { W:W, H:H, pad:pad, gap:gap, D:D, R:D/2, dialY:pad + D/2,
-            rise:rise, bandY:rise, bandH:H - rise };
+            rise:rise, bandY:rise, bandH:H - rise, deck:deck };
   /* usable box for every column that is not a dial */
   var colY = rise + pad, colH = H - pad - colY;
   L.colY = colY; L.colH = colH;
 
   L.gearX = x; L.wg = wg;
   x += wg + gap;
+  L.padLX = x + wp/2; L.wp = wp;              /* left paddle gutter */
+  x += wp + gap;
   L.tachX = x + D/2;
   x += D + gap;
   L.auxX = x; L.wa = wa;
   x += wa + gap;
   L.spdX = x + D/2;
   x += D + gap;
-  L.lampX = x; L.wl = wl;
+  L.padRX = x + wp/2;                         /* right paddle gutter */
+  x += wp + gap;
+  L.turboX = x + wt/2; L.wt = wt;
+  L.turboR = Math.max(9, Math.round(D*0.225));
+  L.turboY = L.dialY + Math.round(D*0.26);    /* sits down on the bar */
 
-  /* The columns are lopsided — pedal bay and gear widget outboard of the
-     tacho, only the lamp panel outboard of the speedo — so the two dials sit
-     right of the panel's own middle. Slide the panel back by the difference
-     and they straddle the screen instead, as far as the run has room for. */
+  /* The columns are lopsided — gear widget outboard of the tacho, the
+     smaller turbo gauge outboard of the speedo — so the two dials sit right
+     of the panel's own middle. Slide the panel back by the difference and
+     they straddle the screen instead, as far as the run has room for. */
   L.dialMid = (L.tachX + L.spdX)/2;
   var want  = L.W/2 - L.dialMid;              /* negative: slide it left */
   var slack = (vw - safeInsetX())/2 - (L.W/2 + DOCK_REACH) - 4;
@@ -2415,27 +2463,45 @@ function clusterLayout(){
   L.ladW   = Math.max(12, Math.round(wg*0.52));
   L.ladSeg = 6;
   L.ladStep = 2;                              /* how far each row leans out */
-  L.ladPitch = Math.max(3, Math.floor(colH/(L.ladSeg + 1)));
+  /* the ladder is cut to the dial beside it, then centred in the column —
+     left to fill the deck it stretched into a chimney of loose blocks */
+  L.ladH = Math.round(D*0.62);
+  L.ladPitch = Math.max(3, Math.floor(L.ladH/L.ladSeg));
   L.gnX    = L.ladX + L.ladW + 2;
   L.gnW    = L.gearX + wg - L.gnX - 1;
   L.gPosY  = L.colY + Math.round(colH*0.55);
 
-  /* Console module, stacked exactly as the reference stacks its own: a
-     bordered panel carrying the caption and the two blue shift tell-tales,
-     then the knob on the bare dash, then the lamp row, then the digital
-     readout at the foot. */
-  L.triH  = Math.max(4, Math.round(colH*0.15));
+  /* The lamp row drops out of the console column and on to the open deck
+     below the dials, clustered low and central where the reference marks it.
+     Down there it has the whole width between the two dial feet to work
+     with, so the icons get to draw at two pixels rather than one. */
+  L.lampH = Math.max(13, Math.round(D*0.21));
+  L.lampS = Math.max(1, Math.floor((L.lampH - 4)/LAMP_H));
+  L.lampCW = LAMP_W*L.lampS + 6;
+  L.lampW = L.lampCW*3 + 6;
+  L.lampY = H - pad - L.lampH;
+  L.lampX = Math.round(L.dialMid - L.lampW/2);
+
+  /* Console module, stacked as the reference stacks its own: a bordered
+     panel carrying the caption and the two blue shift tell-tales, then the
+     knob on the bare dash, then the digital readout. The lamps used to sit
+     at the foot of this run; with them out on the deck the readout takes
+     that place, clear of the dial feet. */
+  L.triH  = Math.max(4, Math.round(colH*0.11));
   L.triY  = colY + 7;
   L.modH  = L.triY + L.triH + 2 - colY;
-  L.lcdH  = Math.max(7, Math.round(colH*0.18));
-  L.lcdY  = colY + colH - L.lcdH;
+  L.lcdH  = Math.max(7, Math.round(colH*0.13));
+  /* clear of the lamp row, which now owns the foot of the deck */
+  L.lcdY  = L.lampY - L.lcdH - Math.max(5, Math.round(D*0.05));
   var kSpan = L.lcdY - 2 - (colY + L.modH + 2);
-  L.knobR = Math.max(3, Math.min(Math.floor(kSpan/2), Math.round(wa*0.32)));
+  L.knobR = Math.max(3, Math.min(Math.floor(kSpan/2), Math.round(wa*0.30)));
   L.knobY = colY + L.modH + 2 + Math.max(0, Math.round((kSpan - L.knobR*2)/2));
 
-  /* lamp panel: its own box outboard of the speedo, as the reference has */
-  L.lampH = Math.max(17, Math.round(colH*0.33));
-  L.lampY = colY + Math.round((colH - L.lampH)/2);
+  /* Where the shift paddles hang. They flank the outer edge of each dial in
+     their own gutter, standing above the bar like the dials do. */
+  L.padH = Math.round(D*0.86);
+  L.padW = Math.max(10, wp - 2);
+  L.padTop = Math.max(0, L.dialY - L.R - Math.round(D*0.10));
   return L;
 }
 
@@ -2445,7 +2511,12 @@ function clusterLayout(){
    rise rather than the whole of it. Mirrors the CSS positioning the panel. */
 function clusterBandH(){
   var L = cluster.L || clusterLayout();
-  return L.bandH + L.rise*0.55 + CLUSTER_BOTTOM;
+  /* The car rides up the middle of the screen, which is exactly where the
+     moulding humps highest and where the dials stand proud of it — so the
+     headroom the camera has to keep is measured at the hump, not at the
+     dipped ends. The dials are counted at most of their rise: they are
+     solid, and a car half behind a tachometer is a car you cannot drive. */
+  return L.bandH + (L.dialY + L.R - L.rise)*0.85 + CLUSTER_BOTTOM;
 }
 
 /* --------------------------------------------------------- static face
@@ -2553,16 +2624,10 @@ function buildClusterBase(L, S){
   g.setTransform(S,0,0,S,0,0);
   var px = pxInto(g, 0, 0, 1);              /* one art pixel = one CSS pixel */
 
-  /* The flat dash bar. It starts BELOW the top of the canvas, so the two
-     dials — painted after it, and opaque — rise clear of its edge and break
-     the rectangle outline instead of sitting inset inside one. */
-  var by = L.bandY, bh = L.H - by, y;
-  px(1, by, L.W-2, 1, '#96a3b2');                       /* rolled top lip */
-  px(0, by+1, 1, bh-1, '#2b333d'); px(L.W-1, by+1, 1, bh-1, '#05070a');
-  for(y=1; y<bh; y++){
-    var t = y/bh;
-    px(1, by+y, L.W-2, 1, t < 0.10 ? '#2b333d' : t < 0.30 ? '#181e26' : '#10151b');
-  }
+  /* No band is painted here any more. The moulding is one contoured piece
+     drawn across the whole screen on the rail canvas behind this one, so
+     the panel is transparent except for the instruments themselves and the
+     dials break its silhouette rather than a rectangle of their own. */
 
   drawDialFace(px, L.tachX, L.dialY, L.R, {
     min:0, max:TACH_MAX, major:1, minor:0.5, redFrom:TACH_RED,
@@ -2591,8 +2656,17 @@ function buildClusterBase(L, S){
   /* digital speed readout, in the module's foot where the reference has it */
   pxPanel(px, L.auxX, L.lcdY, L.wa, L.lcdH, HUDC.lcd, '#8a8a8e');
 
-  /* lamp panel, outboard of the speedo */
-  drawLampPanel(px, L.lampX, L.lampY, L.wl, L.lampH);
+  /* Turbo gauge: the same instrument as the two big ones, cut down. It goes
+     through drawDialFace exactly as they do, so bezel, shoulder, tick ring
+     and numerals are the same sprites at a smaller radius rather than a
+     second, differently-drawn dial. */
+  drawDialFace(px, L.turboX, L.turboY, L.turboR, {
+    min:0, max:TURBO_MAX, major:TURBO_MAX/4, minor:TURBO_MAX/8,
+    labelEvery:2, label:"PSI", num: HUDC.numSpd
+  });
+
+  /* lamp row, low and central on the deck below the dials */
+  drawLampPanel(px, L.lampX, L.lampY, L.lampW, L.lampH);
 
   return c;
 }
@@ -2621,8 +2695,9 @@ function pedalCols(GW){
    change size just because they moved. */
 function pedalArt(){
   var L = cluster.L || clusterLayout();
+  var end = hudCtl.endH || Math.round(L.bandH*RAIL_EDGE);
   return { w: Math.max(24, Math.round(L.D*0.72)),
-           h: Math.max(20, L.colH) };
+           h: Math.max(20, end - 4) };
 }
 
 /* one pad: tapered body, lit top edge, then the five studs */
@@ -2760,16 +2835,110 @@ function ensureCluster(){
     /* steering buttons are as tall as the bar plus their own rise, so their
        mounts root in the bar and their heads clear it; everything else on
        the dash is cut to the bar itself */
-    hudCtl.steerH = Math.max(24, Math.round((L.bandH + 18)/2));
-    hudCtl.barArt = Math.max(20, Math.round(L.bandH/2));
+    /* Control art is cut to the DIAL, not to the bar. The bar got much
+       deeper in the overhaul; hanging the arrows and the lever off it
+       stretched them into strips. Off the dial they stay in proportion
+       with the instruments they sit beside, whatever the band does. */
+    /* ...and to the depth the moulding actually has where they stand: the
+       arrows, lever and pedals live out on the dipped ends, so cutting them
+       to the hump left them poking up over the road. */
+    var endH = Math.round(L.bandH*RAIL_EDGE);
+    hudCtl.steerH = Math.max(24, Math.round(endH*0.52));
+    hudCtl.barArt = clamp(Math.round(endH*0.52), 20, 46);
+    hudCtl.endH = endH;
     /* re-cut every control at the new size, then re-dock them all */
     hudCtl.drawnL = hudCtl.drawnR = null;
     hudCtl.drawnHb = hudCtl.drawnUp = hudCtl.drawnDn = hudCtl.drawnPed = -1;
     hudCtl.needLayout = true;
+    drawDashRail();                           /* the moulding follows the panel */
   }
   cluster.g.setTransform(S,0,0,S,0,0);
   cluster.g.imageSmoothingEnabled = false;
   return true;
+}
+
+/* ------------------------------------------------------ dash moulding
+   The dashboard is one contoured piece running the full width of the
+   screen: it dips at the far left and right, behind the steering arrows and
+   the pedal block, and humps up across the middle to cradle the dials. The
+   curve is stepped rather than smooth — the profile is quantised to a block
+   grid so the silhouette reads as pixel art at the same density as the
+   sprites standing on it, not as a vector bezier.
+
+   Zero on this canvas is the top of the hump, which is exactly the panel's
+   own band line, so the dials break the moulding's edge by the same rise
+   they always did. */
+var STEER_SCALE = 3;                          /* CSS px per art px on the arrows */
+var RAIL_STEP = 4;                            /* block width of the contour */
+var RAIL_EDGE = 0.58;                         /* end depth, as a share of the hump */
+
+function railDepth(x, cx, L, W){
+  /* The plateau carries the whole panel — every column of it, not just the
+     dials — because anything standing on a stretch the moulding has already
+     dropped away from is left hanging over the road. The dips are outside
+     the panel, behind the steering arrows and the pedal block, exactly
+     where the reference puts them. */
+  var plateau = L.W/2 - L.D*0.06;
+  var ramp = Math.max(24, Math.round((W/2 - plateau)*0.72));
+  var d = Math.abs(x - cx);
+  var t = d <= plateau ? 0 :
+          d >= plateau + ramp ? 1 : (d - plateau)/ramp;
+  t = t*t*(3 - 2*t);                          /* ease, then quantised below */
+  var drop = L.bandH - Math.round(L.bandH*RAIL_EDGE);
+  return L.bandH - Math.round(t*drop);
+}
+
+function drawDashRail(){
+  var cv = document.getElementById('rail-cv');
+  var L = cluster.L;
+  if(!cv || !L) return;
+  var vw = Math.ceil(view.w || window.innerWidth || 800);
+  var H = L.bandH + CLUSTER_BOTTOM + railSafeB();
+  var S = Math.max(1, Math.round(Math.min(window.devicePixelRatio || 1, 2)));
+  if(cv.width !== vw*S || cv.height !== H*S){
+    cv.width = vw*S; cv.height = H*S;
+    cv.style.width = vw+'px'; cv.style.height = H+'px';
+  }
+  var g = cv.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.setTransform(S,0,0,S,0,0);
+  g.clearRect(0,0,vw,H);
+  var px = pxInto(g, 0, 0, 1);
+  var cx = vw/2 + (L.shift || 0);
+  var x, w, top, y, t;
+  for(x=0; x<vw; x+=RAIL_STEP){
+    w = Math.min(RAIL_STEP, vw - x);
+    top = L.bandH - railDepth(x + w/2, cx, L, vw);
+    px(x, top, w, 1, HUDC.railLip);                   /* rolled chrome catch */
+    px(x, top+1, w, 2, HUDC.railHi);
+    for(y=top+3; y<H; y++){
+      t = (y - top)/Math.max(1, L.bandH);
+      px(x, y, w, 1, t < 0.30 ? HUDC.railMid : t < 0.62 ? HUDC.railLo : HUDC.railDeep);
+    }
+  }
+  /* the step risers get their own dark edge so the contour reads as cut
+     blocks rather than a stack of loose bars */
+  var prev = null;
+  for(x=0; x<vw; x+=RAIL_STEP){
+    w = Math.min(RAIL_STEP, vw - x);
+    top = L.bandH - railDepth(x + w/2, cx, L, vw);
+    if(prev !== null && top !== prev)
+      px(x, Math.min(top, prev), 1, Math.abs(top - prev) + 1, HUDC.railEdge);
+    prev = top;
+  }
+}
+
+/* the rail runs to the physical bottom of the screen, so it has to cover the
+   home-indicator inset as well as the panel's own clearance */
+var railSafeProbe = null;
+function railSafeB(){
+  if(!railSafeProbe){
+    railSafeProbe = document.createElement('div');
+    railSafeProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;' +
+      'visibility:hidden;pointer-events:none;padding-bottom:env(safe-area-inset-bottom);';
+    document.body.appendChild(railSafeProbe);
+  }
+  return parseFloat(getComputedStyle(railSafeProbe).paddingBottom) || 0;
 }
 
 /* Visual-regression hook: the screenshot harness reads the live cluster
@@ -2816,7 +2985,7 @@ function drawCluster(r){
   var segs = L.ladSeg, pitch = L.ladPitch, barH = Math.max(2, pitch - 2);
   var step = L.ladStep, barW = L.ladW - step*(segs-1) - 2;
   var capW = Math.max(2, Math.round(barW*0.28));
-  var lad0 = L.colY + Math.round((L.colH - (segs-1)*pitch - barH)/2);
+  var lad0 = L.colY + Math.round((L.ladH - (segs-1)*pitch - barH)/2);
   for(i=0;i<segs;i++){
     var row = segs-1-i;                                 /* 0 = top row */
     var bx  = L.ladX + 1 + row*step;                    /* lower rows lean out */
@@ -2851,9 +3020,14 @@ function drawCluster(r){
     return t < -0.35 ? HUDC.knobHi : t < 0.35 ? HUDC.knob : HUDC.knobLo;
   });
 
-  /* ---- lamp panel, outboard of the speedo ---- */
-  var cw = Math.floor((L.wl - 6)/3), ch = L.lampH - 6;
-  var cx0 = L.lampX + 3 + Math.floor((L.wl - 6 - cw*3)/2), cy0 = L.lampY + 3;
+  /* ---- turbo gauge, outboard of the speedo ---- */
+  drawNeedle(px, L.turboX, L.turboY, L.turboR,
+             dialAngle(clamp(cluster.nPsi,0,TURBO_MAX), 0, TURBO_MAX),
+             HUDC.needleSpd);
+
+  /* ---- lamp row, low and central on the deck ---- */
+  var cw = Math.floor((L.lampW - 6)/3), ch = L.lampH - 6;
+  var cx0 = L.lampX + 3 + Math.floor((L.lampW - 6 - cw*3)/2), cy0 = L.lampY + 3;
   var dmg = r ? r.car.damage : 0;
   drawLamp(px, cx0,        cy0, cw, ch, 'engine', dmg > 45,
            HUDC.amber, '#2A1D07', '#7A5510');
@@ -2925,8 +3099,10 @@ function drawTab(px, W, H, pressed){
 function drawSteer(id, right, pressed){
   var cv = document.getElementById(id);
   if(!cv) return;
-  var W = 22, H = Math.max(16, Math.round((hudCtl.barArt || 26)*0.74));
-  var px = hudPainter(cv, W, H, 2);
+  /* the same tab sprite as before, taken up to three CSS pixels an art
+     pixel. Integer only, so every edge stays exactly as crisp as it was. */
+  var W = 22, H = Math.max(16, Math.round((hudCtl.barArt || 26)*0.62));
+  var px = hudPainter(cv, W, H, STEER_SCALE);
   var t = drawTab(px, W, H, pressed), i;
   var n = Math.max(5, Math.min(H-9, (W>>1)-5) | 1);
   var ax0 = t.cx + (right ? -Math.round(n*0.45) : Math.round(n*0.45));
@@ -2975,18 +3151,51 @@ function drawHandbrake(v){
 }
 
 /* --------------------------------------------------------- shift paddles
-   The reference's own minus and plus: the dash tab with a stamped bar, and
-   a second bar crossed over it on the up-shift. */
-function drawPaddle(id, up, press, active){
+   Wheel-mounted paddles, one outboard of each dial: a tall narrow blade
+   raked away from the column, with a cast edge, a milled face and the
+   stamped - or + near the thumb end. Flat-shaded in the dash's own greys —
+   no gradient, no antialiasing — and cut on the same grid as the tabs it
+   replaces, so it sits at the dash's pixel density.
+
+   `press` drives the same lit state the tabs had, and `active` still dims
+   the pair in automatic, so nothing about how they are driven changes. */
+function drawShiftPaddle(id, up, press, active){
   var cv = document.getElementById(id);
   if(!cv) return;
-  var W = 22, H = Math.max(16, Math.round((hudCtl.barArt || 26)*0.62));
-  var px = hudPainter(cv, W, H, 2);
-  var t = drawTab(px, W, H, press > 0.5);
-  var ink = press > 0.5 ? t.ink : (active ? t.ink : '#3D4146');
-  var arm = Math.max(3, (W - 10) >> 1);
-  px(t.cx - arm, t.cy, arm*2, 2, ink);
-  if(up) px(t.cx - 1, t.cy - arm + 1, 2, arm*2, ink);
+  var L = cluster.L || clusterLayout();
+  var GW = Math.max(7, Math.round(L.padW/2));
+  var GH = Math.max(16, Math.round(L.padH/2));
+  var px = hudPainter(cv, GW, GH, 2);
+  var down = press > 0.5;
+  var drop = down ? 1 : 0;
+  /* the blade rakes outboard: the head leans away from the dial it flanks */
+  var lean = Math.max(1, Math.round(GW*0.34));
+  var bw = GW - lean, y, off, t, face;
+
+  for(y=0; y<GH-1-drop; y++){
+    t = y/(GH-2);
+    /* full lean at the head, straightening into the mount at the foot */
+    off = Math.round((1 - t)*lean);
+    if(!up) off = lean - off;                           /* mirror the rake */
+    px(off, y+drop, bw, 1, HUDC.padEdge);               /* cast outline */
+    face = down ? (t < 0.06 ? HUDC.padOnHi : HUDC.padOn)
+                : (t < 0.05 ? HUDC.padHi :
+                   t < 0.55 ? HUDC.padFace : HUDC.padLo);
+    px(off+1, y+drop, bw-2, 1, face);
+    if(!down && y > 2 && y < GH-5 && (y & 3) === 0)     /* milled grip lines */
+      px(off+2, y+drop, bw-4, 1, HUDC.padGrip);
+  }
+  px(0, GH-1, GW, 1, HUDC.padEdge);                     /* foot */
+
+  /* the stamp, up near the head where a thumb lands */
+  var ink = down ? HUDC.padOnInk : (active ? HUDC.padInk : HUDC.padInkOff);
+  var sy = Math.round(GH*0.20) + drop;
+  var sx = Math.round((1 - Math.round(GH*0.20)/(GH-2))*lean);
+  if(!up) sx = lean - sx;
+  var arm = Math.max(2, (bw - 5) >> 1);
+  var scx = sx + Math.round(bw/2);
+  px(scx - arm, sy, arm*2, 1, ink);
+  if(up) px(scx - 1, sy - arm + 1, 1, arm*2 - 1, ink);
 }
 
 /* ------------------------------------------------------------- per frame */
@@ -3008,6 +3217,9 @@ function updateHudControls(dt){
     var kmh = Math.abs(race.car.fwd)*0.42;
     cluster.nRpm += (race.rpm - cluster.nRpm) * clamp(dt*20, 0, 1);
     cluster.nKmh += (kmh      - cluster.nKmh) * clamp(dt*14, 0, 1);
+    /* the boost needle lags the revs it is read off, so it swings
+       lazily the way a real one does. Display only. */
+    cluster.nPsi += (turboTarget(race.rpm) - cluster.nPsi) * clamp(dt*6, 0, 1);
     var heating = race.rpm > 0.98 ? 1 : (race.rpm > 0.86 ? 0.35 : 0);
     cluster.heat = clamp(cluster.heat + (heating ? dt*0.30*heating : -dt*0.20), 0, 1);
     drawCluster(race);
@@ -3027,11 +3239,11 @@ function updateHudControls(dt){
   var manual = save.settings.transmission === 'manual';
   if(q(hudCtl.padUp) !== hudCtl.drawnUp || hudCtl.drawnMode !== manual){
     hudCtl.drawnUp = q(hudCtl.padUp);
-    drawPaddle('pad-up-cv', true, hudCtl.padUp, manual);
+    drawShiftPaddle('pad-up-cv', true, hudCtl.padUp, manual);
   }
   if(q(hudCtl.padDn) !== hudCtl.drawnDn || hudCtl.drawnMode !== manual){
     hudCtl.drawnDn = q(hudCtl.padDn);
-    drawPaddle('pad-dn-cv', false, hudCtl.padDn, manual);
+    drawShiftPaddle('pad-dn-cv', false, hudCtl.padDn, manual);
   }
   hudCtl.drawnMode = manual;
 
@@ -3061,7 +3273,7 @@ function resetHudControls(){
   hudCtl.drawnHb = hudCtl.drawnPed = -1;
   hudCtl.drawnUp = hudCtl.drawnDn = -1; hudCtl.drawnMode = null;
   hudCtl.drawnL = hudCtl.drawnR = null;
-  cluster.nRpm = cluster.nKmh = cluster.heat = 0;
+  cluster.nRpm = cluster.nKmh = cluster.nPsi = cluster.heat = 0;
   /* Size the speedo to the car actually being driven: 0-240 km/h in eight
      divisions as on the reference, and a bigger dial for a car that runs
      past it, still in eight steps so the numbering stays tidy.
@@ -3076,8 +3288,8 @@ function resetHudControls(){
   var manual = save.settings.transmission === 'manual';
   drawHandbrake(0);
   drawPedals(0, 0);
-  drawPaddle('pad-up-cv', true, 0, manual);
-  drawPaddle('pad-dn-cv', false, 0, manual);
+  drawShiftPaddle('pad-up-cv', true, 0, manual);
+  drawShiftPaddle('pad-dn-cv', false, 0, manual);
   document.getElementById('p-shiftup').classList.toggle('auto', !manual);
   document.getElementById('p-shiftdn').classList.toggle('auto', !manual);
   /* last, once every canvas has its final size */

@@ -22,8 +22,10 @@
       <div class="nm" style="margin-top:3px">DAMAGE</div><div class="meter"><i id="h-dmg" class="dmg"></i></div>
       <div class="nm" style="margin-top:3px">SURFACE <b id="h-surf" style="color:var(--text)">GRAVEL</b></div>
     </div>
-    <!-- backdrop tying the whole dash band together, behind the controls -->
-    <div id="dash-rail"></div>
+    <!-- the dashboard moulding itself: one contoured pixel silhouette across
+         the whole screen, humped in the middle to cradle the dials and
+         dipping at the ends behind the arrows and the pedals -->
+    <div id="dash-rail"><canvas id="rail-cv"></canvas></div>
     <!-- instrument cluster: pedals, tacho, gear + lamps, speedo. All canvas. -->
     <div id="hud-cluster"><canvas id="cluster-cv"></canvas></div>
     <div id="hud-note"><div class="arrow" id="n-arrow">&#8598;</div><div class="txt" id="n-text">SHARP LEFT</div></div>

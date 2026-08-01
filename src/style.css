@@ -187,13 +187,13 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
    steering buttons stand above this line and break it, which is what gives
    the dash its silhouette instead of one full-width rectangle. */
 #dash-rail{position:absolute;left:0;right:0;pointer-events:none;
-  bottom:0;height:calc(var(--dash-bar-h, 52px) + 4px + env(safe-area-inset-bottom));
-  background:linear-gradient(180deg,
-    #8f9dad 0 1px,          /* chrome catch along the lip */
-    #2a323c 1px 3px,
-    #141a21 3px 34%,
-    #0b0f14 34% 100%);
-  box-shadow:0 -3px 7px rgba(0,0,0,.55);}
+  bottom:0;height:calc(var(--dash-bar-h, 52px) + 4px + env(safe-area-inset-bottom));}
+/* The moulding is painted, not styled: a stepped pixel contour that humps up
+   across the middle for the dials and drops away at both ends. A gradient
+   here would fight the pixel art, so there is none — every tone in the
+   silhouette is a flat band laid down by the painter. */
+#rail-cv{position:absolute;left:0;bottom:0;width:100%;
+  image-rendering:pixelated;display:block;}
 #hud-left{top:calc(6px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));min-width:118px;}
 #hud-left .nm{font-size:10px;color:var(--muted);letter-spacing:1px;}
 .meter{height:6px;background:#0d110c;border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-top:3px;}
