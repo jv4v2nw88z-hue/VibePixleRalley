@@ -1820,6 +1820,22 @@ var hudCtl = { gas:0, brake:0, hb:0, padUp:0, padDn:0,
                drawnHb:-1, drawnUp:-1, drawnDn:-1, drawnMode:null,
                drawnL:null, drawnR:null };
 
+/* Art grids for the two hand controls that live outside the binnacle
+   canvas, all drawn at a CSS scale of 2 so they stay integer-scaled at
+   any device ratio. The shift buttons flank the binnacle; the steering
+   rockers hold the far left of the dash band on their own. */
+var SHIFT_GRID = 20, SHIFT_BTN = SHIFT_GRID*2;   /* 40 CSS px of sprite, square */
+var SHIFT_PAD  = 44;                             /* tap target around it */
+var SHIFT_GAP  = 8;                              /* clear air either side of the binnacle */
+/* what one shift button costs the binnacle's width budget: the sprite, its
+   gap, and a little air before the control outboard of it */
+var SHIFT_REACH = SHIFT_BTN + SHIFT_GAP + 6;
+/* The rockers come in two sizes, picked from the dial diameter so they
+   stay in proportion with the binnacle: the full grid on a normal phone,
+   the compact one where a narrow screen has squeezed the dials down. */
+var STEER_FULL = { gw:40, gh:36 }, STEER_COMPACT = { gw:34, gh:30 };
+var steerArt = STEER_FULL;
+
 /* integer-scaled pixel painter for a small HUD canvas */
 function hudPainter(cv, gw, gh, cssScale){
   var dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -1912,7 +1928,7 @@ var CLUSTER_BOTTOM = 4;                       /* px above the safe-area edge */
    hands back a good 40px on one side. Read off a probe rather than assumed,
    and only ever called when the viewport changes. */
 var safeProbe = null;
-function safeInsetX(){
+function safeInsets(){
   if(!safeProbe){
     safeProbe = document.createElement('div');
     safeProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;' +
@@ -1921,19 +1937,23 @@ function safeInsetX(){
     document.body.appendChild(safeProbe);
   }
   var cs = getComputedStyle(safeProbe);
-  return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+  return { l: parseFloat(cs.paddingLeft) || 0, r: parseFloat(cs.paddingRight) || 0 };
 }
+function safeInsetX(){ var s = safeInsets(); return s.l + s.r; }
 
 function clusterLayout(){
   var vw = view.w || window.innerWidth || 800;
   var vh = view.h || window.innerHeight || 400;
   var pad = 3, gap = 4;
-  /* The side controls reach SIDE_REACH in from each edge (steering pads and
-     the outboard blade on the left, lever + throttle + blade on the right).
-     The panel is centred on the screen, so its half-width has to clear the
-     deeper of the two — hence the full width less twice that reach. */
-  var SIDE_REACH = 198;
-  var maxW = Math.max(140, vw - safeInsetX() - 2*SIDE_REACH - 8);
+  /* The side controls reach SIDE_REACH in from each edge (the two steering
+     rockers on the left, lever plus throttle on the right). The shift
+     buttons sit inboard of those, right against the panel, so their width
+     comes off the budget too. The panel is centred on the screen, so its
+     half-width has to clear the deeper of the two sides — hence the full
+     width less twice that reach. */
+  var SIDE_REACH = 190;
+  var maxW = Math.max(140, vw - safeInsetX() - 2*SIDE_REACH - 8
+                            - 2*SHIFT_REACH);
   /* Columns run left to right exactly as on the reference cluster: footwell,
      gear barrel, tacho, the little auxiliary stack, speedo. As fractions of
      the dial diameter that is 0.46 + 0.50 + 1 + 0.34 + 1 = 3.30 D, plus the
@@ -1980,6 +2000,41 @@ function clusterLayout(){
    can keep the car clear of it. Mirrors the CSS that positions the panel. */
 function clusterBandH(){
   return (cluster.H || clusterLayout().H) + CLUSTER_BOTTOM;
+}
+
+/* Everything in the dash band that has to know how wide the binnacle came
+   out, which CSS cannot: the shift buttons flank it the way the reference
+   does — the minus hard against its left edge on the tacho side, the plus
+   hard against its right edge past the speedo — both centred on the dial
+   line so the row keeps one axis. The steering rockers then take whichever
+   of their two sizes suits the dials. */
+function placeDashControls(L){
+  var s = safeInsets();
+  var vw = view.w || window.innerWidth || 800;
+  var left = Math.round((s.l + (vw - s.r) - L.W)/2);    /* panel's left edge */
+  var slack = (SHIFT_PAD - SHIFT_BTN)/2;                /* pad overhangs the sprite */
+  var lift = CLUSTER_BOTTOM + Math.round((L.H - SHIFT_BTN)/2) - slack;
+  var put = function(id, x){
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.style.left = (x - slack) + 'px';
+    el.style.right = 'auto';
+    el.style.bottom = 'calc(' + lift + 'px + env(safe-area-inset-bottom))';
+  };
+  put('p-shiftdn', left - SHIFT_GAP - SHIFT_BTN);
+  put('p-shiftup', left + L.W + SHIFT_GAP);
+
+  steerArt = L.D >= 56 ? STEER_FULL : STEER_COMPACT;
+  var sw = steerArt.gw*2, sh = steerArt.gh*2;
+  var rock = function(id, x){
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.style.left = 'calc(' + x + 'px + env(safe-area-inset-left))';
+    el.style.width = sw + 'px';
+    el.style.height = sh + 'px';
+  };
+  rock('p-left', 6);
+  rock('p-right', 6 + sw + 6);
 }
 
 /* --------------------------------------------------------- static face */
@@ -2340,6 +2395,7 @@ function ensureCluster(){
     cluster.base = buildClusterBase(L, S);
     cluster.key = key;
     document.documentElement.style.setProperty('--cluster-h', L.H+'px');
+    placeDashControls(L);
   }
   cluster.g.setTransform(S,0,0,S,0,0);
   cluster.g.imageSmoothingEnabled = false;
@@ -2466,12 +2522,15 @@ function drawHousing(px, w, h, lit){
 function drawSteer(id, right, pressed){
   var cv = document.getElementById(id);
   if(!cv) return;
-  var px = hudPainter(cv, 34, 30, 2);
+  var gw = steerArt.gw, gh = steerArt.gh;
+  var px = hudPainter(cv, gw, gh, 2);
   var drop = pressed ? 1 : 0;
-  drawHousing(px, 34, 30, pressed);
+  drawHousing(px, gw, gh, pressed);
 
-  /* the rocker itself: a raised pad carrying the arrow */
-  var rx = 6, ry = 7 + drop, rw = 22, rh = 16;
+  /* the rocker itself: a raised pad carrying the arrow, laid out as
+     fractions of the housing so both grids come out the same shape */
+  var rx = Math.round(gw*0.175), rw = Math.round(gw*0.65);
+  var ry = Math.round(gh*0.25) + drop, rh = Math.round(gh*0.53);
   px(rx-1, ry-1, rw+2, rh+2, '#04060a');
   px(rx, ry, rw, rh, pressed ? '#e0921a' : '#525c68');
   px(rx, ry, rw, 1, pressed ? '#ffd487' : '#8b96a3');
@@ -2481,9 +2540,10 @@ function drawSteer(id, right, pressed){
 
   /* solid arrowhead: a column-by-column triangle pointing outboard */
   var ink = pressed ? '#241800' : '#e8eef6';
-  var n = 8, acy = ry + rh/2, ax0 = rx + rw/2 + (right ? -4 : 4), i;
+  var n = Math.round(rh/2), acy = ry + rh/2, i;
+  var ax0 = rx + rw/2 + (right ? -Math.round(n/2) : Math.round(n/2));
   for(i=0;i<n;i++){
-    var hh = n - i;                                     /* 8,7,...,1 */
+    var hh = n - i;                                     /* n, n-1, ... 1 */
     px(right ? ax0 + i : ax0 - i, acy - hh/2, 1, hh, ink);
   }
 }
@@ -2523,54 +2583,34 @@ function drawHandbrake(v){
   px(gx-1, gy-5, 3, 1, on ? HUDC.amber : HUDC.dim);     /* release button */
 }
 
-/* --------------------------------------------------------- shift paddles
-   Cast alloy blades in the reference's style: a raked plate, drilled
-   checker-plate face, chrome edge highlight and a stamped +/- at the
-   bottom. The rake runs outward — the left blade leans left, the right
-   blade leans right — so the pair frames the dash. */
-function drawPaddle(id, up, press, active){
+/* --------------------------------------------------------- shift buttons
+   The reference flanks its dials with two chunky beveled shifter buttons
+   rather than blades, so these are cast from the same material as the
+   steering rockers: a chrome housing around a raised pad that carries a
+   stamped - or +, lights amber and sinks a pixel when tapped. */
+function drawShiftButton(id, up, press, active){
   var cv = document.getElementById(id);
   if(!cv) return;
-  var px = hudPainter(cv, 20, 24, 2);
+  var px = hudPainter(cv, SHIFT_GRID, SHIFT_GRID, 2);
   var down = press > 0.5;
   var drop = down ? 1 : 0;
-  var y, x, lean;
+  drawHousing(px, SHIFT_GRID, SHIFT_GRID, down);
 
-  /* mounting stalk on the screen-inward side */
-  var sx = up ? 0 : 17;
-  px(sx, 9, 3, 7, '#05070a');
-  px(sx, 10, 3, 5, '#2a323c');
-  px(sx + (up?0:2), 10, 1, 5, '#4d5866');
+  /* the raised pad: bright top and left catch, shaded foot and right side */
+  var rx = 5, ry = 5 + drop, rw = 10, rh = 10;
+  px(rx-1, ry-1, rw+2, rh+2, '#04060a');
+  px(rx, ry, rw, rh, down ? '#e0921a' : '#525c68');
+  px(rx, ry, rw, 1, down ? '#ffd487' : '#8b96a3');
+  px(rx, ry+rh-1, rw, 1, down ? '#8a6416' : '#242c35');
+  px(rx, ry, 1, rh, down ? '#ffc457' : '#78838f');
+  px(rx+rw-1, ry, 1, rh, '#1d242c');
 
-  /* Raked plate: each row steps sideways, giving the blade its diagonal
-     lean. Rows run 1..22, the face is 11 wide. */
-  var faceW = 11;
-  for(y=1; y<23; y++){
-    lean = Math.round((y - 12) * 0.22) * (up ? 1 : -1);
-    var x0 = (up ? 5 : 4) + lean;
-    px(x0-1, y+drop, faceW+2, 1, '#05070a');            /* cast edge */
-    for(x=0; x<faceW; x++){
-      var col;
-      if(down)                       col = ((x + y) & 2) ? '#ffd487' : '#e2a53c';
-      else if(!active)               col = ((x>>1) + (y>>1)) & 1 ? '#6e757c' : '#585f66';
-      else if(x === 0)               col = '#ffffff';   /* lit outer edge */
-      else if(x >= faceW-2)          col = '#7d858d';   /* shaded inner edge */
-      else if(((x>>1) + (y>>1)) & 1) col = '#f2f5f8';   /* checker plate */
-      else                           col = '#c3cbd2';
-      px(x0+x, y+drop, 1, 1, col);
-    }
-    /* drilled grip holes, in staggered rows down the plate */
-    if(y > 3 && y < 21 && ((y-4) % 4) === 0){
-      px(x0+2, y+drop, 2, 1, down ? '#8a6416' : '#4a525a');
-      px(x0+7, y+drop, 2, 1, down ? '#8a6416' : '#4a525a');
-    }
-  }
-
-  /* stamped +/- at the foot of the blade */
-  var ink = down ? '#3a2a06' : (active ? '#2b323a' : '#3d4757');
-  var bx = (up ? 5 : 4) + Math.round((21 - 12) * 0.22) * (up ? 1 : -1);
-  px(bx+3, 19+drop, 5, 1, ink);
-  if(up) px(bx+5, 17+drop, 1, 5, ink);
+  /* Stamped glyph: a plain 2 x 8 bar, plus an upstroke on the shift-up
+     button. Left flat like the reference's — at this size any engraving
+     shadow just reads as a second stroke. Both are centred on the pad. */
+  var ink = down ? '#241800' : (active ? '#e8eef6' : '#aab3bd');
+  px(6, ry+4, 8, 2, ink);                               /* the bar */
+  if(up) px(9, ry+1, 2, 8, ink);                        /* the upstroke */
 }
 
 /* ------------------------------------------------------------- per frame */
@@ -2606,11 +2646,11 @@ function updateHudControls(dt){
   var manual = save.settings.transmission === 'manual';
   if(q(hudCtl.padUp) !== hudCtl.drawnUp || hudCtl.drawnMode !== manual){
     hudCtl.drawnUp = q(hudCtl.padUp);
-    drawPaddle('pad-up-cv', true, hudCtl.padUp, manual);
+    drawShiftButton('shift-up-cv', true, hudCtl.padUp, manual);
   }
   if(q(hudCtl.padDn) !== hudCtl.drawnDn || hudCtl.drawnMode !== manual){
     hudCtl.drawnDn = q(hudCtl.padDn);
-    drawPaddle('pad-dn-cv', false, hudCtl.padDn, manual);
+    drawShiftButton('shift-dn-cv', false, hudCtl.padDn, manual);
   }
   hudCtl.drawnMode = manual;
 
@@ -2631,18 +2671,19 @@ function resetHudControls(){
   hudCtl.drawnHb = -1;
   hudCtl.drawnUp = hudCtl.drawnDn = -1; hudCtl.drawnMode = null;
   hudCtl.drawnL = hudCtl.drawnR = null;
-  drawSteer('steer-l-cv', false, false);
-  drawSteer('steer-r-cv', true, false);
   cluster.nRpm = cluster.nKmh = cluster.heat = 0;
   /* size the speedo to the car actually being driven, rounded up to a
      whole major division so the numbering stays tidy */
   if(race) cluster.kmhMax = Math.max(120, Math.ceil(race.stats.kmh*1.08/40)*40);
   cluster.key = '';                                     /* force a face rebuild */
-  drawCluster(race);
+  drawCluster(race);                                    /* re-lays the dash band */
+  /* the rockers only know their size once the binnacle has been laid out */
+  drawSteer('steer-l-cv', false, false);
+  drawSteer('steer-r-cv', true, false);
   var manual = save.settings.transmission === 'manual';
   drawHandbrake(0);
-  drawPaddle('pad-up-cv', true, 0, manual);
-  drawPaddle('pad-dn-cv', false, 0, manual);
+  drawShiftButton('shift-up-cv', true, 0, manual);
+  drawShiftButton('shift-dn-cv', false, 0, manual);
   document.getElementById('p-shiftup').classList.toggle('auto', !manual);
   document.getElementById('p-shiftdn').classList.toggle('auto', !manual);
 }

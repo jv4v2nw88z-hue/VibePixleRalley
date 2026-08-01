@@ -221,12 +221,13 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 }
 .pad.act{background:linear-gradient(180deg,rgba(255,196,87,.55),rgba(224,146,26,.5));
   border-color:#ffd487;color:#1a1200;}
-/* left thumb: shifter blade outboard, then the two steering rockers.
-   The rockers carry their own chrome housing on canvas, so the pad itself
-   is just the tap target — no border, no fill of its own. */
-#p-shiftdn{left:calc(6px + env(safe-area-inset-left));}
-#p-left{left:calc(50px + env(safe-area-inset-left));width:72px;height:62px;}
-#p-right{left:calc(126px + env(safe-area-inset-left));width:72px;height:62px;}
+/* left thumb: the two steering rockers, which now have the corner to
+   themselves and are sized up to suit. They carry their own chrome housing
+   on canvas, so the pad itself is just the tap target — no border, no fill
+   of its own. JS picks between the two rocker sizes once the binnacle is
+   laid out and restates these; the values here are the full-size default. */
+#p-left{left:calc(6px + env(safe-area-inset-left));width:80px;height:72px;}
+#p-right{left:calc(92px + env(safe-area-inset-left));width:80px;height:72px;}
 .pad.rocker{background:none;border:none;box-shadow:none;padding:0;}
 .pad.rocker canvas{image-rendering:pixelated;display:block;}
 .pad.rocker.act{background:none;border:none;}
@@ -234,19 +235,24 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 #p-gas{right:calc(50px + env(safe-area-inset-right));width:88px;height:62px;}
 #p-hbrake{right:calc(142px + env(safe-area-inset-right));
   width:46px;height:77px;flex-direction:column;gap:0;padding:0;overflow:hidden;}
-#p-shiftup{right:calc(6px + env(safe-area-inset-right));}
-#p-left,#p-right,#p-gas,#p-hbrake,.pad.paddle{bottom:calc(4px + env(safe-area-inset-bottom));}
+#p-left,#p-right,#p-gas,#p-hbrake,.pad.shift{bottom:calc(4px + env(safe-area-inset-bottom));}
 #p-hbrake canvas{image-rendering:pixelated;display:block;}
 #p-hbrake small{font-size:7px;letter-spacing:.5px;opacity:.75;margin-top:-1px;}
 #p-hbrake.act{background:linear-gradient(180deg,rgba(255,196,87,.26),rgba(4,6,9,.72));
   border-color:#ffd487;}
 #p-pause{right:calc(8px + env(safe-area-inset-right));top:calc(6px + env(safe-area-inset-top));width:44px;height:34px;font-size:12px;}
-/* paddle shifters — dark chrome blades on the outer ends of the dash band,
-   each sitting immediately outboard of the thumb that works it. */
-.pad.paddle{height:48px;width:40px;padding:0;background:none;border:none;box-shadow:none;}
-.pad.paddle canvas{image-rendering:pixelated;display:block;}
-.pad.paddle.act{background:none;}
-.pad.paddle.auto{opacity:.45;}
+/* shift buttons — chunky chrome-housed pixel buttons that flank the
+   binnacle, - on the tacho side and + just past the speedo. JS pins them to
+   the panel's edges once its width is known; the offsets here are only the
+   fallback for the frame before that runs. They cast the same drop shadow
+   as the binnacle so the three read as one moulding. */
+.pad.shift{width:44px;height:44px;padding:0;background:none;border:none;box-shadow:none;
+  left:calc(6px + env(safe-area-inset-left));
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,.6));}
+#p-shiftup{left:auto;right:calc(6px + env(safe-area-inset-right));}
+.pad.shift canvas{image-rendering:pixelated;display:block;}
+.pad.shift.act{background:none;}
+.pad.shift.auto{opacity:.45;}
 /* the tilt strip parks above the cluster, whatever height the cluster took */
 #tilt-bar{position:absolute;left:50%;transform:translateX(-50%);
   bottom:calc(var(--cluster-h, 76px) + 12px + env(safe-area-inset-bottom));
