@@ -180,7 +180,7 @@ function freshCarSave(def){
 }
 function freshSave(){
   var s = { v:1, money:1200, current:'hatch', cars:{}, stages:{}, settings:{ control:'buttons', audio:true, autoGas:false, tiltSens:1,
-                          transmission:'auto', units:'kmh' } };
+                          transmission:'auto', units:'mph' } };
   for(var i=0;i<CARS.length;i++) s.cars[CARS[i].id] = freshCarSave(CARS[i]);
   for(var j=0;j<STAGES.length;j++) s.stages[STAGES[j].id] = { best:null, done:false };
   return s;
@@ -1556,7 +1556,15 @@ var view = { w:0, h:0, dpr:1 };
 
 function resize(){
   var dpr = Math.min(window.devicePixelRatio || 1, 2);
-  var w = window.innerWidth, h = window.innerHeight;
+  /* The visual viewport is the box actually on screen. On iOS it and
+     window.innerHeight disagree while the browser chrome collapses, and
+     sizing the world canvas to the shorter one leaves the dash anchored
+     above the true bottom edge with dead space under it. Take the larger:
+     the page is fixed and cannot scroll, so over-covering costs nothing
+     while under-covering shows as a letterbox. */
+  var vv = window.visualViewport;
+  var w = Math.max(window.innerWidth, vv ? Math.round(vv.width) : 0);
+  var h = Math.max(window.innerHeight, vv ? Math.round(vv.height) : 0);
   view.w = w; view.h = h; view.dpr = dpr;
   cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
   ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -1564,6 +1572,16 @@ function resize(){
 }
 window.addEventListener('resize', function(){ resize(); if(race) resetHudControls(); });
 window.addEventListener('orientationchange', function(){ setTimeout(resize, 250); });
+/* the visual viewport moves on its own as the chrome collapses, without ever
+   firing a window resize — so watch it directly, and take one more look after
+   first paint in case the very first measurement was taken mid-collapse */
+if(window.visualViewport){
+  var vvSync = function(){ resize(); if(race) resetHudControls(); };
+  window.visualViewport.addEventListener('resize', vvSync);
+  window.visualViewport.addEventListener('scroll', vvSync);
+}
+window.addEventListener('pageshow', function(){ setTimeout(resize, 0); });
+requestAnimationFrame(function(){ resize(); });
 
 /* ---------------------------------------------------- orientation lock
    The rotate prompt stays as it was — it is what tells the player to turn
@@ -2051,9 +2069,9 @@ var HUDC = {
   railLip:'#8f9dad', railHi:'#2a323c', railMid:'#181e26',
   railLo:'#10151b', railDeep:'#0b0f14', railEdge:'#05070a',
   /* wheel paddles: the dash greys again, flat-shaded */
-  padEdge:'#05070a', padHi:'#6d7a86', padFace:'#39424c', padLo:'#232a32',
+  padEdge:'#05070a', padHi:'#c3ccd5', padFace:'#6b7783', padLo:'#3b444e',
   padGrip:'#2c343d', padOn:'#c98a2a', padOnHi:'#ffd487',
-  padInk:'#c9d2da', padInkOff:'#5b636b', padOnInk:'#241d0a',
+  padInk:'#f2f6fa', padInkOff:'#98a2ac', padOnInk:'#241d0a',
   amber:'#ffb432', amberLo:'#a8721a', green:'#7ef08a', warn:'#ff5a4a',
   dim:'#575e63', dimLo:'#3a4045',
   /* Instrument faces. Every value here was sampled straight off the
@@ -2292,7 +2310,7 @@ function applySpeedUnits(){
    pixel the dash grows is a pixel of road — and eventually of car — that the
    player loses, so the panel hugs the bottom edge and stays short. Width
    follows from the height, since the dials are circles. */
-var CLUSTER_BOTTOM = 4;                       /* px above the safe-area edge */
+var CLUSTER_BOTTOM = 0;                       /* px above the safe-area edge */
 
 /* Docked controls. Everything on the dash hangs off the cluster instead of
    the screen edge, so the band reads as one dashboard the way the reference
@@ -2312,8 +2330,8 @@ var DOCK_GAP = 2;
    scales with the dial, so it is added to the right one at layout time.
    The shift paddles used to head each run — they hang in their own gutters
    inside the panel now, so neither run carries them. */
-var DOCK_LEFT_W  = 66 + 66 + 2*DOCK_GAP;        /* the two steering arrows */
-var DOCK_RIGHT_W = 44 + DOCK_GAP;               /* the lever */
+var DOCK_LEFT_W  = 78 + 78 + 2*DOCK_GAP;        /* the two steering arrows */
+var DOCK_RIGHT_W = 44 + DOCK_GAP + 14;          /* the lever, plus air off the edge */
 var DOCK_REACH = DOCK_LEFT_W;                   /* floor for the slack check */
 
 function layoutDashControls(){
@@ -2347,7 +2365,7 @@ function layoutDashControls(){
       w = el.offsetWidth || 0;
       if(!w) continue;                        /* hidden: leaves no gap behind */
       el.style.transform = 'translateX(' + (dir*(off + w/2) + shift).toFixed(1) + 'px)';
-      off += w + DOCK_GAP;
+      off += w + (side[s].ids[i] === 'p-hbrake' ? DOCK_GAP + 8 : DOCK_GAP);
     }
   }
 
@@ -2369,6 +2387,11 @@ function layoutDashControls(){
    hands back a good 40px on one side. Read off a probe rather than assumed,
    and only ever called when the viewport changes. */
 var safeProbe = null;
+function safeInsetsLR(){
+  safeInsetX();
+  var cs = getComputedStyle(safeProbe);
+  return { l: parseFloat(cs.paddingLeft) || 0, r: parseFloat(cs.paddingRight) || 0 };
+}
 function safeInsetX(){
   if(!safeProbe){
     safeProbe = document.createElement('div');
@@ -2402,7 +2425,7 @@ function clusterLayout(){
      deeper docked run is the right one — lever plus the pedal block, which
      is 0.72 D — so the width cap falls out of 2.71 D. */
   var maxD = Math.min(
-    Math.floor((half - 15 - DOCK_RIGHT_W - DOCK_GAP) / 2.71),
+    Math.floor((half - 15 - DOCK_RIGHT_W - DOCK_GAP) / 2.87),
     Math.floor((half - 15 - DOCK_LEFT_W) / 1.99));
   /* The dials are the dash. They are sized off the viewport height and read
      as the dominant instruments, standing proud of the bar and breaking up
@@ -2416,7 +2439,7 @@ function clusterLayout(){
   /* The band carries on below the dials — that deck is what the lamp row
      and the contoured moulding need, and it is what lifts the dials up the
      screen rather than leaving them sat on the bottom edge. */
-  var deck = Math.round(D*0.35);
+  var deck = Math.round(D*0.46);
   var wg = Math.round(D*0.52);                /* gear widget */
   var wp = Math.round(D*0.28);                /* paddle gutter, each side */
   var wa = Math.round(D*0.46);                /* console module */
@@ -2456,6 +2479,12 @@ function clusterLayout(){
   var slack = (vw - safeInsetX())/2 - (L.W/2 + DOCK_REACH) - 4;
   L.shift = Math.round((want < 0 ? -1 : 1) *
             Math.min(Math.abs(want), Math.max(0, slack)));
+  /* Where the panel's middle actually lands on screen. It is centred in the
+     SAFE area, so on a notched phone that is not the middle of the viewport
+     — and a moulding humped about the viewport's middle slid out from under
+     the cluster it is supposed to cradle. */
+  var si = safeInsetsLR();
+  L.cxScreen = (si.l + (vw - si.r))/2 + L.shift;
 
   /* Gear widget: a vertical shift-light ladder outboard, then the GEAR
      caption with the gear-position row under it, as on the reference. */
@@ -2516,7 +2545,7 @@ function clusterBandH(){
      headroom the camera has to keep is measured at the hump, not at the
      dipped ends. The dials are counted at most of their rise: they are
      solid, and a car half behind a tachometer is a car you cannot drive. */
-  return L.bandH + (L.dialY + L.R - L.rise)*0.85 + CLUSTER_BOTTOM;
+  return L.bandH + (L.dialY + L.R - L.rise)*0.85 + CLUSTER_BOTTOM + L.D*0.22;
 }
 
 /* --------------------------------------------------------- static face
@@ -2696,8 +2725,8 @@ function pedalCols(GW){
 function pedalArt(){
   var L = cluster.L || clusterLayout();
   var end = hudCtl.endH || Math.round(L.bandH*RAIL_EDGE);
-  return { w: Math.max(24, Math.round(L.D*0.72)),
-           h: Math.max(20, end - 4) };
+  return { w: Math.max(24, Math.round(L.D*0.88)),
+           h: Math.max(20, end - 2) };
 }
 
 /* one pad: tapered body, lit top edge, then the five studs */
@@ -2869,8 +2898,10 @@ function ensureCluster(){
    own band line, so the dials break the moulding's edge by the same rise
    they always did. */
 var STEER_SCALE = 3;                          /* CSS px per art px on the arrows */
+var STEER_GRID = 26;                          /* 78 CSS px square */
 var RAIL_STEP = 4;                            /* block width of the contour */
 var RAIL_EDGE = 0.58;                         /* end depth, as a share of the hump */
+var RAIL_OVERDRAW = 48;                       /* paints past the foot, never short of it */
 
 function railDepth(x, cx, L, W){
   /* The plateau carries the whole panel — every column of it, not just the
@@ -2878,7 +2909,7 @@ function railDepth(x, cx, L, W){
      dropped away from is left hanging over the road. The dips are outside
      the panel, behind the steering arrows and the pedal block, exactly
      where the reference puts them. */
-  var plateau = L.W/2 - L.D*0.06;
+  var plateau = L.W/2 - L.D*0.20;
   var ramp = Math.max(24, Math.round((W/2 - plateau)*0.72));
   var d = Math.abs(x - cx);
   var t = d <= plateau ? 0 :
@@ -2893,7 +2924,7 @@ function drawDashRail(){
   var L = cluster.L;
   if(!cv || !L) return;
   var vw = Math.ceil(view.w || window.innerWidth || 800);
-  var H = L.bandH + CLUSTER_BOTTOM + railSafeB();
+  var H = L.bandH + CLUSTER_BOTTOM + railSafeB() + RAIL_OVERDRAW;
   var S = Math.max(1, Math.round(Math.min(window.devicePixelRatio || 1, 2)));
   if(cv.width !== vw*S || cv.height !== H*S){
     cv.width = vw*S; cv.height = H*S;
@@ -2904,7 +2935,7 @@ function drawDashRail(){
   g.setTransform(S,0,0,S,0,0);
   g.clearRect(0,0,vw,H);
   var px = pxInto(g, 0, 0, 1);
-  var cx = vw/2 + (L.shift || 0);
+  var cx = L.cxScreen != null ? L.cxScreen : vw/2 + (L.shift || 0);
   var x, w, top, y, t;
   for(x=0; x<vw; x+=RAIL_STEP){
     w = Math.min(RAIL_STEP, vw - x);
@@ -3099,16 +3130,32 @@ function drawTab(px, W, H, pressed){
 function drawSteer(id, right, pressed){
   var cv = document.getElementById(id);
   if(!cv) return;
-  /* the same tab sprite as before, taken up to three CSS pixels an art
-     pixel. Integer only, so every edge stays exactly as crisp as it was. */
-  var W = 22, H = Math.max(16, Math.round((hudCtl.barArt || 26)*0.62));
+  /* Cut square, at three CSS pixels an art pixel — integer only, so every
+     edge stays exactly as crisp as it was — and given back the raised
+     housing the flat tab had lost. Against the dark moulding a painted-on
+     parallelogram read as a smudge; a lit lip, a shaded foot and a pale
+     arrow read as something you press. */
+  var W = STEER_GRID, H = STEER_GRID, i;
   var px = hudPainter(cv, W, H, STEER_SCALE);
-  var t = drawTab(px, W, H, pressed), i;
-  var n = Math.max(5, Math.min(H-9, (W>>1)-5) | 1);
-  var ax0 = t.cx + (right ? -Math.round(n*0.45) : Math.round(n*0.45));
+  var drop = pressed ? 1 : 0;
+  drawHousing(px, W, H, pressed);
+
+  /* the rocker face, raised out of the housing */
+  var rx = 4, ry = 5 + drop, rw = W - 8, rh = H - 10;
+  px(rx-1, ry-1, rw+2, rh+2, '#04060a');
+  px(rx, ry, rw, rh, pressed ? '#e0921a' : '#4a5560');
+  px(rx, ry, rw, 1, pressed ? '#ffd487' : '#8d99a6');   /* lit top lip */
+  px(rx, ry+rh-1, rw, 1, pressed ? '#8a6416' : '#1d242c');
+  px(rx, ry, 1, rh, pressed ? '#ffc457' : '#79848f');
+  px(rx+rw-1, ry, 1, rh, '#1a2028');
+
+  /* solid arrowhead, pale enough to carry against the dash */
+  var ink = pressed ? '#241800' : '#eef3f8';
+  var n = Math.max(5, (rh - 6) | 1);
+  var acy = ry + rh/2, ax0 = rx + rw/2 + (right ? -Math.round(n*0.45) : Math.round(n*0.45));
   for(i=0;i<n;i++){
     var hh = n - i;
-    px(right ? ax0 + i : ax0 - i, t.cy - hh/2, 1, hh, t.ink);
+    px(right ? ax0 + i : ax0 - i, acy - hh/2, 1, hh, ink);
   }
 }
 
@@ -3163,39 +3210,45 @@ function drawShiftPaddle(id, up, press, active){
   var cv = document.getElementById(id);
   if(!cv) return;
   var L = cluster.L || clusterLayout();
-  var GW = Math.max(7, Math.round(L.padW/2));
-  var GH = Math.max(16, Math.round(L.padH/2));
+  var GW = Math.max(9, Math.round(L.padW/2));
+  var GH = Math.max(20, Math.round(L.padH/2));
   var px = hudPainter(cv, GW, GH, 2);
   var down = press > 0.5;
   var drop = down ? 1 : 0;
-  /* the blade rakes outboard: the head leans away from the dial it flanks */
-  var lean = Math.max(1, Math.round(GW*0.34));
-  var bw = GW - lean, y, off, t, face;
+  var y, t, w, x0, i;
 
-  for(y=0; y<GH-1-drop; y++){
-    t = y/(GH-2);
-    /* full lean at the head, straightening into the mount at the foot */
-    off = Math.round((1 - t)*lean);
-    if(!up) off = lean - off;                           /* mirror the rake */
-    px(off, y+drop, bw, 1, HUDC.padEdge);               /* cast outline */
-    face = down ? (t < 0.06 ? HUDC.padOnHi : HUDC.padOn)
-                : (t < 0.05 ? HUDC.padHi :
-                   t < 0.55 ? HUDC.padFace : HUDC.padLo);
-    px(off+1, y+drop, bw-2, 1, face);
-    if(!down && y > 2 && y < GH-5 && (y & 3) === 0)     /* milled grip lines */
-      px(off+2, y+drop, bw-4, 1, HUDC.padGrip);
+  /* Taper: widest at the head where the finger lands, drawing in towards
+     the mount at the foot. Both edges come in, so the blade is a tapered
+     leaf rather than a slider running in a track. */
+  var headW = GW, footW = Math.max(6, Math.round(GW*0.72));
+
+  for(y=0; y<GH-drop; y++){
+    t = y/(GH-1);
+    w  = Math.round(headW - (headW - footW)*t*t);
+    x0 = Math.round((GW - w)/2);
+    px(x0, y+drop, w, 1, HUDC.padEdge);                 /* cast outline */
+    if(w < 4) continue;
+    /* the bezel: a lit lip down the outboard edge and a shaded inboard one,
+       the same two-tone treatment the dial bezels carry */
+    px(x0+1, y+drop, w-2, 1,
+       down ? (t < 0.10 ? HUDC.padOnHi : HUDC.padOn)
+            : (t < 0.06 ? HUDC.padHi : t < 0.62 ? HUDC.padFace : HUDC.padLo));
+    px(x0+1,     y+drop, 1, 1, down ? HUDC.padOnHi : HUDC.padHi);
+    px(x0+w-2,   y+drop, 1, 1, down ? HUDC.padOn   : HUDC.padEdge);
   }
-  px(0, GH-1, GW, 1, HUDC.padEdge);                     /* foot */
+  px(0, 0, GW, 1, HUDC.padEdge);                        /* head cap */
 
-  /* the stamp, up near the head where a thumb lands */
+  /* A small chevron near the head instead of a stamped glyph: up on the
+     upshift, down on the downshift. Two rows of it, so it carries at this
+     size the way a single hairline would not. */
   var ink = down ? HUDC.padOnInk : (active ? HUDC.padInk : HUDC.padInkOff);
-  var sy = Math.round(GH*0.20) + drop;
-  var sx = Math.round((1 - Math.round(GH*0.20)/(GH-2))*lean);
-  if(!up) sx = lean - sx;
-  var arm = Math.max(2, (bw - 5) >> 1);
-  var scx = sx + Math.round(bw/2);
-  px(scx - arm, sy, arm*2, 1, ink);
-  if(up) px(scx - 1, sy - arm + 1, 1, arm*2 - 1, ink);
+  var n = Math.max(2, Math.round(GW*0.30));
+  var ccx = Math.round(GW/2), ccy = Math.round(GH*0.22) + drop;
+  for(i=0;i<n;i++){
+    var dy = up ? i : (n-1-i);
+    px(ccx - i - 1, ccy + dy,     1, 2, ink);
+    px(ccx + i,     ccy + dy,     1, 2, ink);
+  }
 }
 
 /* ------------------------------------------------------------- per frame */

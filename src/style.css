@@ -5,7 +5,13 @@
   --line:#3c4a38; --text:#dfe6d8; --muted:#8d9a86;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#000;}
+/* dvh, not %, so the fixed layer tracks the DYNAMIC viewport: on iOS the
+   layout viewport and window.innerHeight disagree while the browser chrome
+   is collapsing, and anchoring the dash to the shorter of the two is what
+   left a dead strip along the bottom of the screen. The fallback keeps
+   older engines on the old behaviour. */
+html,body{margin:0;padding:0;width:100%;height:100%;height:100dvh;
+  overflow:hidden;background:#0b0f14;}
 body{
   font-family:ui-monospace,"SF Mono",Menlo,Consolas,"Courier New",monospace;
   color:var(--text);
@@ -13,7 +19,7 @@ body{
   -webkit-user-select:none;user-select:none;
   overscroll-behavior:none;
 }
-#app{position:fixed;inset:0;overflow:hidden;}
+#app{position:fixed;inset:0;height:100%;height:100dvh;overflow:hidden;}
 canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated;image-rendering:crisp-edges;background:#1b2416;}
 .hidden{display:none !important;}
 
@@ -186,8 +192,11 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
    Its height is the FLAT BAR only, not the whole cluster: the dials and the
    steering buttons stand above this line and break it, which is what gives
    the dash its silhouette instead of one full-width rectangle. */
+/* the overdraw hangs BELOW the foot, never above it: bottom is pulled off
+   the edge by the same amount the height gains, so the moulding's top line
+   stays exactly where the panel expects it */
 #dash-rail{position:absolute;left:0;right:0;pointer-events:none;
-  bottom:0;height:calc(var(--dash-bar-h, 52px) + 4px + env(safe-area-inset-bottom));}
+  bottom:-48px;height:calc(var(--dash-bar-h, 52px) + 4px + env(safe-area-inset-bottom) + 48px);}
 /* The moulding is painted, not styled: a stepped pixel contour that humps up
    across the middle for the dials and drops away at both ends. A gradient
    here would fight the pixel art, so there is none — every tone in the
@@ -206,7 +215,7 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 #hud-note .txt{font-size:clamp(12px,2.6vh,19px);font-weight:700;letter-spacing:2px;color:#fff;text-shadow:0 2px 0 #000;}
 #hud-note.warn .txt{color:var(--red);}
 #hud-note.warn .arrow{color:var(--red);}
-#big-msg{position:absolute;left:0;right:0;top:38%;text-align:center;font-size:clamp(30px,10vh,74px);
+#big-msg{position:absolute;left:0;right:0;top:20%;text-align:center;font-size:clamp(30px,10vh,74px);
   font-weight:700;letter-spacing:6px;color:#fff;text-shadow:0 4px 0 #000,0 0 26px rgba(255,180,50,.55);opacity:0;transition:opacity .2s;}
 #big-msg.show{opacity:1;}
 #hud-split{position:absolute;left:50%;top:calc(96px + env(safe-area-inset-top));transform:translateX(-50%);font-size:clamp(11px,2.3vh,16px);font-weight:700;letter-spacing:2px;opacity:0;transition:opacity .25s;}
@@ -234,7 +243,7 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 .pad.art{background:none;border:none;box-shadow:none;padding:0;}
 .pad.art.act{background:none;border:none;}
 .pad.art canvas{image-rendering:pixelated;display:block;}
-.pad.art.auto{opacity:.45;}
+.pad.art.auto{opacity:.62;}
 /* Tap targets laid over art the cluster canvas already draws — invisible,
    and positioned in page coordinates by JS rather than docked. */
 .pad.hit{background:none;border:none;box-shadow:none;}
