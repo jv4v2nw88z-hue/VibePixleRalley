@@ -38,10 +38,9 @@
     <div class="pad rocker" id="p-right"><canvas id="steer-r-cv"></canvas></div>
     <div class="pad lever" id="p-hbrake"><canvas id="hbrake-cv"></canvas><small>HANDBRAKE</small></div>
     <div class="pad" id="p-gas">GAS</div>
-    <!-- shift buttons flank the binnacle: - on the tacho side drops a gear,
-         + past the speedo takes one. Placed in JS against the panel width. -->
-    <div class="pad shift" id="p-shiftdn"><canvas id="shift-dn-cv"></canvas></div>
-    <div class="pad shift" id="p-shiftup"><canvas id="shift-up-cv"></canvas></div>
+    <!-- paddles sit on the outer edges of the dash: left drops a gear, right takes one -->
+    <div class="pad paddle" id="p-shiftdn"><canvas id="pad-dn-cv"></canvas></div>
+    <div class="pad paddle" id="p-shiftup"><canvas id="pad-up-cv"></canvas></div>
     <div class="pad" id="p-pause">II</div>
     <div id="tilt-bar" class="hidden"><i id="tilt-ind"></i></div>
   </div>
