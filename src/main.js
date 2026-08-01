@@ -179,7 +179,7 @@ function freshCarSave(def){
   };
 }
 function freshSave(){
-  var s = { v:1, money:1200, current:'hatch', cars:{}, stages:{}, settings:{ control:'buttons', audio:true, autoGas:false, tiltSens:1, transmission:'auto' } };
+  var s = { v:1, money:1200, current:'hatch', cars:{}, stages:{}, settings:{ control:'buttons', audio:true, units:'mph', tiltSens:1, transmission:'auto' } };
   for(var i=0;i<CARS.length;i++) s.cars[CARS[i].id] = freshCarSave(CARS[i]);
   for(var j=0;j<STAGES.length;j++) s.stages[STAGES[j].id] = { best:null, done:false };
   return s;
@@ -216,7 +216,8 @@ function loadSave(){
   if(s.settings){
     if(s.settings.control==='tilt'||s.settings.control==='buttons') save.settings.control = s.settings.control;
     if(typeof s.settings.audio === 'boolean') save.settings.audio = s.settings.audio;
-    if(typeof s.settings.autoGas === 'boolean') save.settings.autoGas = s.settings.autoGas;
+    /* saves written before the unit toggle existed default to MPH */
+    if(s.settings.units === 'mph' || s.settings.units === 'kph') save.settings.units = s.settings.units;
     if(typeof s.settings.tiltSens === 'number') save.settings.tiltSens = clamp(s.settings.tiltSens,0.5,2);
     /* saves written before manual existed simply stay on automatic */
     if(s.settings.transmission === 'manual' || s.settings.transmission === 'auto')
@@ -1562,55 +1563,56 @@ function resize(){
 window.addEventListener('resize', function(){ resize(); if(race) resetHudControls(); });
 window.addEventListener('orientationchange', function(){ setTimeout(resize, 250); });
 
-/* ----------------------------------------------------------------- input */
-var input = { left:false, right:false, gas:false, hbrake:false, steer:0, tiltRaw:0, tiltZero:0, tiltOn:false };
+/* ----------------------------------------------------------------- input
+   The throttle drives itself, so the only things a player touches are the
+   two steering arrows, the two paddles and the handbrake. Every pointer on
+   the dash goes through the router in the HUD section below, which owns the
+   hit boxes, the fat-finger padding and the drag-between-controls handover. */
+var input = { left:false, right:false, hbrake:false, steer:0, tiltRaw:0, tiltZero:0, tiltOn:false };
 
-function bindPad(el, key){
-  var on = function(e){ e.preventDefault(); input[key] = true; el.classList.add('act'); audioKick(); };
-  var off = function(e){ if(e) e.preventDefault(); input[key] = false; el.classList.remove('act'); };
-  el.addEventListener('touchstart', on, {passive:false});
-  el.addEventListener('touchend', off, {passive:false});
-  el.addEventListener('touchcancel', off, {passive:false});
-  el.addEventListener('mousedown', on);
-  el.addEventListener('mouseup', off);
-  el.addEventListener('mouseleave', off);
-}
-bindPad(document.getElementById('p-left'),'left');
-bindPad(document.getElementById('p-right'),'right');
-bindPad(document.getElementById('p-gas'),'gas');
-bindPad(document.getElementById('p-hbrake'),'hbrake');
-
-/* the shift pads are taps, not holds, so they get their own binding */
-function bindTap(el, fn){
-  var fire = function(e){
+(function bindDashPointers(){
+  var el = document.getElementById('dash-cv');
+  var mouseDown = false;
+  el.addEventListener('touchstart', function(e){
     e.preventDefault();
-    el.classList.add('act');
-    setTimeout(function(){ el.classList.remove('act'); }, 90);
-    audioKick(); fn();
+    for(var i=0;i<e.changedTouches.length;i++){
+      var t = e.changedTouches[i];
+      routeDown('t'+t.identifier, t.clientX, t.clientY);
+    }
+  }, {passive:false});
+  el.addEventListener('touchmove', function(e){
+    e.preventDefault();
+    for(var i=0;i<e.changedTouches.length;i++){
+      var t = e.changedTouches[i];
+      routeMove('t'+t.identifier, t.clientX, t.clientY);
+    }
+  }, {passive:false});
+  var end = function(e){
+    e.preventDefault();
+    for(var i=0;i<e.changedTouches.length;i++) routeUp('t'+e.changedTouches[i].identifier);
   };
-  el.addEventListener('touchstart', fire, {passive:false});
-  el.addEventListener('mousedown', fire);
-}
-/* the paddle shifters are the real control; they call straight into the
-   Pass 3 gearbox and no-op in automatic, where they render dimmed */
-bindTap(document.getElementById('p-shiftup'), function(){ hudCtl.padUp = 1; shiftUp(); });
-bindTap(document.getElementById('p-shiftdn'), function(){ hudCtl.padDn = 1; shiftDown(); });
+  el.addEventListener('touchend', end, {passive:false});
+  el.addEventListener('touchcancel', end, {passive:false});
+
+  el.addEventListener('mousedown', function(e){ mouseDown = true; routeDown('m', e.clientX, e.clientY); });
+  window.addEventListener('mousemove', function(e){ if(mouseDown) routeMove('m', e.clientX, e.clientY); });
+  window.addEventListener('mouseup', function(){ mouseDown = false; routeUp('m'); });
+  window.addEventListener('blur', function(){ mouseDown = false; releaseAllControls(); });
+})();
 
 document.addEventListener('keydown', function(e){
   if(e.repeat) return;
-  if(e.key==='e'||e.key==='E'||e.key==='x'||e.key==='X'){ shiftUp(); return; }
-  if(e.key==='q'||e.key==='Q'||e.key==='z'||e.key==='Z'){ shiftDown(); return; }
+  if(e.key==='e'||e.key==='E'||e.key==='x'||e.key==='X'){ hudCtl.padUp = 1; shiftUp(); return; }
+  if(e.key==='q'||e.key==='Q'||e.key==='z'||e.key==='Z'){ hudCtl.padDn = 1; shiftDown(); return; }
   if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A') input.left = true;
   else if(e.key==='ArrowRight'||e.key==='d'||e.key==='D') input.right = true;
-  else if(e.key==='ArrowUp'||e.key==='w'||e.key==='W'||e.key===' ') { input.gas = true; e.preventDefault(); }
-  else if(e.key==='ArrowDown'||e.key==='s'||e.key==='S'||e.key==='Shift') input.hbrake = true;
+  else if(e.key==='ArrowDown'||e.key==='s'||e.key==='S'||e.key==='Shift'||e.key===' '){ input.hbrake = true; e.preventDefault(); }
   else if(e.key==='Escape'||e.key==='p'||e.key==='P'){ if(race && race.state!=='done') togglePause(); }
 });
 document.addEventListener('keyup', function(e){
   if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A') input.left = false;
   else if(e.key==='ArrowRight'||e.key==='d'||e.key==='D') input.right = false;
-  else if(e.key==='ArrowUp'||e.key==='w'||e.key==='W'||e.key===' ') input.gas = false;
-  else if(e.key==='ArrowDown'||e.key==='s'||e.key==='S'||e.key==='Shift') input.hbrake = false;
+  else if(e.key==='ArrowDown'||e.key==='s'||e.key==='S'||e.key==='Shift'||e.key===' ') input.hbrake = false;
 });
 
 /* tilt steering ------------------------------------------------------- */
@@ -1800,851 +1802,1055 @@ function audioBeep(freq, dur){
 function audioStopAll(){ audioEngine(0,0,0,false); }
 
 /* =========================================================================
-   HUD — INSTRUMENT CLUSTER AND CONTROLS
+   HUD — DASHBOARD
 
-   The cluster is one canvas sitting in the middle of the dash: pedal bay,
-   analog tachometer, gear panel with a shift bar and warning lamps, and an
-   analog speedometer with a digital readout. Everything is canvas-drawn —
-   no asset files anywhere in the game.
+   One canvas across the foot of the screen carries the whole dash. It is
+   painted on an integer pixel grid: every element is a run of whole cells
+   and the grid is blitted to the device with nearest-neighbour scaling, so
+   the dash keeps the same pixel size as the car and the scenery and nothing
+   is ever antialiased.
 
-   Cost control: the parts that never change (panel shell, dial faces with
-   their ticks, numbers and redline arc, the pedal floor) are painted once
-   into an offscreen bitmap at device resolution and blitted as a single
-   image each frame. Only the needles, digits, gear, bar, lamps and pedal
-   plates are re-drawn live, so a frame is one drawImage plus a few dozen
-   primitives. The paddles and the handbrake keep their own small canvases
-   and still only repaint when their animation actually moves.
+   The design is laid out against a nominal 300 x 79 cell grid. The real
+   grid is whatever the viewport gives us, so the three banks are anchored
+   independently - steering and gear to the left edge, the binnacle to the
+   middle, lever and status panels to the right edge - and spare width opens
+   the gaps between them rather than stretching the art.
+
+   Cost control: everything that never changes (frame, seams, dial faces,
+   panel shells, labels) is painted once into an offscreen bitmap and
+   blitted as a single image each frame. The three moving controls keep
+   their own small bitmaps and only repaint when their state actually
+   changes. Only the needles, lit segments, gear marker and digits are
+   redrawn from scratch every frame.
    ========================================================================= */
 
-var hudCtl = { gas:0, brake:0, hb:0, padUp:0, padDn:0,
-               drawnHb:-1, drawnUp:-1, drawnDn:-1, drawnMode:null,
-               drawnL:null, drawnR:null };
-
-/* integer-scaled pixel painter for a small HUD canvas */
-function hudPainter(cv, gw, gh, cssScale){
-  var dpr = Math.min(window.devicePixelRatio || 1, 2);
-  var S = Math.max(1, Math.round(cssScale*dpr));
-  if(cv.width !== gw*S || cv.height !== gh*S){
-    cv.width = gw*S; cv.height = gh*S;
-    cv.style.width = (gw*cssScale)+'px';
-    cv.style.height = (gh*cssScale)+'px';
-  }
-  var g = cv.getContext('2d');
-  g.imageSmoothingEnabled = false;
-  g.clearRect(0,0,cv.width,cv.height);
-  return function(x,y,w,h,col){
-    g.fillStyle = col;
-    g.fillRect(Math.round(x)*S, Math.round(y)*S,
-               Math.max(1,Math.round(w))*S, Math.max(1,Math.round(h))*S);
-  };
-}
-
-var HUDC = {
-  steel:'#9aa2a8', steelHi:'#c6ccd1', steelLo:'#5c6167',
-  dark:'#20262a', black:'#12161a', rubber:'#2b3036', rubberHi:'#3c434a',
-  amber:'#ffb432', amberLo:'#a8721a', green:'#7ef08a', red:'#ff5a4a',
-  dim:'#575e63', dimLo:'#3a4045',
-  /* instrument faces — near-black glass under a chrome bezel, with bright
-     white/periwinkle numbering for contrast at a glance */
-  bezelHi:'#eef3f8', bezel:'#7d8894', bezelLo:'#333b44',
-  tick:'#ffffff', tickDim:'rgba(196,212,234,.62)', tickRed:'#c2392c',
-  numSpd:'#f4f8ff', numTach:'#bcccff',
-  needle:'#ff3b2f', needleHot:'#ff6f52', needleSpd:'#ff3b2f',
-  lcd:'#05070a', lcdOn:'#f2f7ff', lampOff:'#39423a'
+var DC = {
+  base:'#242b33', baseHi:'#2f3841', baseLo:'#1a2028', deep:'#12171d',
+  seam:'#0a0d11', bevel:'#5c6874', bevelHi:'#8e9caa',
+  inset:'#161c23', insetLo:'#0b0f14',
+  steel:'#98a3af', steelHi:'#d7e0e9', steelTop:'#f1f5fa',
+  steelLo:'#5a646f', steelDk:'#2f3740',
+  glass:'#070a0e', glassHi:'#101620',
+  tick:'#e9eff5', tickDim:'#8d99a5', tickRed:'#c8362a',
+  num:'#f2f6fa', numDim:'#b0bbc6',
+  needle:'#dd3327', needleHi:'#ff7a60', hub:'#242b32',
+  amber:'#ffb432', amberLo:'#8a5f1a', amberDim:'#4d3a12',
+  green:'#5fe070', greenLo:'#2c7a38', greenDim:'#183220',
+  red:'#e0463a', redLo:'#7a2018', redPanel:'#3a1410', redDim:'#2a0f0c',
+  blue:'#3f7fe0', blueHi:'#8cbcff', blueDim:'#16233a',
+  grey:'#7d8791', greyLo:'#4a535c', greyDim:'#333b44', label:'#c3ccd5'
 };
 
-/* pixel painter that draws into an existing context at an offset, so the
-   chunky pixel art can share a canvas with the smooth dial faces */
-function pxInto(g, ox, oy, s){
+/* ------------------------------------------------------------------ font
+   A 3x5 pixel face, variable width so M, N and W keep their diagonals.
+   Every glyph is a list of row strings; a 1 is an inked cell. Nothing in
+   the dash uses the browser's text rendering, so no label is ever smoothed. */
+var FONT = {
+  '0':['111','101','101','101','111'], '1':['010','110','010','010','111'],
+  '2':['111','001','111','100','111'], '3':['111','001','111','001','111'],
+  '4':['101','101','111','001','001'], '5':['111','100','111','001','111'],
+  '6':['111','100','111','101','111'], '7':['111','001','010','010','010'],
+  '8':['111','101','111','101','111'], '9':['111','101','111','001','111'],
+  'A':['010','101','111','101','101'], 'B':['110','101','110','101','110'],
+  'C':['011','100','100','100','011'], 'D':['110','101','101','101','110'],
+  'E':['111','100','110','100','111'], 'F':['111','100','110','100','100'],
+  'G':['011','100','101','101','011'], 'H':['101','101','111','101','101'],
+  'I':['111','010','010','010','111'], 'J':['001','001','001','101','010'],
+  'K':['101','101','110','101','101'], 'L':['100','100','100','100','111'],
+  'M':['10001','11011','10101','10001','10001'],
+  'N':['1001','1101','1011','1001','1001'],
+  'O':['010','101','101','101','010'], 'P':['110','101','110','100','100'],
+  'Q':['010','101','101','011','001'], 'R':['110','101','110','101','101'],
+  'S':['011','100','010','001','110'], 'T':['111','010','010','010','010'],
+  'U':['101','101','101','101','011'], 'V':['101','101','101','101','010'],
+  'W':['10001','10001','10101','11011','10001'],
+  'X':['101','101','010','101','101'], 'Y':['101','101','010','010','010'],
+  'Z':['111','001','010','100','111'],
+  ' ':['00','00','00','00','00'], '.':['0','0','0','0','1'],
+  '-':['000','000','111','000','000'], '+':['010','010','111','010','010'],
+  '/':['001','001','010','100','100'], ':':['0','1','0','1','0'],
+  '(':['01','10','10','10','01'], ')':['10','01','01','01','10'],
+  'X1':['101','010','101'] /* unused placeholder, keeps the map homogeneous */
+};
+var FONT_H = 5;
+
+function glyphW(ch){ var g = FONT[ch]; return g ? g[0].length : 3; }
+function textW(s, k, sp){
+  k = k || 1; sp = sp == null ? 1 : sp;
+  var w = 0;
+  for(var i=0;i<s.length;i++) w += glyphW(s.charAt(i))*k + (i ? sp*k : 0);
+  return w;
+}
+/* draw a string with its top-left at x,y, each font cell k grid cells wide */
+function pxText(px, s, x, y, col, k, sp){
+  k = k || 1; sp = sp == null ? 1 : sp;
+  var cx = x;
+  for(var i=0;i<s.length;i++){
+    var ch = s.charAt(i), gl = FONT[ch];
+    if(gl){
+      for(var r=0;r<FONT_H;r++){
+        var row = gl[r], run = 0;
+        for(var c=0;c<=row.length;c++){
+          if(c < row.length && row.charAt(c) === '1'){ run++; continue; }
+          if(run){ px(cx + (c-run)*k, y + r*k, run*k, k, col); run = 0; }
+        }
+      }
+    }
+    cx += glyphW(ch)*k + sp*k;
+  }
+}
+function pxTextC(px, s, cx, y, col, k, sp){
+  pxText(px, s, Math.round(cx - textW(s,k,sp)/2), y, col, k, sp);
+}
+/* Centre a label inside a panel, tightening the letter spacing before
+   giving up. Panel titles are the one place the design runs out of room. */
+function pxTextFit(px, s, cx, y, w, col, k){
+  var sp = textW(s,k,1) <= w ? 1 : 0;
+  pxText(px, s, Math.round(cx - textW(s,k,sp)/2), y, col, k, sp);
+}
+
+/* -------------------------------------------------------- raster helpers
+   All of them take a painter that lands on whole grid cells, so a caller
+   can never accidentally draw a half pixel. */
+function rasterInto(g, S){
   return function(x,y,w,h,col){
+    if(w <= 0 || h <= 0) return;
     g.fillStyle = col;
-    g.fillRect(ox + Math.round(x)*s, oy + Math.round(y)*s,
-               Math.max(1,Math.round(w))*s, Math.max(1,Math.round(h))*s);
+    g.fillRect(Math.round(x)*S, Math.round(y)*S, Math.round(w)*S, Math.round(h)*S);
   };
 }
-function roundPath(g,x,y,w,h,r){
-  r = Math.min(r, w/2, h/2);
-  g.beginPath();
-  g.moveTo(x+r,y);
-  g.lineTo(x+w-r,y); g.quadraticCurveTo(x+w,y,x+w,y+r);
-  g.lineTo(x+w,y+h-r); g.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
-  g.lineTo(x+r,y+h); g.quadraticCurveTo(x,y+h,x,y+h-r);
-  g.lineTo(x,y+r); g.quadraticCurveTo(x,y,x+r,y);
-  g.closePath();
+function pxDisc(px, cx, cy, r, col){
+  for(var y=-r; y<=r; y++){
+    var w = Math.floor(Math.sqrt(Math.max(0, r*r - y*y)));
+    px(cx-w, cy+y, w*2+1, 1, col);
+  }
 }
-function hudFont(g, size, weight){
-  g.font = (weight||'bold') + ' ' + size.toFixed(1) +
-           'px ui-monospace,"SF Mono",Menlo,Consolas,monospace';
+function pxRing(px, cx, cy, r, t, col){
+  var ri = r - t;
+  for(var y=-r; y<=r; y++){
+    var wo = Math.floor(Math.sqrt(Math.max(0, r*r - y*y)));
+    var wi = Math.abs(y) <= ri ? Math.floor(Math.sqrt(Math.max(0, ri*ri - y*y))) : -1;
+    if(wi < 0){ px(cx-wo, cy+y, wo*2+1, 1, col); }
+    else { px(cx-wo, cy+y, wo-wi, 1, col); px(cx+wi+1, cy+y, wo-wi, 1, col); }
+  }
+}
+/* an annulus limited to an angle span, walked cell by cell */
+function pxArc(px, cx, cy, r, t, a0, a1, col){
+  var steps = Math.max(6, Math.round(Math.abs(a1-a0)*r*1.7));
+  for(var i=0;i<=steps;i++){
+    var a = a0 + (a1-a0)*i/steps, ca = Math.cos(a), sa = Math.sin(a);
+    for(var k=0;k<t;k++)
+      px(Math.round(cx+ca*(r-k)), Math.round(cy+sa*(r-k)), 1, 1, col);
+  }
+}
+/* a radial run of cells, used for every tick mark and for the needles */
+function pxRadial(px, cx, cy, a, r0, r1, w, col){
+  var ca = Math.cos(a), sa = Math.sin(a);
+  var n = Math.max(1, Math.round(Math.abs(r1-r0)));
+  for(var i=0;i<=n;i++){
+    var r = r0 + (r1-r0)*i/n;
+    px(Math.round(cx+ca*r - (w-1)/2), Math.round(cy+sa*r - (w-1)/2), w, w, col);
+  }
+}
+/* a panel with one-cell stepped corners: pixel art's answer to a rounded
+   rect, with a lit top edge and a shaded foot */
+function pxPanel(px, x, y, w, h, fill, hi, lo, edge){
+  px(x+1, y,     w-2, 1,   edge);
+  px(x,   y+1,   1,   h-2, edge);
+  px(x+w-1, y+1, 1,   h-2, edge);
+  px(x+1, y+h-1, w-2, 1,   edge);
+  px(x+1, y+1,   w-2, h-2, fill);
+  if(hi) px(x+1, y+1, w-2, 1, hi);
+  if(lo) px(x+1, y+h-2, w-2, 1, lo);
 }
 
 /* =========================================================================
-   GAUGE CLUSTER
+   LAYOUT
    ========================================================================= */
 
-/* Dial sweep: 135deg (bottom-left) clockwise through 270deg to 45deg
-   (bottom-right), the layout every road-car instrument uses. */
+/* Share of the viewport the dash occupies. The mockup gives it the bottom
+   forty percent; on a squarer tablet the content runs out of width first
+   and the band ends up a little shorter, which is handled below. */
+var DASH_FRAC = 0.40;
+/* the nominal design grid every position below is quoted against */
+var DASH_NOM_W = 300, DASH_NOM_H = 79, DASH_NOM_OVER = 30;
+
+/* Dash cell size in CSS pixels. Tied to viewport height so the dash art
+   stays in the same pixel family as the car sprite and the scenery props,
+   which are also sized off the viewport. It runs one step finer than the
+   world grid: the dash carries lettering, and a 3x5 face at the world's
+   own cell size would not leave room for a word like THROTTLE. */
+function dashPixel(vh){ return clamp(Math.round(vh/300), 2, 4); }
+
+var dash = { cv:null, g:null, base:null, L:null, key:'', S:1,
+             nRpm:0, nSpd:0, nBoost:0, heat:0 };
+
+function dashLayout(){
+  var vw = view.w || window.innerWidth || 800;
+  var vh = view.h || window.innerHeight || 400;
+  var PX = dashPixel(vh);
+  var GW = Math.ceil(vw/PX);
+  /* Content scale. Whichever axis runs out first decides it: on a wide
+     phone that is the height, and the spare width simply opens the gaps
+     between the three banks; on a 4:3 tablet it is the width, and the
+     whole dash sits a little shorter than forty percent. */
+  var U = Math.min((vh*DASH_FRAC/PX)/DASH_NOM_H, GW/(DASH_NOM_W+6));
+  var u = function(n){ return Math.round(n*U); };
+  var GH = u(DASH_NOM_H), OVER = u(DASH_NOM_OVER);
+
+  var L = { PX:PX, GW:GW, GH:GH, OVER:OVER, U:U, u:u, CH:GH+OVER, top:OVER };
+  var top = OVER;
+
+  /* ------------------------------------------------------- left bank */
+  var lx = u(8);
+  L.steerL = { x:lx,               y:top+u(17), w:u(17), h:u(34) };
+  L.steerR = { x:lx+u(19),         y:top+u(17), w:u(17), h:u(34) };
+  L.led    = { x:lx+u(5), y:top+u(11), n:5, w:u(4), h:u(3), gap:u(3) };
+  L.gear   = { x:lx+u(50), y:top+u(12), w:u(20), h:u(41), rowH:u(6) };
+  L.leftEdge = L.gear.x + L.gear.w;
+
+  /* -------------------------------------------------- centre binnacle */
+  var C = Math.round(GW/2);
+  L.C = C;
+  L.R = u(28);
+  L.dialY = top + u(20);
+  L.tachX = C - u(42);
+  L.spdX  = C + u(42);
+  L.stack = { x:C-u(13), w:u(26),
+              shiftY:top+u(1),  shiftH:u(6),
+              chevY: top+u(9),  chevH:u(7),
+              segY:  top+u(18), segH:u(5),
+              boxY:  top+u(26), boxH:u(21) };
+  L.boost = { x:C+u(86), y:top+u(38), r:u(15) };
+  L.housing = { x0:L.tachX-L.R-u(4), x1:L.spdX+L.R+u(4), rise:u(9) };
+  /* paddles: mounted just outboard of the dial pair, breaking up into the
+     world above the dash line */
+  L.padW = u(19); L.padH = u(38); L.padStalk = u(9);
+  L.padL = { x:C-u(82)-Math.round(L.padW/2), y:top-u(26), w:L.padW, h:L.padH };
+  L.padR = { x:C+u(82)-Math.round(L.padW/2), y:top-u(26), w:L.padW, h:L.padH };
+
+  /* ------------------------------------------------------ right bank */
+  var rx = GW - u(6);
+  var sw = u(27), sg = u(2);
+  L.stat = { y:top+u(52), h:u(24), w:sw, gap:sg };
+  L.stat.x2 = rx - sw;
+  L.stat.x1 = L.stat.x2 - sw - sg;
+  L.stat.x0 = L.stat.x1 - sw - sg;
+  L.hb = { x:rx-u(42), y:top+u(25), w:u(36), h:u(16), rise:u(20) };
+  L.hb.slotOff = Math.round(L.hb.h*0.34);
+  L.hb.slotH   = Math.max(3, Math.round(L.hb.h*0.30));
+
+  /* ------------------------------------------------- indicator strip */
+  var isW = u(129), isH = u(14);
+  var isC = Math.round((L.leftEdge + L.stat.x0)/2);
+  L.strip = { x:isC-Math.round(isW/2), y:top+u(57), w:isW, h:isH };
+
+  /* screen-space origin, so hit boxes and the camera can be worked out
+     from the same numbers the art is drawn with */
+  L.originX = Math.round((vw - GW*PX)/2);
+  L.originY = vh - L.CH*PX;
+  return L;
+}
+
+/* How much of the screen bottom the dash claims, including the raised
+   gauge housing, so the chase camera can keep the car clear of it. */
+function dashBandH(){
+  var L = dash.L || dashLayout();
+  return (L.GH + L.housing.rise)*L.PX + 4;
+}
+
+/* =========================================================================
+   STATIC ART
+   ========================================================================= */
+
+/* --- dial faces -------------------------------------------------------- */
+/* 135deg round through the bottom to 45deg, the sweep every road instrument
+   uses. Shared by the tacho, the speedo and the boost gauge. */
 var DIAL_A0 = Math.PI*0.75, DIAL_SWEEP = Math.PI*1.5;
 function dialAngle(v, min, max){ return DIAL_A0 + DIAL_SWEEP*clamp((v-min)/(max-min),0,1); }
 
 /* The tacho reads in thousands of rpm. race.rpm is a fraction of redline,
-   so redline sits exactly on the 7 mark and the dial runs on to 9 — the
-   same 1.0 threshold the gearbox and the shift bar use. */
-var TACH_MAX = 9, TACH_RED = 7, TACH_SCALE = 7;
+   so redline lands exactly on the 7 and the dial runs on to 8. */
+var TACH_MAX = 8, TACH_RED = 7, TACH_SCALE = 7;
+var BOOST_MAX = 20;
 
-var cluster = {
-  cv:null, g:null, base:null, L:null, key:'',
-  S:1, W:0, H:0, kmhMax:240,
-  nRpm:0, nKmh:0, heat:0
-};
+function paintDial(px, cx, cy, R, o){
+  var i, v, a, maj, red, len, r0, r1, lr;
+  var bw = Math.max(2, Math.round(R*0.10));
 
-/* Sizing.
+  /* chrome bezel: stepped rings rather than a gradient, with a bright
+     catch across the top left and a shaded shoulder at the bottom right */
+  pxDisc(px, cx, cy, R, DC.steelDk);
+  pxDisc(px, cx, cy, R-1, DC.steel);
+  pxArc(px, cx, cy, R-1, Math.max(1,bw-1), Math.PI*0.99, Math.PI*1.94, DC.steelHi);
+  pxArc(px, cx, cy, R-1, Math.max(1,bw-1), Math.PI*0.06, Math.PI*0.84, DC.steelLo);
+  pxDisc(px, cx, cy, R-bw, DC.glassHi);
+  pxDisc(px, cx, cy, R-bw-1, DC.glass);
 
-   The dash is deliberately kept to under a fifth of the screen height. This
-   is a chase cam: the car is drawn below the camera's focal point by however
-   far the camera is looking ahead, so it rides low on screen at speed. Every
-   pixel the dash grows is a pixel of road — and eventually of car — that the
-   player loses, so the panel hugs the bottom edge and stays short. Width
-   follows from the height, since the dials are circles. */
-var CLUSTER_BOTTOM = 4;                       /* px above the safe-area edge */
-
-/* Total horizontal safe-area inset. The side controls are positioned inside
-   it, so the panel has to budget for it too — a notched phone in landscape
-   hands back a good 40px on one side. Read off a probe rather than assumed,
-   and only ever called when the viewport changes. */
-var safeProbe = null;
-function safeInsetX(){
-  if(!safeProbe){
-    safeProbe = document.createElement('div');
-    safeProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;' +
-      'visibility:hidden;pointer-events:none;' +
-      'padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);';
-    document.body.appendChild(safeProbe);
-  }
-  var cs = getComputedStyle(safeProbe);
-  return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
-}
-
-function clusterLayout(){
-  var vw = view.w || window.innerWidth || 800;
-  var vh = view.h || window.innerHeight || 400;
-  var pad = 3, gap = 4;
-  /* The side controls reach SIDE_REACH in from each edge (steering pads and
-     the outboard blade on the left, lever + throttle + blade on the right).
-     The panel is centred on the screen, so its half-width has to clear the
-     deeper of the two — hence the full width less twice that reach. */
-  var SIDE_REACH = 198;
-  var maxW = Math.max(140, vw - safeInsetX() - 2*SIDE_REACH - 8);
-  /* Columns run left to right exactly as on the reference cluster: footwell,
-     gear barrel, tacho, the little auxiliary stack, speedo. As fractions of
-     the dial diameter that is 0.46 + 0.50 + 1 + 0.34 + 1 = 3.30 D, plus the
-     padding and four gaps. Invert it for the largest dial the width allows —
-     though on any real phone it is the HEIGHT cap that binds, not this. */
-  var D = Math.min(clamp(Math.round(vh*0.185), 54, 88) - 2*pad,
-                   Math.floor((maxW - 2*pad - 4*gap)/3.40));
-  var wp = Math.round(D*0.46);                /* footwell */
-  var wg = Math.round(D*0.56);                /* gear barrel */
-  var wa = Math.round(D*0.38);                /* auxiliary stack */
-  var W = 2*pad + wp + wg + 2*D + wa + 4*gap;
-  var H = D + 2*pad;
-  var ps = Math.max(1, Math.floor(wp/24));    /* pedal-art pixel size */
-
-  var x = pad;
-  var L = { W:W, H:H, pad:pad, gap:gap, D:D, R:D/2, dialY:pad + D/2 };
-  L.bayX = x; L.bayY = pad; L.wp = wp;
-  L.ps = ps; L.pgw = Math.floor(wp/ps); L.pgh = Math.floor(D/ps);
-  x += wp + gap;
-  L.gearX = x; L.wg = wg;
-  x += wg + gap;
-  L.tachX = x + D/2;
-  x += D + gap;
-  L.auxX = x; L.wa = wa;
-  x += wa + gap;
-  L.spdX = x + D/2;
-
-  /* gear barrel: label, big numeral, then the rev-range bar under it. The
-     barrel takes whatever height the bar leaves, so the numeral fills it. */
-  L.barH  = Math.max(5, Math.round(D*0.15));
-  L.gearH = D - L.barH - 3;
-  L.barY  = pad + L.gearH + 3;
-
-  /* auxiliary stack: paddle tell-tales, knob, then the warning lamps */
-  L.triH  = Math.max(5, Math.round(D*0.13));
-  L.knobY = pad + L.triH + 2;
-  L.knobR = Math.max(4, Math.round(D*0.13));
-  L.lampY = L.knobY + L.knobR*2 + 2;
-  L.lampH = Math.max(6, pad + D - L.lampY);
-  return L;
-}
-
-/* How much of the screen bottom the dash band occupies, so the chase camera
-   can keep the car clear of it. Mirrors the CSS that positions the panel. */
-function clusterBandH(){
-  return (cluster.H || clusterLayout().H) + CLUSTER_BOTTOM;
-}
-
-/* --------------------------------------------------------- static face */
-function drawDialFace(g, cx, cy, R, o){
-  var i, v, a, maj, red, r0, r1, len;
-  var num = o.num || HUDC.numSpd;
-
-  /* --- chrome bezel. A polished ring reads as a sweep of light around the
-     circumference, not a flat tint: bright at the top left where the sky
-     catches it, dark through the middle, picking up a second, weaker
-     highlight at the bottom right as it turns back up. --- */
-  var bw = Math.max(2.4, R*0.13);
-  var bez = g.createLinearGradient(cx - R*0.75, cy - R*0.85, cx + R*0.68, cy + R*0.82);
-  bez.addColorStop(0.00, '#ffffff');
-  bez.addColorStop(0.13, HUDC.bezelHi);
-  bez.addColorStop(0.30, '#b0bcc8');
-  bez.addColorStop(0.47, '#6d7884');
-  bez.addColorStop(0.62, '#414a55');
-  bez.addColorStop(0.79, '#98a4b1');
-  bez.addColorStop(0.92, '#5c6672');
-  bez.addColorStop(1.00, HUDC.bezelLo);
-  g.beginPath(); g.arc(cx,cy,R,0,TAU); g.fillStyle = bez; g.fill();
-  /* crisp rim catch just inside the outer edge, and a dark inner shoulder */
-  g.beginPath(); g.arc(cx,cy,R-bw*0.22,Math.PI*1.02,Math.PI*1.82);
-  g.lineWidth = Math.max(0.7, bw*0.20); g.strokeStyle = 'rgba(255,255,255,.72)'; g.stroke();
-  g.beginPath(); g.arc(cx,cy,R-bw*0.80,0,TAU);
-  g.lineWidth = Math.max(0.8, bw*0.30); g.strokeStyle = 'rgba(10,14,20,.75)'; g.stroke();
-  g.beginPath(); g.arc(cx,cy,R-bw,0,TAU); g.fillStyle = '#010204'; g.fill();
-
-  /* --- near-black glass, vignetted so the middle lifts slightly --- */
-  var fr = R - bw - 0.5;
-  var face = g.createRadialGradient(cx - R*0.30, cy - R*0.36, R*0.03, cx, cy, R*1.05);
-  face.addColorStop(0.00, '#1d242e');
-  face.addColorStop(0.42, '#0b0f15');
-  face.addColorStop(1.00, '#020406');
-  g.beginPath(); g.arc(cx,cy,fr,0,TAU); g.fillStyle = face; g.fill();
-
-  /* Both dials reserve the same outer ring so they read as a matched pair;
-     on the tacho it carries the redline band. */
-  var trackR = fr - Math.max(1.4, R*0.055), trackW = Math.max(2, R*0.075);
-  var a0 = dialAngle(o.min,o.min,o.max), a1 = dialAngle(o.max,o.min,o.max);
-  g.lineCap = 'butt';
-  g.beginPath(); g.arc(cx,cy,trackR, a0, a1);
-  g.lineWidth = trackW; g.strokeStyle = 'rgba(170,196,232,.13)'; g.stroke();
-  if(o.redFrom != null){                       /* redline band */
-    var ra = dialAngle(o.redFrom,o.min,o.max);
-    g.beginPath(); g.arc(cx,cy,trackR, ra, a1);
-    g.lineWidth = trackW + 2; g.strokeStyle = 'rgba(255,59,47,.25)'; g.stroke();
-    g.beginPath(); g.arc(cx,cy,trackR, ra, a1);
-    g.lineWidth = trackW; g.strokeStyle = HUDC.needle; g.stroke();
+  var trackR = R - bw - 2;
+  var redTh  = o.redFrom != null ? Math.max(2, Math.round(R*0.08)) : 0;
+  /* redline band, painted on the outer track of the face */
+  if(o.redFrom != null){
+    pxArc(px, cx, cy, trackR, redTh,
+          dialAngle(o.redFrom,o.min,o.max), dialAngle(o.max,o.min,o.max), DC.tickRed);
   }
 
   var steps = Math.round((o.max-o.min)/o.minor);
+  var majEvery = Math.round(o.major/o.minor);
+  var labEvery = majEvery*(o.labelEvery||1);
+  var tk = R >= 20 ? 1 : 1;
   for(i=0;i<=steps;i++){
     v = o.min + i*o.minor;
-    maj = (i % Math.round(o.major/o.minor)) === 0;
+    maj = (i % majEvery) === 0;
     red = o.redFrom != null && v >= o.redFrom - 1e-6;
     a = dialAngle(v,o.min,o.max);
-    len = maj ? R*0.125 : R*0.065;
-    r1 = trackR - trackW/2 - 1;
+    len = maj ? Math.max(3, Math.round(R*0.09)) : Math.max(1, Math.round(R*0.05));
+    r1 = trackR - (redTh ? redTh + 1 : 1);
     r0 = r1 - len;
-    g.beginPath();
-    g.moveTo(cx+Math.cos(a)*r0, cy+Math.sin(a)*r0);
-    g.lineTo(cx+Math.cos(a)*r1, cy+Math.sin(a)*r1);
-    g.lineWidth = maj ? Math.max(1.4, R*0.05) : 1;
-    g.strokeStyle = red ? (maj ? HUDC.needle : HUDC.tickRed) : (maj ? HUDC.tick : HUDC.tickDim);
-    g.stroke();
-    if(maj && (i % Math.round(o.major*o.labelEvery/o.minor)) === 0){
-      var lr = r0 - R*0.15;
-      hudFont(g, Math.max(7, R*0.29));
-      g.fillStyle = red ? '#ff8b78' : num;
-      g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText(String(Math.round(v)), cx+Math.cos(a)*lr, cy+Math.sin(a)*lr);
+    pxRadial(px, cx, cy, a, r0, r1, maj ? 2 : 1,
+             red ? (maj ? DC.red : DC.tickRed) : (maj ? DC.tick : DC.tickDim));
+    if(maj && (i % labEvery) === 0 && o.numbers !== false){
+      lr = r0 - 3;
+      var s = String(Math.round(v));
+      pxText(px, s,
+             Math.round(cx + Math.cos(a)*lr - textW(s,o.numK||1)/2),
+             Math.round(cy + Math.sin(a)*lr - FONT_H*(o.numK||1)/2),
+             red ? '#ff8b78' : DC.num, o.numK||1);
     }
   }
 
-  /* Unit captions ride close in to the hub. The numerals sit out on the
-     diagonals, so anything much further out than this collides with them
-     once the dial gets small — which, on a dash this size, is always. */
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  if(o.label){
-    hudFont(g, Math.max(4.5, R*0.145));
-    g.fillStyle = 'rgba(226,236,252,.74)';
-    g.fillText(o.label, cx, cy - R*0.23);
+  if(o.label) pxTextC(px, o.label, cx, cy - Math.round(R*0.42), DC.label, 1);
+  if(o.sub)   pxTextC(px, o.sub,   cx, cy + Math.round(R*0.34), DC.numDim, 1);
+  /* a single crescent of glass reflection across the top left, dithered so
+     it stays pixel art rather than a soft glow */
+  var gr = trackR - Math.max(1, Math.round(R*0.10));
+  var a0 = Math.PI*1.02, a1 = Math.PI*1.62, n = Math.round((a1-a0)*gr*1.3);
+  for(i=0;i<=n;i++){
+    var ga = a0 + (a1-a0)*i/n;
+    if(i & 1) continue;
+    px(Math.round(cx+Math.cos(ga)*gr), Math.round(cy+Math.sin(ga)*gr), 1, 1, '#243040');
   }
-  if(o.sub){
-    hudFont(g, Math.max(4, R*0.115));
-    g.fillStyle = 'rgba(196,212,234,.46)';
-    g.fillText(o.sub, cx, cy + R*0.25);
-  }
-
-  /* --- glass: a soft crescent of reflected light across the top left --- */
-  var gl = g.createLinearGradient(cx - R*0.8, cy - R*0.9, cx + R*0.35, cy + R*0.55);
-  gl.addColorStop(0.00, 'rgba(255,255,255,.20)');
-  gl.addColorStop(0.45, 'rgba(255,255,255,.055)');
-  gl.addColorStop(1.00, 'rgba(255,255,255,0)');
-  g.beginPath(); g.arc(cx, cy, fr - R*0.14, Math.PI*0.90, Math.PI*1.80);
-  g.lineWidth = R*0.30; g.strokeStyle = gl; g.stroke();
 }
 
-/* Everything that never moves, painted once at device resolution. */
-function buildClusterBase(L, S){
+/* --- units ------------------------------------------------------------- */
+/* One place decides what the speedometer means. Both the analog face and
+   the digital readout come through here, so they can never disagree. */
+function speedUnits(){
+  var mph = save.settings.units !== 'kph';
+  return mph ? { label:'MPH', conv:0.621371, step:20, minor:5 }
+             : { label:'KPH', conv:1,        step:40, minor:10 };
+}
+/* The dial face is fixed, the way a real speedometer is: 0-160 MPH, or the
+   same dial in KPH. A slow car simply never gets round to the far end. */
+function speedMax(){ return save.settings.units !== 'kph' ? 160 : 260; }
+
+/* --- the whole static dash -------------------------------------------- */
+function buildDashBase(L, S){
   var c = document.createElement('canvas');
-  c.width = L.W*S; c.height = L.H*S;
+  c.width = L.GW*S; c.height = L.CH*S;
   var g = c.getContext('2d');
-  g.setTransform(S,0,0,S,0,0);
+  g.imageSmoothingEnabled = false;
+  var px = rasterInto(g, S);
+  var u = L.u, top = L.top, i, x, y;
 
-  /* The carrier is deliberately see-through: at this size it reads as a
-     dash moulding the road passes behind, not a slab dropped on the game.
-     The dials themselves stay fully opaque. */
-  var shell = g.createLinearGradient(0,0,0,L.H);
-  shell.addColorStop(0,'rgba(20,25,31,.50)');
-  shell.addColorStop(0.55,'rgba(10,13,17,.62)');
-  shell.addColorStop(1,'rgba(4,6,9,.74)');
-  roundPath(g, 0.75, 0.75, L.W-1.5, L.H-1.5, 7);
-  g.fillStyle = shell; g.fill();
-  g.lineWidth = 1; g.strokeStyle = 'rgba(150,170,196,.30)'; g.stroke();
-  g.save();                                     /* chrome catch along the top */
-  roundPath(g, 0.75, 0.75, L.W-1.5, L.H-1.5, 7); g.clip();
-  var top = g.createLinearGradient(0,0,0,3.5);
-  top.addColorStop(0,'rgba(255,255,255,.34)'); top.addColorStop(1,'rgba(255,255,255,0)');
-  g.fillStyle = top; g.fillRect(0,0,L.W,3.5);
-  g.restore();
+  /* ----------------------------------------------------- the frame ---- */
+  var H = L.housing;
+  /* the raised gauge housing first, so the flat top edge caps it cleanly */
+  px(H.x0, top-H.rise, H.x1-H.x0, H.rise, DC.base);
+  px(H.x0+2, top-H.rise, H.x1-H.x0-4, 1, DC.bevelHi);
+  px(H.x0+1, top-H.rise+1, H.x1-H.x0-2, 1, DC.bevel);
+  px(H.x0, top-H.rise+1, 1, H.rise, DC.baseLo);
+  px(H.x1-1, top-H.rise+1, 1, H.rise, DC.seam);
+  /* the shoulders where the bulge meets the flat top */
+  px(H.x0-2, top-2, 2, 2, DC.baseHi);
+  px(H.x1, top-2, 2, 2, DC.baseHi);
 
-  drawPedalBayBase(g, L);
+  px(0, top, L.GW, L.GH, DC.base);
+  px(0, top, L.GW, 1, DC.bevelHi);              /* lit bevel along the top */
+  px(0, top+1, L.GW, 1, DC.bevel);
+  px(0, top+2, L.GW, 1, DC.baseHi);
+  /* the body darkens towards the bottom in flat bands, no gradient */
+  px(0, top+Math.round(L.GH*0.34), L.GW, Math.round(L.GH*0.30), DC.baseLo);
+  px(0, top+Math.round(L.GH*0.64), L.GW, L.GH-Math.round(L.GH*0.64), DC.deep);
+  px(0, top+Math.round(L.GH*0.34), L.GW, 1, DC.seam);
+  px(0, top+Math.round(L.GH*0.64), L.GW, 1, DC.seam);
+  px(0, top+Math.round(L.GH*0.34)+1, L.GW, 1, '#2a323b');
+  px(0, top+Math.round(L.GH*0.64)+1, L.GW, 1, '#1e242b');
 
-  drawDialFace(g, L.tachX, L.dialY, L.R, {
+  /* vertical panel seams, so the dash reads as mouldings bolted together */
+  var seams = [L.leftEdge+u(3), H.x0-u(3), H.x1+u(3), L.stat.x0-u(4)];
+  for(i=0;i<seams.length;i++){
+    x = seams[i];
+    if(x < u(4) || x > L.GW-u(4)) continue;
+    px(x, top+3, 1, L.GH-3, DC.seam);
+    px(x+1, top+3, 1, L.GH-3, '#2c353e');
+  }
+
+  /* ------------------------------------------------ left bank shells -- */
+  paintSteerShell(px, L.steerL);
+  paintSteerShell(px, L.steerR);
+  /* the five indicator lamps sit in a recessed strip above the arrows */
+  var lb = L.led, lbw = lb.n*lb.w + (lb.n-1)*lb.gap;
+  pxPanel(px, lb.x-2, lb.y-2, lbw+4, lb.h+4, DC.insetLo, null, null, DC.seam);
+
+  /* gear selector column */
+  var G = L.gear;
+  pxPanel(px, G.x, G.y, G.w, G.h, DC.inset, '#232b33', DC.insetLo, DC.seam);
+  pxTextFit(px, 'GEAR', G.x+G.w/2, G.y+2, G.w-2, DC.label, 1);
+
+  /* ----------------------------------------------------- instruments -- */
+  paintDial(px, L.tachX, L.dialY, L.R, {
     min:0, max:TACH_MAX, major:1, minor:0.5, redFrom:TACH_RED,
-    /* no "x1000" caption: at this dial size it lands on the 0 and the 9 */
-    labelEvery: L.R >= 44 ? 1 : 3, label:'RPM',
-    num: HUDC.numTach
+    label:'RPM', sub:'X1000'
   });
-  /* three-digit numbers need room: thin the labelling out once the dial
-     carries more than five divisions, or once the dial itself is small */
-  var divs = cluster.kmhMax/40;
-  drawDialFace(g, L.spdX, L.dialY, L.R, {
-    min:0, max:cluster.kmhMax, major:40,
-    minor: cluster.kmhMax <= 160 ? 10 : 20,
-    labelEvery: (divs > 4 || L.R < 44) ? 2 : 1,  /* unit lives on the readout */
-    label:'KMH', num: HUDC.numSpd
+  var un = speedUnits(), smax = speedMax();
+  paintDial(px, L.spdX, L.dialY, L.R, {
+    min:0, max:smax, major:un.step, minor:un.minor,
+    labelEvery:1, label:un.label
+  });
+  paintDial(px, L.boost.x, L.boost.y, L.boost.r, {
+    min:0, max:BOOST_MAX, major:10, minor:5, numbers:false,
+    label:'BOOST', sub:'PSI'
   });
 
-  /* --- gear barrel, to the left of the tacho as on the reference --- */
-  roundPath(g, L.gearX, L.pad, L.wg, L.gearH, 3);
-  var gp = g.createLinearGradient(0, L.pad, 0, L.pad+L.gearH);
-  gp.addColorStop(0,'#161c24'); gp.addColorStop(0.5,'#080c11'); gp.addColorStop(1,'#020407');
-  g.fillStyle = gp; g.fill();
-  g.lineWidth = 1; g.strokeStyle = 'rgba(168,186,210,.45)'; g.stroke();
-  g.save(); roundPath(g, L.gearX, L.pad, L.wg, L.gearH, 3); g.clip();
-  var gtop = g.createLinearGradient(0, L.pad, 0, L.pad+2.5);
-  gtop.addColorStop(0,'rgba(255,255,255,.30)'); gtop.addColorStop(1,'rgba(255,255,255,0)');
-  g.fillStyle = gtop; g.fillRect(L.gearX, L.pad, L.wg, 2.5);
-  g.restore();
-  hudFont(g, Math.max(4.5, L.wg*0.20));
-  g.fillStyle = 'rgba(196,212,234,.66)'; g.textAlign = 'center'; g.textBaseline = 'top';
-  g.fillText('GEAR', L.gearX + L.wg/2, L.pad + 1.5);
+  /* ---------------------------------------------------- centre stack -- */
+  var K = L.stack;
+  pxPanel(px, K.x, K.shiftY, K.w, K.shiftH, DC.insetLo, '#1d242c', null, DC.steelDk);
+  pxTextFit(px, 'SHIFT', K.x+K.w/2, K.shiftY+Math.round((K.shiftH-FONT_H)/2), K.w-2, DC.label, 1);
+  /* segment trough */
+  pxPanel(px, K.x, K.segY, K.w, K.segH, DC.insetLo, null, null, DC.seam);
+  /* digital readout housing */
+  pxPanel(px, K.x, K.boxY, K.w, K.boxH, DC.glass, null, null, DC.steel);
+  px(K.x+1, K.boxY+1, K.w-2, 1, DC.steelLo);
+  pxTextC(px, un.label, K.x+K.w/2, K.boxY+K.boxH-FONT_H-2, DC.numDim, 1);
 
-  /* rev-range bar trough, directly under the numeral */
-  roundPath(g, L.gearX, L.barY, L.wg, L.barH, 2);
-  g.fillStyle = '#020407'; g.fill();
-  g.lineWidth = 1; g.strokeStyle = 'rgba(150,170,196,.28)'; g.stroke();
+  /* ------------------------------------------------- handbrake slot --- */
+  var B = L.hb;
+  pxPanel(px, B.x, B.y, B.w, B.h, DC.baseLo, DC.baseHi, DC.seam, DC.seam);
+  /* the recessed slot the lever runs in */
+  var slotY = B.y + B.slotOff, slotH = B.slotH;
+  px(B.x+3, slotY, B.w-6, slotH, DC.insetLo);
+  px(B.x+3, slotY, B.w-6, 1, DC.seam);
+  px(B.x+3, slotY+slotH-1, B.w-6, 1, '#2b333c');
+  for(x=B.x+5; x<B.x+B.w-5; x+=3) px(x, slotY+1, 1, slotH-2, '#12171d');
+  px(B.x+2, B.y+B.h-3, B.w-4, 1, DC.seam);
+
+  /* ---------------------------------------------- indicator strip ----- */
+  var T = L.strip;
+  pxPanel(px, T.x, T.y, T.w, T.h, DC.insetLo, '#1c232a', DC.seam, DC.seam);
+
+  /* ------------------------------------------------- status panels ---- */
+  var names = ['TRACTION','DIFF','THROTTLE'];
+  var xs = [L.stat.x0, L.stat.x1, L.stat.x2];
+  for(i=0;i<3;i++){
+    var sx = xs[i], sy = L.stat.y, sw = L.stat.w, sh = L.stat.h;
+    pxPanel(px, sx, sy, sw, sh, DC.inset, '#242c35', DC.insetLo, DC.seam);
+    pxTextFit(px, names[i], sx+sw/2, sy+2, sw-4, DC.label, 1);
+    px(sx+2, sy+FONT_H+3, sw-4, 1, DC.seam);
+  }
+  var icy = L.stat.y + Math.round(L.stat.h*0.52);
+  paintTractionIcon(px, xs[0]+Math.round(L.stat.w/2),    icy, L.U);
+  paintDiffIcon(px,     xs[1]+Math.round(L.stat.w/2),    icy, L.U);
+  paintPedalIcon(px,    xs[2]+Math.round(L.stat.w*0.70), icy, L.U);
 
   return c;
 }
 
-/* ----------------------------------------------------------- pedal bay
-   A footwell seen head-on: checker-plate floor, ribbed firewall and two
-   hanging pedals. The floor and walls are static; the plates move. */
-function pedalFloorY(GH){ return GH - Math.max(5, Math.round(GH*0.15)); }
-function pedalShroudY(GH){ return Math.max(4, Math.round(GH*0.36)); }
-function pedalRestY(GH){ return pedalShroudY(GH) + Math.max(3, Math.round(GH*0.13)); }
-/* the two pedals, as grid columns: brake wide on the left, throttle narrow */
-function pedalCols(GW){
-  var bw = Math.round(GW*0.44), gw = Math.round(GW*0.34);
-  return [ { x0:2, w:bw }, { x0:GW-2-gw, w:gw } ];
+/* ------------------------------------------------------- shell helpers */
+function paintSteerShell(px, S){
+  /* the housing the button sits in; the button face itself is live art */
+  px(S.x-1, S.y-1, S.w+2, S.h+2, DC.seam);
+  px(S.x-1, S.y-1, S.w+2, 1, DC.bevel);
 }
 
-function drawPedalBayBase(g, L){
-  var s = L.ps, GW = L.pgw, GH = L.pgh;
-  var px = pxInto(g, L.bayX, L.bayY, s);
-  var floorY = pedalFloorY(GH), shroudY = pedalShroudY(GH);
-  var cols = pedalCols(GW);
-  var x, y, i;
+/* A car seen from behind with two skid trails under it, the traction
+   control tell-tale every road car uses. */
+function paintTractionIcon(px, cx, cy, U){
+  var k = Math.max(1, Math.round(U*1.1));
+  var bw = 6*k, bh = 5*k;
+  var x = cx - Math.round(bw/2), y = cy - 4*k;
+  px(x+k, y, bw-2*k, k, DC.green);             /* roof */
+  px(x, y+k, bw, 2*k, DC.green);               /* cabin */
+  px(x+k, y+k, bw-2*k, k, DC.greenLo);         /* glass */
+  px(x, y+3*k, bw, bh-3*k, DC.green);          /* body */
+  px(x-k, y+2*k, k, 2*k, DC.green);            /* mirrors */
+  px(x+bw, y+2*k, k, 2*k, DC.green);
+  /* the two skid trails, offset so they read as a wiggle */
+  px(x+k,      y+bh+k,   k, k, DC.green);
+  px(x+bw-2*k, y+bh+k,   k, k, DC.green);
+  px(x+2*k,    y+bh+2*k, k, k, DC.green);
+  px(x+bw-3*k, y+bh+2*k, k, k, DC.green);
+  px(x+k,      y+bh+3*k, k, k, DC.green);
+  px(x+bw-2*k, y+bh+3*k, k, k, DC.green);
+}
+/* Four hubs, two axles and a centre diff: the drivetrain schematic. */
+function paintDiffIcon(px, cx, cy, U){
+  var k = Math.max(1, Math.round(U*1.1));
+  var w = 8*k, h = 7*k;
+  var x = cx - Math.round(w/2), y = cy - Math.round(h/2);
+  px(x+k, y, w-2*k, k, DC.grey);               /* front axle */
+  px(x+k, y+h-k, w-2*k, k, DC.grey);           /* rear axle */
+  px(cx-Math.round(k/2), y+k, k, h-2*k, DC.grey);      /* prop shaft */
+  px(cx-2*k, Math.round(cy-1.5*k), 4*k, 3*k, DC.steel);/* centre diff */
+  px(cx-k, cy-Math.round(k/2), 2*k, k, DC.greyDim);
+  px(x, y-k, 2*k, 3*k, DC.greyLo);             /* hubs */
+  px(x+w-2*k, y-k, 2*k, 3*k, DC.greyLo);
+  px(x, y+h-2*k, 2*k, 3*k, DC.greyLo);
+  px(x+w-2*k, y+h-2*k, 2*k, 3*k, DC.greyLo);
+}
+/* A hinged throttle pedal on its floor mount. */
+function paintPedalIcon(px, cx, cy, U){
+  var k = Math.max(1, Math.round(U*1.1));
+  var w = 3*k, h = 9*k;
+  var x = cx - Math.round(w/2), y = cy - Math.round(h/2);
+  px(x-1, y-1, w+2, h+2, DC.seam);
+  px(x, y, w, h, DC.greyLo);                   /* pedal plate */
+  px(x, y, w, k, DC.steel);                    /* lit top */
+  px(x, y, 1, h, DC.grey);
+  for(var i=y+2*k; i<y+h-k; i+=2*k) px(x+1, i, w-2, 1, DC.greyDim);
+  px(x-k, y+h-2*k, k, 2*k, DC.greyDim);        /* floor hinge */
+}
 
-  px(0,0,GW,GH,'#0e130d');                              /* footwell recess */
-  for(x=2;x<GW-2;x+=4) px(x,shroudY,1,floorY-shroudY,'#182014');   /* bulkhead ribs */
+/* =========================================================================
+   LIVE ART
+   ========================================================================= */
 
-  px(0,floorY,GW,GH-floorY,'#434b52');                  /* floor plate */
-  px(0,floorY,GW,1,'#828d99');                          /* lit leading edge */
-  for(y=floorY+2;y<GH-1;y+=3){                          /* checker plate */
-    var off = (((y-floorY)/3)|0) % 2 ? 1 : 0;
-    for(x=1;x<GW-2;x+=3){
-      px(x+off,y,2,1,'#5d6770');
-      px(x+off,y+1,2,1,'#2d343a');
+var hudCtl = { hb:0, padUp:0, padDn:0, steerL:0, steerR:0, throttle:0 };
+
+/* Small pieces whose art only changes when their control does. Each keeps
+   its own bitmap so a frame costs a blit rather than a few hundred rects. */
+var dashArt = {};
+function artPiece(name, key, w, h, S, paint){
+  var a = dashArt[name];
+  if(!a || a.key !== key || a.w !== w || a.h !== h || a.S !== S){
+    var c = document.createElement('canvas');
+    c.width = Math.max(1, w*S); c.height = Math.max(1, h*S);
+    var g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    paint(rasterInto(g, S), w, h);
+    a = dashArt[name] = { key:key, w:w, h:h, S:S, cv:c };
+  }
+  return a.cv;
+}
+function blitArt(g, cv, x, y, S){ g.drawImage(cv, x*S, y*S); }
+
+/* --------------------------------------------------------- needle ----- */
+function paintNeedle(px, cx, cy, R, ang, col, hi){
+  var len = Math.round(R*0.80);
+  var tail = Math.round(R*0.16);
+  var hubR = Math.max(2, Math.round(R*0.14));
+  var i, w;
+  /* the blade tapers from two cells at the hub down to one at the tip */
+  for(i=-tail; i<=len; i++){
+    w = i > len*0.55 ? 1 : 2;
+    px(Math.round(cx + Math.cos(ang)*i - (w-1)/2),
+       Math.round(cy + Math.sin(ang)*i - (w-1)/2), w, w, i < 0 ? DC.hub : col);
+  }
+  pxDisc(px, cx, cy, hubR, DC.steelLo);
+  pxDisc(px, cx, cy, Math.max(1, hubR-1), DC.hub);
+  px(cx-1, cy-hubR, 2, 1, hi || DC.steelHi);
+}
+
+/* --------------------------------------------------- steering button -- */
+function paintSteerFace(px, w, h, right, pressed){
+  var face = pressed ? '#414c57' : '#2b333c';
+  /* stepped corners: the mockup's rounded verticals, in whole cells */
+  px(2, 0, w-4, 1, DC.steelLo);
+  px(1, 1, w-2, 1, DC.steelLo);
+  px(0, 2, w, h-4, DC.steelLo);
+  px(1, h-2, w-2, 1, DC.steelLo);
+  px(2, h-1, w-4, 1, DC.steelLo);
+  var d = pressed ? 1 : 0;
+  px(3, 2+d, w-6, h-5, face);
+  px(3, 2+d, w-6, 1, pressed ? '#59646f' : '#4d5761');   /* top bevel */
+  px(3, h-3+d, w-6, 1, '#1a2027');                        /* foot shadow */
+  px(2, 3+d, 1, h-7, pressed ? '#4d5761' : '#3d4650');
+  px(w-3, 3+d, 1, h-7, '#1a2027');
+
+  /* solid triangle glyph, column by column so the edge stays crisp */
+  var n = Math.max(4, Math.round(w*0.42));
+  var ink = pressed ? '#f4f8fc' : '#c4ced8';
+  var cy = Math.round(h/2) + d;
+  var ax = Math.round(w/2) + (right ? -Math.round(n/2) : Math.round(n/2));
+  for(var i=0;i<n;i++){
+    var hh = (n-i)*2 - 1;
+    px(right ? ax+i : ax-i, cy - Math.floor(hh/2), 1, hh, ink);
+  }
+}
+
+/* ------------------------------------------------------ shift paddle --
+   A tapered alloy wedge, wider at the top and raked outward, on a stalk
+   that runs down into the dash. Left is marked -, right +. */
+function paintPaddle(px, w, h, up, press, active){
+  var stalkH = Math.max(5, Math.round(h*0.24));
+  var bladeH = h - stalkH;
+  var down = press > 0.4;
+  var y, t, rowW, x0, lean;
+  var edge   = down ? '#6d5210' : '#04070a';
+  var face   = down ? '#e0a52c' : (active ? '#39424b' : '#333b43');
+  var faceHi = down ? '#ffd487' : (active ? '#4c5660' : '#434c55');
+  var bevel  = down ? '#fff0c8' : (active ? '#c6d0da' : '#98a2ac');
+  var shade  = down ? '#8a6416' : '#14191f';
+  var lean0  = Math.round(w*0.30);
+
+  /* Mounting stalk: a short square post on the inboard side that runs down
+     past the dash line, so the blade reads as bolted to the column. */
+  var stW = Math.max(3, Math.round(w*0.30));
+  var stX = up ? w - stW - Math.round(w*0.08) : Math.round(w*0.08);
+  px(stX-1, bladeH-2, stW+2, stalkH+2, edge);
+  px(stX, bladeH-1, stW, stalkH+1, DC.steelDk);
+  px(stX, bladeH-1, 1, stalkH+1, DC.steelLo);
+  px(stX+stW-1, bladeH-1, 1, stalkH+1, '#12171d');
+
+  /* The blade. Wide at the top, tapering down, and each row steps outward
+     so the whole wedge rakes away from the centre of the dash. `up` is the
+     left-hand blade here, the one marked minus. */
+  for(y=0; y<bladeH; y++){
+    t = y/(bladeH-1);
+    rowW = Math.max(4, Math.round(w*(1 - t*0.26)));
+    lean = Math.round(t*lean0) * (up ? 1 : -1);
+    x0 = (up ? 0 : w-rowW) + lean;
+    x0 = clamp(x0, 0, w-rowW);
+    px(x0, y, rowW, 1, edge);                            /* cast outline */
+    if(y < 1 || y > bladeH-2) continue;
+    px(x0+1, y, rowW-2, 1, t < 0.45 ? faceHi : face);    /* two-tone face */
+    px(x0+1, y, 1, 1, bevel);                            /* lit outboard edge */
+    px(x0+rowW-2, y, 1, 1, shade);                       /* shaded inboard edge */
+  }
+  px(1, 1, w-2, 1, bevel);                               /* bright top lip */
+  px(2, 2, w-4, 1, down ? '#ffdd9c' : (active ? '#8b96a1' : '#6f7983'));
+
+  /* The stamped marking, low on the blade and carried out with the rake. */
+  var mk = down ? '#4a3708' : (active ? '#d3dbe3' : '#8e98a2');
+  var my = Math.round(bladeH*0.70);
+  var mt = Math.max(1, Math.round(w*0.10));
+  var mw = Math.max(4, Math.round(w*0.40));
+  var mcx = Math.round(w/2) + Math.round((my/(bladeH-1))*lean0)*(up ? 1 : -1);
+  px(Math.round(mcx-mw/2), Math.round(my-mt/2), mw, mt, mk);
+  if(!up) px(Math.round(mcx-mt/2), Math.round(my-mw/2), mt, mw, mk);
+}
+
+/* ------------------------------------------------------- handbrake ----
+   A pull lever standing in its slot: a chromed arm on a pivot down in the
+   housing, raked back at rest and swinging up towards the driver as it is
+   pulled. The art box covers the throw as well as the lever itself. */
+function paintHandbrake(px, w, h, v, pivotUp){
+  var pivotX = Math.round(w*0.50), pivotY = h - pivotUp;
+  var ang = (58 + v*28) * Math.PI/180;              /* 58deg at rest */
+  var dx = Math.cos(ang), dy = -Math.sin(ang);
+  var len = pivotY - Math.max(4, Math.round(h*0.14));
+  var i, gx, gy;
+  var on = v > 0.5;
+  var shaftHi = on ? '#f2f7fb' : DC.steelHi;
+
+  /* pivot boss down in the slot */
+  px(pivotX-2, pivotY-1, 5, 3, DC.steelDk);
+  px(pivotX-1, pivotY, 3, 1, DC.steelLo);
+
+  /* The arm: four cells across, dark on both flanks with a bright column
+     of turned steel down the middle, so it reads as a round chromed bar. */
+  var aw = Math.max(3, Math.round(w*0.13));
+  for(i=0;i<=len;i++){
+    gx = Math.round(pivotX + dx*i); gy = Math.round(pivotY + dy*i);
+    px(gx-aw, gy-1, aw*2+1, 2, DC.seam);            /* cast outline */
+    px(gx-aw+1, gy-1, aw*2-1, 2, DC.steelDk);
+    px(gx-1, gy-1, 2, 2, DC.steelLo);
+    px(gx, gy-1, 1, 2, shaftHi);                    /* the catch of light */
+  }
+  gx = Math.round(pivotX + dx*len); gy = Math.round(pivotY + dy*len);
+  var gw = Math.max(5, Math.round(w*0.30)), gh = Math.max(6, Math.round(h*0.22));
+  var gx0 = Math.round(gx-gw/2), gy0 = gy-gh;
+  px(gx0-1, gy0-1, gw+2, gh+2, DC.seam);            /* rubber grip */
+  px(gx0, gy0, gw, gh, on ? DC.amberLo : '#2b323a');
+  px(gx0, gy0, gw, 1, on ? DC.amber : '#69747f');
+  px(gx0, gy0, 1, gh, on ? DC.amber : '#4f5963');
+  px(gx0+gw-1, gy0, 1, gh, '#12171d');
+  for(i=gy0+2; i<gy0+gh-1; i+=2)                    /* moulded ribs */
+    px(gx0+1, i, gw-2, 1, on ? '#6d4b12' : '#1e242b');
+  px(gx0+1, gy0-2, gw-2, 2, on ? DC.amber : DC.grey);   /* release button */
+  px(gx0+1, gy0-3, gw-2, 1, DC.seam);
+}
+
+/* ------------------------------------------------- indicator icons ---- */
+function paintArrowGlyph(px, cx, cy, k, right, col){
+  var n = 3*k;
+  for(var i=0;i<n;i++){
+    var hh = (n-i)*2 - 1;
+    px(right ? cx-Math.round(n/2)+i : cx+Math.round(n/2)-i, cy-Math.floor(hh/2), 1, hh, col);
+  }
+  px(right ? cx-2*k : cx-k, cy-Math.round(k/2), 3*k, Math.max(1,k), col);
+}
+/* The headlamp tell-tale: a D-shaped lamp bowl throwing three beams. */
+function paintHeadlightGlyph(px, cx, cy, k, col){
+  var x = cx - 4*k, y = cy - 3*k;
+  px(x, y, 2*k, 6*k, col);                       /* back of the bowl */
+  px(x+2*k, y+k, k, 4*k, col);                   /* the domed lens */
+  px(x+3*k, y+2*k, k, 2*k, col);
+  for(var i=0;i<3;i++) px(x+5*k, y+k+i*2*k, 3*k, Math.max(1,k), col);
+}
+/* Belted occupant: a seated figure with the sash cut across the chest.
+   Drawn from a bitmap so the silhouette survives at any icon size. */
+var BELT_ART = [
+  '0011000',
+  '0011000',
+  '0000000',
+  '0111010',
+  '1110110',
+  '1101010',
+  '1111110',
+  '1110000',
+  '1110000'
+];
+function paintBeltGlyph(px, cx, cy, k, col){
+  var x = cx - Math.round(BELT_ART[0].length*k/2);
+  var y = cy - Math.round(BELT_ART.length*k/2);
+  for(var r=0;r<BELT_ART.length;r++){
+    var row = BELT_ART[r], run = 0;
+    for(var c=0;c<=row.length;c++){
+      if(c < row.length && row.charAt(c) === '1'){ run++; continue; }
+      if(run){ px(x+(c-run)*k, y+r*k, run*k, k, col); run = 0; }
     }
   }
-  px(0,GH-1,GW,1,'#060806');
-
-  px(0,0,GW,shroudY,'#20272d');                         /* pedal-box shroud */
-  px(0,0,GW,1,'#525c66');
-  px(1,1,GW-2,1,'#39434c');
-  px(0,Math.round(shroudY*0.55),GW,1,'#141a1f');        /* panel split line */
-  px(0,shroudY-1,GW,1,'#080b0d');
-  px(1,2,1,1,'#7c8792'); px(GW-2,2,1,1,'#7c8792');      /* bolt heads */
-  for(i=0;i<cols.length;i++){                           /* arm slots */
-    var c = cols[i], cx = c.x0 + Math.floor(c.w/2);
-    px(cx-2, shroudY-3, 4, 3, '#0a0e11');
-    px(cx-2, shroudY-3, 4, 1, '#0f151a');
-  }
-  px(0,0,1,GH,'#1c231a'); px(GW-1,0,1,GH,'#080b07');    /* side shading */
+}
+/* Parking brake: a circled P inside a broken ring. */
+function paintParkGlyph(px, cx, cy, k, col){
+  var r = 4*k;
+  pxRing(px, cx, cy, r, Math.max(1, k), col);
+  px(cx-r, cy-Math.round(k/2), Math.max(1,k), k, DC.insetLo);   /* the two breaks */
+  px(cx+r-k+1, cy-Math.round(k/2), Math.max(1,k), k, DC.insetLo);
+  pxText(px, 'P', cx-Math.round(1.5*k), cy-Math.round(2.5*k), col, k);
 }
 
-function drawPedalPlates(g, L, gasV, brakeV){
-  var s = L.ps, GW = L.pgw, GH = L.pgh;
-  var px = pxInto(g, L.bayX, L.bayY, s);
-  var floorY = pedalFloorY(GH);
-  var cols = pedalCols(GW);
-  var peds = [
-    { x0:cols[0].x0, w:cols[0].w, v:brakeV, hi:'#ff8a7a', lo:'#a33a30', led:HUDC.red },
-    { x0:cols[1].x0, w:cols[1].w, v:gasV,   hi:'#a9f5b2', lo:'#2f7a3c', led:HUDC.green }
-  ];
-  var shroudY = pedalShroudY(GH), restY = pedalRestY(GH);
-  var travel = Math.max(2, Math.round(GH*0.10));
-  var faceH  = Math.max(6, Math.round(GH*0.22));
+/* =========================================================================
+   FRAME
+   ========================================================================= */
 
-  for(var i=0;i<peds.length;i++){
-    var p = peds[i], v = p.v, on = v > 0.4;
-    var cx = p.x0 + Math.floor(p.w/2);
-    var topY = restY + Math.round(v*travel);
-    var faceHi = on ? p.hi : '#e8eef4';                 /* bare alloy plate */
-    var faceLo = on ? p.lo : '#5b6670';
-
-    px(cx-2, shroudY-2, 4, topY-shroudY+2, '#333c44');  /* hanging arm */
-    px(cx-2, shroudY-2, 1, topY-shroudY+2, '#6b7681');
-    px(cx+1, shroudY-2, 1, topY-shroudY+2, '#151a1e');
-    px(cx-3, topY-2, 6, 3, '#39424a');                  /* pivot block */
-    px(cx-3, topY-2, 6, 1, '#69747e');
-
-    px(p.x0-1, topY, p.w+2, faceH+3, '#05070a');        /* plate outline */
-    for(var yy=0; yy<faceH; yy+=2){                     /* checker-plate face */
-      for(var xx=0; xx<p.w; xx+=2){
-        var litSq = (((xx>>1) + (yy>>1)) & 1) === 0;
-        px(p.x0+xx, topY+1+yy, 2, 2, litSq ? faceHi : faceLo);
-      }
-    }
-    px(p.x0, topY+1, p.w, 1, '#ffffff');                    /* top bevel */
-    px(p.x0, topY+faceH, p.w, 1, '#1b2126');                /* bottom shadow */
-    px(p.x0, topY+1, 1, faceH, on ? p.hi : '#c8d2da');      /* left bevel */
-    px(p.x0+p.w-1, topY+1, 1, faceH, '#20272c');            /* right shadow */
-    px(p.x0+1, topY+2, 1, 1, '#d5dbe0');                    /* bolt heads */
-    px(p.x0+p.w-2, topY+2, 1, 1, '#d5dbe0');
-    px(p.x0+1, topY+faceH-1, 1, 1, '#0e1216');
-    px(p.x0+p.w-2, topY+faceH-1, 1, 1, '#0e1216');
-
-    if(v > 0.05){                                       /* travel glow on the floor */
-      px(p.x0, floorY+1, p.w, 1, on ? p.led : HUDC.amberLo);
-    }
-    px(cx-1, 0, 2, 2, v > 0.35 ? p.led : '#1d242a');    /* channel lamp */
-  }
-}
-
-/* ------------------------------------------------------------- needles */
-/* A thin, sharp instrument pointer: a hair-width blade that tapers to a
-   point just short of the tick ring, with a stubby counterweight behind
-   the hub. Kept crisp rather than chunky, as on the reference cluster. */
-function drawNeedle(g, cx, cy, R, ang, col){
-  var w0 = Math.max(0.9, R*0.042);                      /* width at the hub */
-  var w1 = Math.max(0.4, R*0.011);                      /* width at the tip */
-  g.save();
-  g.translate(cx, cy); g.rotate(ang);
-
-  g.beginPath();                                        /* counterweight tail */
-  g.moveTo(-R*0.19, -w0*0.62);
-  g.lineTo(-R*0.19,  w0*0.62);
-  g.lineTo(-R*0.03,  w0*0.85);
-  g.lineTo(-R*0.03, -w0*0.85);
-  g.closePath();
-  g.fillStyle = 'rgba(8,10,14,.72)'; g.fill();
-
-  g.beginPath();                                        /* blade */
-  g.moveTo(-R*0.05,  w0);
-  g.lineTo( R*0.90,  w1);
-  g.lineTo( R*0.93,  0);
-  g.lineTo( R*0.90, -w1);
-  g.lineTo(-R*0.05, -w0);
-  g.closePath();
-  g.fillStyle = col; g.fill();
-
-  g.beginPath();                                        /* lit upper edge */
-  g.moveTo(-R*0.05, -w0);
-  g.lineTo( R*0.90, -w1);
-  g.lineTo( R*0.90, -w1*0.2);
-  g.lineTo(-R*0.05, -w0*0.42);
-  g.closePath();
-  g.fillStyle = 'rgba(255,255,255,.40)'; g.fill();
-  g.restore();
-
-  var hub = g.createLinearGradient(cx-R*0.11, cy-R*0.11, cx+R*0.11, cy+R*0.11);
-  hub.addColorStop(0,'#8a95a2'); hub.addColorStop(0.5,'#39424c'); hub.addColorStop(1,'#161c22');
-  g.beginPath(); g.arc(cx,cy,R*0.115,0,TAU);
-  g.fillStyle = hub; g.fill();
-  g.beginPath(); g.arc(cx,cy,R*0.045,0,TAU);
-  g.fillStyle = col; g.fill();
-}
-
-/* --------------------------------------------------------- warning lamps
-   Cosmetic dash atmosphere: they take a hint from the drive (a cooked
-   engine, a battered car, the lever pulled) but nothing reads them back. */
-function drawLamp(g, x, y, sz, kind, on, col){
-  var cx = x + sz/2, cy = y + sz/2;
-  roundPath(g, x, y, sz, sz, 2);
-  g.fillStyle = on ? 'rgba(255,120,60,.10)' : '#080c07'; g.fill();
-  g.lineWidth = 1; g.strokeStyle = on ? 'rgba(255,180,50,.55)' : 'rgba(60,74,56,.85)'; g.stroke();
-  var ink = on ? col : HUDC.lampOff;
-  g.fillStyle = ink; g.strokeStyle = ink;
-
-  if(kind === 'temp'){                                  /* coolant thermometer */
-    g.lineWidth = Math.max(1, sz*0.09);
-    g.beginPath(); g.arc(cx, cy + sz*0.20, sz*0.16, 0, TAU); g.fill();
-    g.fillRect(cx - sz*0.07, cy - sz*0.30, sz*0.14, sz*0.44);
-    g.fillRect(cx + sz*0.12, cy - sz*0.20, sz*0.14, sz*0.07);
-    g.fillRect(cx + sz*0.12, cy - sz*0.02, sz*0.14, sz*0.07);
-    g.beginPath();                                      /* fluid waves */
-    g.moveTo(x + sz*0.14, y + sz*0.86); g.lineTo(x + sz*0.86, y + sz*0.86);
-    g.stroke();
-  } else if(kind === 'engine'){                         /* check engine block */
-    g.fillRect(cx - sz*0.28, cy - sz*0.06, sz*0.50, sz*0.26);
-    g.fillRect(cx - sz*0.14, cy - sz*0.22, sz*0.26, sz*0.18);
-    g.fillRect(cx + sz*0.20, cy - sz*0.02, sz*0.14, sz*0.18);
-    g.fillRect(cx - sz*0.36, cy + sz*0.02, sz*0.10, sz*0.12);
-    g.fillRect(cx - sz*0.06, cy - sz*0.34, sz*0.10, sz*0.12);
-  } else {                                              /* brake / lever lamp */
-    g.lineWidth = Math.max(1, sz*0.09);
-    g.beginPath(); g.arc(cx, cy, sz*0.28, 0, TAU); g.stroke();
-    g.fillRect(cx - sz*0.04, cy - sz*0.17, sz*0.08, sz*0.20);
-    g.fillRect(cx - sz*0.04, cy + sz*0.09, sz*0.08, sz*0.08);
-    g.beginPath();                                      /* motion arcs */
-    g.arc(cx, cy, sz*0.42, Math.PI*0.72, Math.PI*1.28); g.stroke();
-    g.beginPath();
-    g.arc(cx, cy, sz*0.42, Math.PI*-0.28, Math.PI*0.28); g.stroke();
-  }
-}
-
-/* -------------------------------------------------------- live cluster */
-function ensureCluster(){
-  var el = document.getElementById('cluster-cv');
+function ensureDash(){
+  var el = document.getElementById('dash-cv');
   if(!el) return false;
   var S = Math.max(1, Math.round(Math.min(window.devicePixelRatio || 1, 2)));
-  /* keyed on the viewport, not on the layout, so the common case costs a
-     string compare rather than a fresh layout object every frame */
-  var key = Math.round(view.w)+'x'+Math.round(view.h)+'@'+S+'/'+cluster.kmhMax;
-  if(key !== cluster.key || cluster.cv !== el || !cluster.base){
-    var L = clusterLayout();
-    cluster.cv = el; cluster.L = L; cluster.S = S; cluster.W = L.W; cluster.H = L.H;
-    el.width = L.W*S; el.height = L.H*S;
-    el.style.width = L.W+'px'; el.style.height = L.H+'px';
-    cluster.g = el.getContext('2d');
-    cluster.base = buildClusterBase(L, S);
-    cluster.key = key;
-    document.documentElement.style.setProperty('--cluster-h', L.H+'px');
+  var key = Math.round(view.w)+'x'+Math.round(view.h)+'@'+S+'/'+
+            save.settings.units+'/'+Math.round(speedMax());
+  if(key !== dash.key || dash.cv !== el || !dash.base){
+    var L = dashLayout();
+    dash.cv = el; dash.L = L; dash.S = S;
+    el.width = L.GW*S; el.height = L.CH*S;
+    el.style.width = (L.GW*L.PX)+'px';
+    el.style.height = (L.CH*L.PX)+'px';
+    el.style.left = L.originX+'px';
+    dash.g = el.getContext('2d');
+    dash.base = buildDashBase(L, S);
+    dash.key = key;
+    dashArt = {};
+    layoutHitBoxes(L);
+    document.documentElement.style.setProperty('--dash-h', (L.GH*L.PX)+'px');
   }
-  cluster.g.setTransform(S,0,0,S,0,0);
-  cluster.g.imageSmoothingEnabled = false;
+  dash.g.imageSmoothingEnabled = false;
   return true;
 }
 
-function drawCluster(r){
-  if(!ensureCluster()) return;
-  var L = cluster.L, g = cluster.g, i;
-  g.clearRect(0,0,L.W,L.H);
-  g.drawImage(cluster.base, 0, 0, L.W, L.H);
+function drawDash(r){
+  if(!ensureDash()) return;
+  var L = dash.L, S = dash.S, g = dash.g, u = L.u, i, x, y;
+  var px = rasterInto(g, S);
+  g.clearRect(0, 0, L.GW*S, L.CH*S);
+  g.drawImage(dash.base, 0, 0);
 
-  drawPedalPlates(g, L, hudCtl.gas, hudCtl.brake);
+  var spd  = r ? Math.abs(r.car.fwd) : 0;
+  var thr  = r ? r.throttle : 0;
+  var un   = speedUnits();
 
-  /* ---- tachometer ---- */
-  var rpm = cluster.nRpm;
-  var hot = rpm >= 1.0;
-  drawNeedle(g, L.tachX, L.dialY, L.R,
-             dialAngle(clamp(rpm*TACH_SCALE,0,TACH_MAX), 0, TACH_MAX),
-             hot ? HUDC.needleHot : HUDC.needle);
+  /* ---------------------------------------------------- steering ------ */
+  var sl = artPiece('steerL', input.left?1:0, L.steerL.w, L.steerL.h, S, function(p,w,h){
+    paintSteerFace(p, w, h, false, input.left);
+  });
+  blitArt(g, sl, L.steerL.x, L.steerL.y, S);
+  var sr = artPiece('steerR', input.right?1:0, L.steerR.w, L.steerR.h, S, function(p,w,h){
+    paintSteerFace(p, w, h, true, input.right);
+  });
+  blitArt(g, sr, L.steerR.x, L.steerR.y, S);
 
-  /* ---- speedometer + digital readout ---- */
-  var kmh = cluster.nKmh;
-  drawNeedle(g, L.spdX, L.dialY, L.R,
-             dialAngle(clamp(kmh,0,cluster.kmhMax), 0, cluster.kmhMax),
-             HUDC.needleSpd);
-  /* the readout sits in the blank wedge at the foot of the dial, clear of
-     the 0 and full-scale numbers on either side of it */
-  var lh = L.R*0.34, lw = L.R*0.88;
-  var lx = L.spdX - lw/2, ly = L.dialY + L.R*0.68 - lh/2;
-  roundPath(g, lx, ly, lw, lh, 2);
-  g.fillStyle = HUDC.lcd; g.fill();
-  g.lineWidth = 1; g.strokeStyle = 'rgba(180,200,228,.36)'; g.stroke();
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  hudFont(g, lh*0.80);
-  g.fillStyle = HUDC.lcdOn;
-  g.fillText(String(Math.round(Math.max(0,kmh))), lx + lw/2, ly + lh*0.52);
-
-  /* ---- gear panel ---- */
-  var spd = r ? Math.abs(r.car.fwd) : 0;
-  var gearTxt = spd < 2 ? 'N' : String(r ? r.gear : 1);
-  var flash = r && r.perfectFlash > 0;
-  hudFont(g, Math.min(L.gearH*0.72, L.wg*0.86));
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillStyle = flash ? HUDC.green : (hot ? HUDC.red : HUDC.amber);
-  g.fillText(gearTxt, L.gearX + L.wg/2, L.pad + L.gearH*0.60);
-
-  /* ---- rev-range bar, green through amber to red ---- */
-  var frac = clamp(rpm/1.12, 0, 1);
-  var segs = L.wg >= 34 ? 7 : 5, sgap = 1;
-  var sw = (L.wg - 3 - (segs-1)*sgap)/segs;
-  for(i=0;i<segs;i++){
-    if((i+1)/segs > frac + 1e-6) break;
-    g.fillStyle = i < segs-3 ? HUDC.green : (i < segs-1 ? HUDC.amber : HUDC.red);
-    g.fillRect(L.gearX + 1.5 + i*(sw+sgap), L.barY + 1.5, sw, L.barH - 3);
+  /* ------------------------------------------------------- LED bar ---- */
+  /* five lamps that fill with road speed, the dash's rev-and-go tell-tale */
+  var lb = L.led, lit = Math.round(clamp(spd/Math.max(1,(r?r.stats.topSpeed:200)),0,1)*lb.n);
+  for(i=0;i<lb.n;i++){
+    x = lb.x + i*(lb.w+lb.gap);
+    px(x, lb.y, lb.w, lb.h, i < lit ? DC.green : DC.greenDim);
+    if(i < lit) px(x, lb.y, lb.w, 1, '#b6ffc2');
   }
 
-  /* ---- auxiliary stack: paddle tell-tales, knob, warning lamps ---- */
-  var ax = L.auxX, aw = L.wa;
-  var tw = (aw - 3)/2, th = L.triH;
-  drawAuxTri(g, ax, L.pad, tw, th, false, hudCtl.padDn > 0.15);
-  drawAuxTri(g, ax + tw + 3, L.pad, tw, th, true, hudCtl.padUp > 0.15);
-
-  var kr = L.knobR, kcx = ax + aw/2, kcy = L.knobY + kr;
-  var kg = g.createLinearGradient(kcx - kr, kcy - kr, kcx + kr, kcy + kr);
-  kg.addColorStop(0,'#8f9aa7'); kg.addColorStop(0.45,'#39424e'); kg.addColorStop(1,'#0d1116');
-  g.beginPath(); g.arc(kcx, kcy, kr, 0, TAU); g.fillStyle = kg; g.fill();
-  g.beginPath(); g.arc(kcx, kcy, Math.max(1.2, kr*0.62), 0, TAU);
-  g.fillStyle = '#0a0e13'; g.fill();
-  g.beginPath(); g.arc(kcx, kcy, kr, Math.PI*1.05, Math.PI*1.72);
-  g.lineWidth = Math.max(0.7, kr*0.22); g.strokeStyle = 'rgba(255,255,255,.5)'; g.stroke();
-
-  var lampSz = Math.min(L.lampH, (aw - 2)/3);
-  var lx0 = ax + (aw - (lampSz*3 + 2))/2;
-  var ly0 = L.lampY + (L.lampH - lampSz)/2;
-  var dmg = r ? r.car.damage : 0;
-  drawLamp(g, lx0,                ly0, lampSz, 'temp',   cluster.heat > 0.55, HUDC.red);
-  drawLamp(g, lx0 + lampSz + 1,   ly0, lampSz, 'engine', dmg > 45,            HUDC.amber);
-  drawLamp(g, lx0 + lampSz*2 + 2, ly0, lampSz, 'brake',  hudCtl.hb > 0.5,     HUDC.red);
-}
-
-/* the pair of little blue triangles above the knob, which wink when the
-   matching paddle is tapped — the reference's shift tell-tales */
-function drawAuxTri(g, x, y, w, h, up, lit){
-  roundPath(g, x, y, w, h, 1.5);
-  g.fillStyle = lit ? 'rgba(120,150,255,.30)' : '#080c12'; g.fill();
-  g.lineWidth = 0.8; g.strokeStyle = lit ? 'rgba(170,195,255,.85)' : 'rgba(120,140,170,.30)';
-  g.stroke();
-  var m = Math.min(w,h)*0.26, cx = x + w/2;
-  g.beginPath();
-  if(up){ g.moveTo(cx, y + h*0.30); g.lineTo(cx + m, y + h*0.68); g.lineTo(cx - m, y + h*0.68); }
-  else  { g.moveTo(cx, y + h*0.70); g.lineTo(cx + m, y + h*0.32); g.lineTo(cx - m, y + h*0.32); }
-  g.closePath();
-  g.fillStyle = lit ? '#dce7ff' : HUDC.numTach; g.fill();
-}
-
-/* A chrome housing, drawn straight into a control's own canvas so every
-   physical control on the dash is cast from the same material as the
-   instrument bezels: dark inset face, bright top edge, shaded foot. */
-function drawHousing(px, w, h, lit){
-  var y, x, t, c;
-  px(0, 0, w, h, '#05070a');                            /* outer edge */
-  for(y=1; y<h-1; y++){                                 /* rolled chrome */
-    t = y/(h-1);
-    c = t < 0.07 ? '#e6edf4' : t < 0.16 ? '#b4bfcb' :
-        t < 0.42 ? '#6f7a87' : t < 0.70 ? '#4a5560' :
-        t < 0.88 ? '#333c46' : '#1a2028';
-    px(1, y, w-2, 1, c);
-  }
-  for(x=3; x<w-3; x+=3)                                 /* brushed grain */
-    px(x, 2, 1, h-4, 'rgba(255,255,255,.055)');
-  px(1, 1, 1, h-2, '#cdd6de');                          /* left bevel */
-  px(w-2, 1, 1, h-2, '#131920');                        /* right shade */
-  px(3, 4, w-6, h-8, lit ? '#3d3111' : '#070b10');      /* inset face */
-  px(3, 4, w-6, 1, lit ? '#7a6420' : '#020407');
-  px(3, h-5, w-6, 1, lit ? '#241d0a' : '#121a23');
-}
-
-/* ------------------------------------------------- steering rockers
-   Where the reference cluster carries its NOS button, Rally Pixel needs
-   its steering instead — so the arrows get the same treatment as the
-   rest of the dash: a chrome housing with a rocker that lights and
-   sinks a pixel when pressed. */
-function drawSteer(id, right, pressed){
-  var cv = document.getElementById(id);
-  if(!cv) return;
-  var px = hudPainter(cv, 34, 30, 2);
-  var drop = pressed ? 1 : 0;
-  drawHousing(px, 34, 30, pressed);
-
-  /* the rocker itself: a raised pad carrying the arrow */
-  var rx = 6, ry = 7 + drop, rw = 22, rh = 16;
-  px(rx-1, ry-1, rw+2, rh+2, '#04060a');
-  px(rx, ry, rw, rh, pressed ? '#e0921a' : '#525c68');
-  px(rx, ry, rw, 1, pressed ? '#ffd487' : '#8b96a3');
-  px(rx, ry+rh-1, rw, 1, pressed ? '#8a6416' : '#242c35');
-  px(rx, ry, 1, rh, pressed ? '#ffc457' : '#78838f');
-  px(rx+rw-1, ry, 1, rh, '#1d242c');
-
-  /* solid arrowhead: a column-by-column triangle pointing outboard */
-  var ink = pressed ? '#241800' : '#e8eef6';
-  var n = 8, acy = ry + rh/2, ax0 = rx + rw/2 + (right ? -4 : 4), i;
-  for(i=0;i<n;i++){
-    var hh = n - i;                                     /* 8,7,...,1 */
-    px(right ? ax0 + i : ax0 - i, acy - hh/2, 1, hh, ink);
-  }
-}
-
-/* ------------------------------------------------------ handbrake lever
-   A console-mounted fly-off lever in a chrome housing to match the rest
-   of the dash: base, gaiter, angled arm and a grip with a release
-   button. Engaging swings the arm up towards vertical. */
-function drawHandbrake(v){
-  var cv = document.getElementById('hbrake-cv');
-  if(!cv) return;
-  var px = hudPainter(cv, 20, 32, 2);
-  var pivotX = 5, pivotY = 24;
-  var on = v > 0.5;
-
-  drawHousing(px, 20, 32, on);                          /* chrome surround */
-  px(2, 26, 16, 4, HUDC.dark);                          /* console base */
-  px(2, 26, 16, 1, on ? HUDC.amber : HUDC.steelLo);
-  px(pivotX-2, 21, 7, 5, HUDC.black);                   /* rubber gaiter */
-  px(pivotX-1, 21, 5, 1, HUDC.rubberHi);
-
-  var ang = (38 + v*36) * Math.PI/180;                  /* 38deg at rest, 74deg pulled */
-  var dx = Math.cos(ang), dy = -Math.sin(ang);
-  var len = 13;
-  for(var i=0;i<=len;i++){
-    px(pivotX + dx*i - 1, pivotY + dy*i - 1, 2, 2, HUDC.steel);
-    px(pivotX + dx*i - 1, pivotY + dy*i - 1, 1, 1, HUDC.steelHi);
-  }
-  px(pivotX-2, pivotY-2, 4, 4, HUDC.steelLo);           /* pivot boss */
-  px(pivotX-1, pivotY-1, 2, 2, HUDC.black);
-
-  var gx = pivotX + dx*len, gy = pivotY + dy*len;       /* grip */
-  px(gx-3, gy-5, 6, 8, HUDC.black);
-  px(gx-2, gy-4, 4, 6, on ? HUDC.amberLo : HUDC.rubber);
-  px(gx-2, gy-4, 4, 1, on ? HUDC.amber : HUDC.rubberHi);
-  px(gx-2, gy+1, 4, 1, HUDC.black);
-  px(gx-1, gy-5, 3, 1, on ? HUDC.amber : HUDC.dim);     /* release button */
-}
-
-/* --------------------------------------------------------- shift paddles
-   Cast alloy blades in the reference's style: a raked plate, drilled
-   checker-plate face, chrome edge highlight and a stamped +/- at the
-   bottom. The rake runs outward — the left blade leans left, the right
-   blade leans right — so the pair frames the dash. */
-function drawPaddle(id, up, press, active){
-  var cv = document.getElementById(id);
-  if(!cv) return;
-  var px = hudPainter(cv, 20, 24, 2);
-  var down = press > 0.5;
-  var drop = down ? 1 : 0;
-  var y, x, lean;
-
-  /* mounting stalk on the screen-inward side */
-  var sx = up ? 0 : 17;
-  px(sx, 9, 3, 7, '#05070a');
-  px(sx, 10, 3, 5, '#2a323c');
-  px(sx + (up?0:2), 10, 1, 5, '#4d5866');
-
-  /* Raked plate: each row steps sideways, giving the blade its diagonal
-     lean. Rows run 1..22, the face is 11 wide. */
-  var faceW = 11;
-  for(y=1; y<23; y++){
-    lean = Math.round((y - 12) * 0.22) * (up ? 1 : -1);
-    var x0 = (up ? 5 : 4) + lean;
-    px(x0-1, y+drop, faceW+2, 1, '#05070a');            /* cast edge */
-    for(x=0; x<faceW; x++){
-      var col;
-      if(down)                       col = ((x + y) & 2) ? '#ffd487' : '#e2a53c';
-      else if(!active)               col = ((x>>1) + (y>>1)) & 1 ? '#6e757c' : '#585f66';
-      else if(x === 0)               col = '#ffffff';   /* lit outer edge */
-      else if(x >= faceW-2)          col = '#7d858d';   /* shaded inner edge */
-      else if(((x>>1) + (y>>1)) & 1) col = '#f2f5f8';   /* checker plate */
-      else                           col = '#c3cbd2';
-      px(x0+x, y+drop, 1, 1, col);
-    }
-    /* drilled grip holes, in staggered rows down the plate */
-    if(y > 3 && y < 21 && ((y-4) % 4) === 0){
-      px(x0+2, y+drop, 2, 1, down ? '#8a6416' : '#4a525a');
-      px(x0+7, y+drop, 2, 1, down ? '#8a6416' : '#4a525a');
+  /* --------------------------------------------------- gear selector -- */
+  var G = L.gear;
+  var rows = gearRows(r);
+  for(i=0;i<rows.length;i++){
+    var ry = G.y + u(9) + i*G.rowH;
+    var on = rows[i].on;
+    pxText(px, rows[i].t, G.x+u(4), ry, on ? DC.amber : DC.greyDim, 1);
+    if(on){
+      px(G.x+G.w-u(5), ry+1, Math.max(2,u(3)), FONT_H-2, DC.amber);  /* position marker */
+      px(G.x+u(3), ry-1, u(9), FONT_H+2, 'rgba(255,180,50,.10)');
     }
   }
 
-  /* stamped +/- at the foot of the blade */
-  var ink = down ? '#3a2a06' : (active ? '#2b323a' : '#3d4757');
-  var bx = (up ? 5 : 4) + Math.round((21 - 12) * 0.22) * (up ? 1 : -1);
-  px(bx+3, 19+drop, 5, 1, ink);
-  if(up) px(bx+5, 17+drop, 1, 5, ink);
+  /* ------------------------------------------------------ tachometer -- */
+  var rpm = dash.nRpm;
+  paintNeedle(px, L.tachX, L.dialY, L.R,
+              dialAngle(clamp(rpm*TACH_SCALE, 0, TACH_MAX), 0, TACH_MAX),
+              rpm >= 1 ? DC.needleHi : DC.needle);
+
+  /* ------------------------------------------------------ speedometer - */
+  var shown = dash.nSpd * un.conv;
+  var smax = speedMax();
+  paintNeedle(px, L.spdX, L.dialY, L.R,
+              dialAngle(clamp(shown, 0, smax), 0, smax), DC.needle);
+
+  /* ----------------------------------------------------- boost gauge -- */
+  paintNeedle(px, L.boost.x, L.boost.y, L.boost.r,
+              dialAngle(clamp(dash.nBoost, 0, BOOST_MAX), 0, BOOST_MAX), DC.needle);
+
+  /* ----------------------------------------------------- centre stack - */
+  var K = L.stack;
+  /* two up-chevrons, lit when the box wants a gear or a paddle was tapped */
+  var wantUp = r && rpm > 0.93;
+  var chW = Math.max(5, Math.round(K.w*0.30)), chGap = Math.round(K.w*0.10);
+  var chX = Math.round(K.x + K.w/2 - chW - chGap/2);
+  for(i=0;i<2;i++){
+    var on2 = wantUp || hudCtl.padUp > 0.15;
+    paintChevron(px, chX + i*(chW+chGap), K.chevY, chW, K.chevH,
+                 on2 ? DC.blueHi : DC.blue, on2);
+  }
+  /* the segment row under them tracks revs */
+  var segN = 5, segW = Math.max(2, Math.floor((K.w-4-(segN-1)*2)/segN));
+  var segLit = Math.round(clamp(rpm/1.08,0,1)*segN);
+  for(i=0;i<segN;i++){
+    x = K.x + 2 + i*(segW+2);
+    px(x, K.segY+1, segW, K.segH-2, DC.greyDim);
+    if(i < segLit)
+      px(x, K.segY+1, segW, K.segH-2, i < segN-2 ? DC.green : (i < segN-1 ? DC.amber : DC.red));
+  }
+  /* digital readout: the same number the analog face is pointing at */
+  var txt = String(Math.round(Math.max(0, shown)));
+  var k = Math.max(1, Math.min(3, Math.floor((K.boxH-FONT_H-6)/FONT_H)));
+  while(textW(txt,k) > K.w-4 && k > 1) k--;
+  pxTextC(px, txt, K.x+K.w/2, K.boxY+3, DC.num, k);
+
+  /* -------------------------------------------------------- handbrake - */
+  var B = L.hb;
+  var hbq = Math.round(hudCtl.hb*8);
+  var hbArtH = B.rise + B.h;
+  var hbPivot = B.h - B.slotOff - Math.round(B.slotH/2);
+  var hbCv = artPiece('hb', hbq, B.w, hbArtH, S, function(p,w,h){
+    paintHandbrake(p, w, h, hbq/8, hbPivot);
+  });
+  blitArt(g, hbCv, B.x, B.y-B.rise, S);
+
+  /* ---------------------------------------------------- indicator strip */
+  var T = L.strip, ik = Math.max(1, Math.round(L.U*1.4));
+  var slots = 5, sy = T.y + Math.round(T.h/2);
+  var slotW = T.w/slots;
+  var sxAt = function(n){ return Math.round(T.x + slotW*(n+0.5)); };
+  paintArrowGlyph(px, sxAt(0), sy, ik, false, input.left ? DC.amber : DC.grey);
+  paintHeadlightGlyph(px, sxAt(1), sy, ik, DC.green);
+  /* the belt lamp keeps its own red-tinted panel, as on the mockup */
+  var bw2 = Math.round(slotW*0.86), bx2 = Math.round(sxAt(2)-bw2/2);
+  px(bx2, T.y+1, bw2, T.h-2, DC.redPanel);
+  px(bx2, T.y+1, bw2, 1, '#5a2018');
+  paintBeltGlyph(px, sxAt(2), sy, ik, DC.red);
+  paintParkGlyph(px, sxAt(3), sy, ik, hudCtl.hb > 0.4 ? '#ff6a58' : DC.redLo);
+  paintArrowGlyph(px, sxAt(4), sy, ik, true, input.right ? DC.amber : DC.grey);
+
+  /* ------------------------------------------------------ status bars -
+     Every panel carries the same row of segment bars underneath: how much
+     grip is left, how evenly the drive is going down, and how far the
+     auto-throttle currently has the pedal. All three are readouts. */
+  var slip = r ? clamp(Math.abs(r.car.lat)/95 + r.car.wheelSpin*0.5, 0, 1) : 0;
+  var vals = [1-slip, r ? clamp(1-Math.abs(r.car.steer)*0.45, 0, 1) : 1, thr];
+  var xs = [L.stat.x0, L.stat.x1, L.stat.x2];
+  var bn = 4, bgap = Math.max(1, u(1));
+  var bw3 = Math.max(2, Math.floor((L.stat.w - 6 - (bn-1)*bgap)/bn));
+  var bh3 = Math.max(2, u(3));
+  var by = L.stat.y + L.stat.h - bh3 - 2;
+  for(i=0;i<3;i++){
+    var nlit = Math.round(clamp(vals[i],0,1)*bn);
+    for(var b=0;b<bn;b++){
+      x = xs[i] + 3 + b*(bw3+bgap);
+      px(x, by, bw3, bh3, b < nlit ? DC.green : DC.greenDim);
+      if(b < nlit) px(x, by, bw3, 1, '#b6ffc2');
+    }
+  }
+  /* the THROTTLE panel's vertical segments, standing beside its pedal */
+  var tw = Math.max(2, u(4)), tgap = Math.max(1, u(1));
+  var tx = L.stat.x2 + u(4);
+  var ty = L.stat.y + Math.round(L.stat.h*0.30);
+  var tSeg = Math.max(2, Math.round((L.stat.h*0.42 - 2*tgap)/3));
+  for(i=0;i<3;i++){
+    var lit3 = thr > (2-i)/3;
+    px(tx, ty + i*(tSeg+tgap), tw, tSeg, lit3 ? DC.green : DC.greenDim);
+    if(lit3) px(tx, ty + i*(tSeg+tgap), tw, 1, '#b6ffc2');
+  }
+
+  /* ---------------------------------------------------------- paddles - */
+  var manual = save.settings.transmission === 'manual';
+  var pu = artPiece('padU', Math.round(hudCtl.padUp*4)+'/'+(manual?1:0),
+                    L.padR.w, L.padR.h, S, function(p,w,h){
+    paintPaddle(p, w, h, false, hudCtl.padUp, manual);
+  });
+  blitArt(g, pu, L.padR.x, L.padR.y, S);
+  var pd = artPiece('padD', Math.round(hudCtl.padDn*4)+'/'+(manual?1:0),
+                    L.padL.w, L.padL.h, S, function(p,w,h){
+    paintPaddle(p, w, h, true, hudCtl.padDn, manual);
+  });
+  blitArt(g, pd, L.padL.x, L.padL.y, S);
 }
 
-/* ------------------------------------------------------------- per frame */
+function paintChevron(px, x, y, w, h, col, lit){
+  var n = Math.min(Math.round(h*0.8), Math.round(w/2));
+  for(var i=0;i<n;i++){
+    var ww = 1 + i*2;
+    px(Math.round(x + w/2 - ww/2), y + i, ww, 1, col);
+  }
+  if(lit) px(Math.round(x+w/2), y, 1, 1, '#ffffff');
+}
+
+/* The five-row selector from the mockup. P, R and N are real states; the
+   two numeric rows are a moving window on the gearbox, so a six-speed car
+   still reads out of a five-row column. */
+function gearRows(r){
+  var g = r ? r.gear : 1;
+  var fwd = r ? r.car.fwd : 0;
+  var stopped = !r || r.state === 'countdown' || r.state === 'done';
+  var park = stopped && Math.abs(fwd) < 2;
+  var rev = fwd < -1;
+  var neutral = !park && !rev && Math.abs(fwd) < 2;
+  var lo = clamp(g, 1, TOP_GEAR-1);
+  return [
+    { t:'P', on:park },
+    { t:'R', on:rev },
+    { t:'N', on:neutral },
+    { t:String(lo),   on:!park && !rev && !neutral && g === lo },
+    { t:String(lo+1), on:!park && !rev && !neutral && g === lo+1 }
+  ];
+}
+
+/* --------------------------------------------------------- per frame -- */
 function updateHudControls(dt){
-  /* mirror exactly what the physics treats as throttle and brake */
-  var gasOn   = save.settings.autoGas ? !input.hbrake : input.gas;
-  var brakeOn = input.hbrake;
   var k = 1 - Math.pow(0.0004, dt);
-  hudCtl.gas   += ((gasOn?1:0)   - hudCtl.gas)*k;
-  hudCtl.brake += ((brakeOn?1:0) - hudCtl.brake)*k;
-  hudCtl.hb    += ((brakeOn?1:0) - hudCtl.hb)*k;
+  hudCtl.hb += ((input.hbrake ? 1 : 0) - hudCtl.hb)*k;
   hudCtl.padUp = Math.max(0, hudCtl.padUp - dt*4.5);
   hudCtl.padDn = Math.max(0, hudCtl.padDn - dt*4.5);
 
-  /* Needles chase the live values with a short mechanical lag — fast
+  /* Needles chase the live values with a short mechanical lag: quick
      enough to be accurate, damped enough not to twitch. Nothing here
-     feeds back into the physics; it is all readout. */
+     feeds back into the physics, it is all readout. */
   if(race){
     var kmh = Math.abs(race.car.fwd)*0.42;
-    cluster.nRpm += (race.rpm - cluster.nRpm) * clamp(dt*20, 0, 1);
-    cluster.nKmh += (kmh      - cluster.nKmh) * clamp(dt*14, 0, 1);
+    dash.nRpm += (race.rpm - dash.nRpm) * clamp(dt*20, 0, 1);
+    dash.nSpd += (kmh      - dash.nSpd) * clamp(dt*14, 0, 1);
+    /* boost follows revs under load and bleeds off the moment it is shut */
+    var wantB = BOOST_MAX * clamp(race.rpm*1.05, 0, 1) * race.throttle;
+    dash.nBoost += (wantB - dash.nBoost) * clamp(dt*(wantB > dash.nBoost ? 4 : 9), 0, 1);
     var heating = race.rpm > 0.98 ? 1 : (race.rpm > 0.86 ? 0.35 : 0);
-    cluster.heat = clamp(cluster.heat + (heating ? dt*0.30*heating : -dt*0.20), 0, 1);
-    drawCluster(race);
+    dash.heat = clamp(dash.heat + (heating ? dt*0.30*heating : -dt*0.20), 0, 1);
   }
-
-  /* the smaller surfaces repaint only on a visible change */
-  var q = function(v){ return Math.round(v*12); };
-  if(q(hudCtl.hb) !== hudCtl.drawnHb){
-    hudCtl.drawnHb = q(hudCtl.hb);
-    drawHandbrake(hudCtl.hb);
-  }
-  var manual = save.settings.transmission === 'manual';
-  if(q(hudCtl.padUp) !== hudCtl.drawnUp || hudCtl.drawnMode !== manual){
-    hudCtl.drawnUp = q(hudCtl.padUp);
-    drawPaddle('pad-up-cv', true, hudCtl.padUp, manual);
-  }
-  if(q(hudCtl.padDn) !== hudCtl.drawnDn || hudCtl.drawnMode !== manual){
-    hudCtl.drawnDn = q(hudCtl.padDn);
-    drawPaddle('pad-dn-cv', false, hudCtl.padDn, manual);
-  }
-  hudCtl.drawnMode = manual;
-
-  /* the steering rockers are on/off, so they only ever repaint on a press */
-  if(input.left !== hudCtl.drawnL){
-    hudCtl.drawnL = input.left;
-    drawSteer('steer-l-cv', false, input.left);
-  }
-  if(input.right !== hudCtl.drawnR){
-    hudCtl.drawnR = input.right;
-    drawSteer('steer-r-cv', true, input.right);
-  }
+  drawDash(race);
 }
 
 /* force a full repaint, e.g. when a race starts or the viewport changes */
 function resetHudControls(){
-  hudCtl.gas = hudCtl.brake = hudCtl.hb = hudCtl.padUp = hudCtl.padDn = 0;
-  hudCtl.drawnHb = -1;
-  hudCtl.drawnUp = hudCtl.drawnDn = -1; hudCtl.drawnMode = null;
-  hudCtl.drawnL = hudCtl.drawnR = null;
-  drawSteer('steer-l-cv', false, false);
-  drawSteer('steer-r-cv', true, false);
-  cluster.nRpm = cluster.nKmh = cluster.heat = 0;
-  /* size the speedo to the car actually being driven, rounded up to a
-     whole major division so the numbering stays tidy */
-  if(race) cluster.kmhMax = Math.max(120, Math.ceil(race.stats.kmh*1.08/40)*40);
-  cluster.key = '';                                     /* force a face rebuild */
-  drawCluster(race);
-  var manual = save.settings.transmission === 'manual';
-  drawHandbrake(0);
-  drawPaddle('pad-up-cv', true, 0, manual);
-  drawPaddle('pad-dn-cv', false, 0, manual);
-  document.getElementById('p-shiftup').classList.toggle('auto', !manual);
-  document.getElementById('p-shiftdn').classList.toggle('auto', !manual);
+  hudCtl.hb = hudCtl.padUp = hudCtl.padDn = 0;
+  dash.nRpm = dash.nSpd = dash.nBoost = dash.heat = 0;
+  dash.key = '';
+  dashArt = {};
+  drawDash(race);
+}
+
+/* =========================================================================
+   TOUCH ROUTING
+
+   Only three things on the dash are interactive: the two steering arrows,
+   the two paddles and the handbrake. Their hit boxes are worked out from
+   the same layout the art is drawn with and grown by HIT_PAD, and one
+   router owns every pointer, so a thumb sliding from one control to the
+   next hands over without being lifted.
+   ========================================================================= */
+
+/* Fat-finger padding: how many CSS pixels every dash control's hit box is
+   grown by on all sides. The art stays where the mockup puts it, the
+   target around it is deliberately larger than the art. */
+var HIT_PAD = 16;
+
+var hitBoxes = [];
+function layoutHitBoxes(L){
+  var S = L.PX, ox = L.originX, oy = L.originY;
+  var box = function(id, kind, rect, extra){
+    return { id:id, kind:kind, key:extra,
+             x: ox + rect.x*S, y: oy + rect.y*S,
+             w: rect.w*S, h: rect.h*S };
+  };
+  hitBoxes = [
+    box('left',  'hold', L.steerL, 'left'),
+    box('right', 'hold', L.steerR, 'right'),
+    box('padDn', 'tap',  L.padL),
+    box('padUp', 'tap',  L.padR),
+    /* the lever's target covers the arm and the slot it stands in */
+    box('hbrake','hold', { x:L.hb.x, y:L.hb.y-L.hb.rise, w:L.hb.w, h:L.hb.h+L.hb.rise }, 'hbrake')
+  ];
+}
+function hitAt(x, y){
+  for(var i=0;i<hitBoxes.length;i++){
+    var b = hitBoxes[i];
+    if(x >= b.x-HIT_PAD && x <= b.x+b.w+HIT_PAD &&
+       y >= b.y-HIT_PAD && y <= b.y+b.h+HIT_PAD) return b;
+  }
+  return null;
+}
+function hitById(id){
+  for(var i=0;i<hitBoxes.length;i++) if(hitBoxes[i].id === id) return hitBoxes[i];
+  return null;
+}
+
+var holdCount = { left:0, right:0, hbrake:0 };
+function ctlEnter(b){
+  if(b.kind === 'hold'){
+    holdCount[b.key] = (holdCount[b.key]||0) + 1;
+    input[b.key] = true;
+    audioKick();
+  } else {
+    audioKick();
+    if(b.id === 'padUp'){ hudCtl.padUp = 1; shiftUp(); }
+    else { hudCtl.padDn = 1; shiftDown(); }
+  }
+}
+function ctlLeave(b){
+  if(!b || b.kind !== 'hold') return;
+  holdCount[b.key] = Math.max(0, (holdCount[b.key]||0) - 1);
+  if(!holdCount[b.key]) input[b.key] = false;
+}
+
+var pointerCtl = {};
+function routeDown(id, x, y){
+  var b = hitAt(x,y);
+  pointerCtl[id] = b ? b.id : null;
+  if(b) ctlEnter(b);
+}
+function routeMove(id, x, y){
+  if(!(id in pointerCtl)) return;
+  var b = hitAt(x,y);
+  var now = b ? b.id : null;
+  if(now === pointerCtl[id]) return;
+  ctlLeave(hitById(pointerCtl[id]));
+  pointerCtl[id] = now;
+  if(b) ctlEnter(b);
+}
+function routeUp(id){
+  if(!(id in pointerCtl)) return;
+  ctlLeave(hitById(pointerCtl[id]));
+  delete pointerCtl[id];
+}
+function releaseAllControls(){
+  for(var p in pointerCtl) if(pointerCtl.hasOwnProperty(p)) routeUp(p);
+  holdCount.left = holdCount.right = holdCount.hbrake = 0;
+  input.left = input.right = input.hbrake = false;
 }
 
 /* ------------------------------------------------------------- gearbox
@@ -2755,6 +2961,28 @@ function shiftDown(){
 var race = null;
 var paused = false;
 
+/* ---------------------------------------------------------- auto-throttle
+   The car drives itself. The throttle opens as the countdown ends and
+   stays open for the rest of the stage; the only things that shut it are
+   the handbrake and a crash recovery, and it opens again on its own as
+   soon as they let go. These are the knobs for how that feels. */
+var AUTO_THROTTLE_LEVEL   = 1.00;   /* how far the pedal ends up going down */
+var AUTO_THROTTLE_RAMP    = 1.60;   /* per second, closed to fully open     */
+var AUTO_THROTTLE_RELEASE = 6.00;   /* per second, lifting off for the lever */
+
+/* Where the throttle wants to be this frame, and how fast it may get there. */
+function autoThrottleTarget(r){
+  if(r.state !== 'run') return 0;
+  if(input.hbrake) return 0;
+  if(r.car.stuck > 1.4) return 0;   /* beached: no point spinning the wheels */
+  return AUTO_THROTTLE_LEVEL;
+}
+function updateAutoThrottle(r, dt){
+  var want = autoThrottleTarget(r);
+  var rate = want > r.throttle ? AUTO_THROTTLE_RAMP : AUTO_THROTTLE_RELEASE;
+  r.throttle = clamp(r.throttle + clamp(want - r.throttle, -rate*dt, rate*dt), 0, 1);
+}
+
 function startRace(stageId){
   var st = stageDef(stageId);
   var track = buildTrack(st);
@@ -2772,7 +3000,7 @@ function startRace(stageId){
       getCarSprite(save.current, cs.paint, cs.livery, 1, 3),
       getCarSprite(save.current, cs.paint, cs.livery, 2, 3)
     ],
-    gear:1, rpm:0, torque:1, shiftT:0, perfectT:0, perfectFlash:0,
+    gear:1, rpm:0, torque:1, shiftT:0, perfectT:0, perfectFlash:0, throttle:0,
     spans: carSpans(save.current), finalDrive: gearingOf(save.current).final,
     t:0, state:'countdown', countdown:3.2, collisions:0, hardHits:0,
     noteIdx:0, note:null, noteTimer:0,
@@ -2789,7 +3017,7 @@ function startRace(stageId){
   document.getElementById('hud').classList.remove('hidden');
   document.getElementById('controls').classList.remove('hidden');
   document.getElementById('tilt-bar').classList.toggle('hidden', save.settings.control !== 'tilt');
-  document.getElementById('p-gas').classList.toggle('hidden', save.settings.autoGas);
+  releaseAllControls();
   resetHudControls();
   audioKick();
   bigMsg('3');
@@ -2853,7 +3081,9 @@ function stepRace(dt){
   var topSpeed = S.topSpeed * dmgPenalty * (offtrack ? 0.62 : 1);
   var accel = S.accel * dmgPenalty;
 
-  var gas = driving && (save.settings.autoGas ? !input.hbrake : input.gas);
+  updateAutoThrottle(r, dt);
+  var thr = r.throttle;
+  var gas = driving && thr > 0.02;
   var hb = driving && input.hbrake;
 
   updateGearbox(r, Math.abs(c.fwd), topSpeed, dt);
@@ -2865,8 +3095,8 @@ function stepRace(dt){
        gearing raises the ceiling and shorter gearing lowers it */
     var head = 1 - c.fwd/(topSpeed*r.finalDrive*1.35);
     if(head < 0) head = 0;
-    c.fwd += accel * head * dt * (offtrack ? 0.70 : 1) * r.torque;
-    c.wheelSpin = clamp(c.wheelSpin + (1.2 - grip)*dt*2.2, 0, 1);
+    c.fwd += accel * head * dt * (offtrack ? 0.70 : 1) * r.torque * thr;
+    c.wheelSpin = clamp(c.wheelSpin + (1.2 - grip)*dt*2.2*thr, 0, 1);
   } else {
     c.wheelSpin *= Math.pow(0.05, dt);
   }
@@ -2971,7 +3201,7 @@ function stepRace(dt){
   if(r.shake > 0) r.shake = Math.max(0, r.shake - dt*2.6);
 
   /* ---- audio ---- */
-  audioEngine(r.rpm, gas?1:0.25, slip*(spd>25?1:0), driving || r.state==='countdown');
+  audioEngine(r.rpm, 0.25 + thr*0.75, slip*(spd>25?1:0), driving || r.state==='countdown');
 
   /* ---- finish ---- */
   if(driving && q.d >= r.track.len - 24){
@@ -2991,6 +3221,8 @@ function respawn(r, q){
   c.fwd = 48; c.lat = 0;
   c.vx = Math.sin(nd.a)*48; c.vy = -Math.cos(nd.a)*48;
   c.stuck = 0; c.steer = 0;
+  /* the throttle winds itself back up from a standstill after a recovery */
+  r.throttle = 0;
   r.gear = 1; r.shiftT = 0; r.perfectT = 0;
   r.camX = nd.x; r.camY = nd.y; r.camA = nd.a;
   r.recoveries = (r.recoveries||0) + 1;
@@ -3108,17 +3340,26 @@ function renderRace(){
   if(r.shake>0){ shakeX = (Math.random()-0.5)*r.shake*16; shakeY = (Math.random()-0.5)*r.shake*16; }
 
   /* Framing. The camera aims at a point ahead of the car, so the car is
-     drawn that far behind the focal point — down the screen — and the
+     drawn that far behind the focal point - down the screen - and the
      faster you go the lower it rides. Left at a fixed 0.62 it disappears
      under the dash. So: work out where the car will actually land (the same
      rotation the transform below applies), and lift the focal point only as
-     far as it takes to keep it above the panel, never past 0.48 so the road
-     ahead stays open. At low speed this is exactly the old framing. */
+     far as it takes to keep it clear of the dash, never past 0.30 so the
+     road ahead stays open. The band we clear includes the raised gauge
+     housing, so the car is never cut into by the binnacle either. */
   var focal = H*0.62;
   var dxc = c.x - r.camX, dyc = c.y - r.camY;
   var carDrop = (dyc*Math.cos(r.camA) - dxc*Math.sin(r.camA)) * scale;
-  var deck = H - clusterBandH() - CAR_WORLD_LEN*scale*0.55;   /* dash top, less the car */
-  if(focal + carDrop > deck) focal = clamp(deck - carDrop, H*0.44, H*0.62);
+  var carHalf = CAR_WORLD_LEN*scale*0.55;
+  var deck = H - dashBandH() - carHalf - 6;    /* housing top, less the car */
+  if(focal + carDrop > deck) focal = clamp(deck - carDrop, H*0.30, H*0.62);
+
+  /* park the countdown and the big messages just above the car's roof */
+  var msgBottom = Math.round(H - (focal + carDrop) + carHalf + 10);
+  if(msgBottom !== r.msgBottom){
+    r.msgBottom = msgBottom;
+    document.documentElement.style.setProperty('--msg-bottom', msgBottom+'px');
+  }
 
   g.save();
   g.translate(W/2 + shakeX, focal + shakeY);
@@ -4328,7 +4569,7 @@ function renderSettings(){
   b.innerHTML = '';
 
   b.appendChild(segRow('CONTROL SCHEME',
-    'Buttons is the default. Tilt uses the phone gyroscope for steering; gas and handbrake stay on screen.',
+    'Buttons is the default. Tilt uses the phone gyroscope for steering; the paddles and the handbrake stay on the dash.',
     [['buttons','BUTTONS'],['tilt','TILT']], save.settings.control, function(v){
       if(v==='tilt'){
         enableTilt(function(ok){
@@ -4358,15 +4599,17 @@ function renderSettings(){
   b.appendChild(segRow('TRANSMISSION',
     'Automatic changes gear for you. Manual makes you shift: revs matter, ' +
     'a clean change on the power band pays, lugging or bouncing off the limiter costs you drive. ' +
-    'On screen use the UP / DN pads; on a keyboard use E and Q.',
+    'On screen use the - and + paddles; on a keyboard use Q and E.',
     [['auto','AUTOMATIC'],['manual','MANUAL']], save.settings.transmission, function(v){
       save.settings.transmission = v; persist(); renderSettings();
     }));
 
-  b.appendChild(segRow('THROTTLE',
-    'Auto throttle holds the gas for you so you only steer and brake.',
-    [['manual','GAS BUTTON'],['auto','AUTO']], save.settings.autoGas?'auto':'manual', function(v){
-      save.settings.autoGas = (v==='auto'); persist(); renderSettings();
+  b.appendChild(segRow('UNITS',
+    'Sets the speedometer face and the digital readout together.',
+    [['mph','MPH'],['kph','KPH']], save.settings.units, function(v){
+      save.settings.units = v; persist();
+      if(race) resetHudControls();
+      renderSettings();
     }));
 
   b.appendChild(segRow('AUDIO',
@@ -4394,7 +4637,7 @@ function renderSettings(){
 
   var about = document.createElement('div');
   about.className = 'set-row';
-  about.innerHTML = '<div class="hint">RALLY PIXEL — keyboard: arrows / WASD to steer and accelerate, SHIFT or DOWN for handbrake, E / Q to change gear in manual, ESC to pause.</div>';
+  about.innerHTML = '<div class="hint">RALLY PIXEL — the throttle drives itself. Keyboard: arrows or A / D to steer, SHIFT, DOWN or SPACE for the handbrake, E / Q to change gear in manual, ESC to pause.</div>';
   b.appendChild(about);
 }
 function segRow(label, hint, opts, value, onPick){
