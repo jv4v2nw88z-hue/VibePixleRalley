@@ -37,7 +37,7 @@ function mulberry(seed){
 /* ---------------------------------------------------------------- surfaces */
 var SURFACES = {
   tarmac:{ name:'TARMAC', grip:1.34, roll:0.34, color:'#3b3d40', color2:'#45484b', dust:'#7d7f82', edge:'#d8d8d2' },
-  gravel:{ name:'GRAVEL', grip:1.00, roll:0.60, color:'#725730', color2:'#8a6c44', grit:'#b09a76', dust:'#c2a97e', edge:'#54401f' },
+  gravel:{ name:'GRAVEL', grip:1.00, roll:0.60, color:'#725730', color2:'#8a6c44', grit:'#8f7a5c', dust:'#c2a97e', edge:'#54401f' },
   snow:  { name:'SNOW',   grip:0.74, roll:0.72, color:'#d5e2ee', color2:'#c3d4e4', dust:'#ffffff', edge:'#9fb4c8' },
   ice:   { name:'ICE',    grip:0.46, roll:0.26, color:'#a9cbe0', color2:'#bcd9ea', dust:'#e6f4ff', edge:'#87aec6' },
   mud:   { name:'MUD',    grip:0.80, roll:0.95, color:'#4c3d28', color2:'#5f4f36', grit:'#6c5c44', dust:'#8a7350', edge:'#3b2f1e' }
@@ -444,18 +444,22 @@ function buildScenery(track){
        out beyond it, which is what gives the stage its corridor. So the
        lateral offset is biased towards the verge and several clumps go
        down per node. */
-    var density = isMountain ? 0.55 : 1.0;
+    /* The reference's verge is not wall-to-wall foliage: its bushes stand
+       clear of each other with grass between, roughly one clump every
+       couple of nodes per side. Packing one onto every node turns the
+       treeline into a green mat and loses the shape of every bush in it. */
+    var density = isMountain ? 0.55 : 0.95;
     if(rand() < density){
-      var n2 = Math.floor(2 + rand()*3);
+      var n2 = Math.floor(1 + rand()*2);
       for(var t=0;t<n2;t++){
         var s2 = rand()<0.5 ? -1 : 1;
         var bias = rand(); bias *= bias;             /* crowd towards the edge */
-        var lat2 = nd.hw + 30 + bias*230;
+        var lat2 = nd.hw + 22 + bias*175;
         var type = isSnow ? (rand()<0.72?0:4) : (isMountain ? (rand()<0.45?1:0) : (rand()<0.90?0:4));
         /* Measured off the reference: its bright top faces run about
            sixteen screen pixels across at the median and rarely past
            fifty, which lands a clump here between twenty and forty-five. */
-        var size = type===0 ? 23+rand()*21 : 11+rand()*9;
+        var size = type===0 ? 27+rand()*24 : 11+rand()*9;
         var solid = lat2 < nd.hw + 96;   /* only the near ones can be clipped */
         props.push(mkProp(nd.x+nx*lat2*s2, nd.y+ny*lat2*s2, type, size, i, solid, rand()));
       }
@@ -1574,8 +1578,8 @@ function getCarSide(carId, opts){
    handful of cubes at deterministic offsets, painted back to front so the
    near ones overlap the far ones the way stacked foliage does. */
 var CANOPY_PAL = {
-  forest:  { sh:'#0a1706', dk:'#16290b', side:'#2f4c12', tp:'#4e7018', hi:'#5a8020',
-             rim:'#6c9430', sp:'#86a832', spHi:'#9dc03e', speck:'#182b0a' },
+  forest:  { sh:'#0a1706', dk:'#16290b', side:'#2b4610', tp:'#486a15', hi:'#53791c',
+             rim:'#5f8526', sp:'#729428', spHi:'#84aa33', speck:'#182b0a' },
   mountain:{ sh:'#0c1a0a', dk:'#1a2c12', side:'#31461f', tp:'#4a6a2e', hi:'#557a34',
              rim:'#688a45', sp:'#7d9c58', spHi:'#94b06c', speck:'#1c2c12' },
   snowpass:{ sh:'#0f1c18', dk:'#1c332b', side:'#365a4c', tp:'#6e948c', hi:'#84a89f',
@@ -1605,9 +1609,6 @@ function drawBlock(g, pal, x, y, w, lit){
   g.fillRect(tx, ty, tw, tw*0.86);
   g.fillStyle = pal.spHi;
   g.fillRect(tx, ty, tw*0.72, tw*0.30);
-  g.fillStyle = pal.speck;                           /* two leaf specks */
-  g.fillRect(x + w*0.10, y + ht*0.72, Math.max(1, w*0.05), Math.max(1, w*0.05));
-  g.fillRect(x + w*0.72, y + ht*0.74, Math.max(1, w*0.05), Math.max(1, w*0.05));
 }
 
 function drawCanopy(g, s, seed, theme){
@@ -1627,7 +1628,7 @@ function drawCanopy(g, s, seed, theme){
   g.fillStyle = 'rgba(0,0,0,.34)';
   g.fillRect(-s*0.30 + s*0.18, -s*0.30 + s*0.26, s*0.74, s*0.70);
 
-  var n = 2 + Math.floor(rnd2(sd, 3, 53)*3);
+  var n = 2 + Math.floor(rnd2(sd, 3, 53)*2);
   var blocks = [];
   for(i=0;i<n;i++){
     a = rnd2(sd, i, 59); b = rnd2(sd, i, 61); c = rnd2(sd, i, 67);
@@ -2873,39 +2874,62 @@ function glyphArrow(g, cx, cy, s, right, col){
   g.closePath();
   g.fillStyle = col; g.fill();
 }
-/* The headlamp tell-tale: a D-shaped bowl throwing three beams. */
+/* The headlamp tell-tale: a D-shaped bowl on the right throwing its beams
+   out to the left, which is the way round every dashboard draws it. */
 function glyphHeadlight(g, cx, cy, s, col){
-  g.strokeStyle = col; g.fillStyle = col;
-  g.lineWidth = Math.max(1.2, s*0.16); g.lineCap = 'butt';
-  g.beginPath();
-  g.moveTo(cx-s*0.55, cy-s*0.8); g.lineTo(cx-s*0.15, cy-s*0.8);
-  g.arc(cx-s*0.15, cy, s*0.8, -Math.PI/2, Math.PI/2);
-  g.lineTo(cx-s*0.55, cy+s*0.8); g.closePath();
+  g.strokeStyle = col; g.lineCap = 'butt'; g.lineJoin = 'miter';
+  g.lineWidth = Math.max(1.3, s*0.17);
+  g.beginPath();                                   /* the bowl */
+  g.moveTo(cx+s*0.16, cy-s*0.80);
+  g.lineTo(cx+s*0.16, cy+s*0.80);
+  g.arc(cx+s*0.16, cy, s*0.80, Math.PI/2, -Math.PI/2, true);
+  g.closePath();
   g.stroke();
-  var i;
-  for(i=0;i<3;i++){
+  var i;                                           /* four beams, running out */
+  for(i=0;i<4;i++){
     g.beginPath();
-    g.moveTo(cx+s*0.55, cy-s*0.46+i*s*0.46);
-    g.lineTo(cx+s*1.15, cy-s*0.46+i*s*0.46);
+    g.moveTo(cx-s*1.10, cy-s*0.62+i*s*0.41);
+    g.lineTo(cx-s*0.16, cy-s*0.62+i*s*0.41);
     g.stroke();
   }
 }
-/* Belted occupant: a seated figure with the sash across the chest. */
-function glyphBelt(g, cx, cy, s, col){
-  g.fillStyle = col; g.strokeStyle = col;
-  g.lineWidth = Math.max(1.2, s*0.20); g.lineCap = 'round'; g.lineJoin = 'round';
-  g.beginPath(); g.arc(cx-s*0.10, cy-s*0.78, s*0.26, 0, TAU); g.fill();
-  g.beginPath();                                   /* torso + thigh + shin */
-  g.moveTo(cx-s*0.34, cy-s*0.40); g.lineTo(cx-s*0.14, cy+s*0.18);
-  g.lineTo(cx+s*0.40, cy+s*0.20);
+/* Belted occupant: a solid seated figure with the sash strapped over it.
+   The strap is cut back out of the body in the panel's own colour, which is
+   how the reference reads as a belt rather than a scratch. */
+function glyphBelt(g, cx, cy, s, col, bg){
+  g.fillStyle = col;
+  g.beginPath();                                   /* the head */
+  g.arc(cx-s*0.06, cy-s*0.74, s*0.27, 0, TAU); g.fill();
+  g.beginPath();                                   /* the torso */
+  g.moveTo(cx-s*0.50, cy+s*0.30);
+  g.quadraticCurveTo(cx-s*0.50, cy-s*0.36, cx-s*0.04, cy-s*0.36);
+  g.quadraticCurveTo(cx+s*0.44, cy-s*0.36, cx+s*0.44, cy+s*0.30);
+  g.closePath(); g.fill();
+  g.beginPath();                                   /* the two legs */
+  g.moveTo(cx-s*0.36, cy+s*0.34); g.lineTo(cx-s*0.02, cy+s*0.34);
+  g.lineTo(cx-s*0.20, cy+s*0.92); g.lineTo(cx-s*0.46, cy+s*0.92);
+  g.closePath(); g.fill();
+  g.beginPath();
+  g.moveTo(cx+s*0.06, cy+s*0.34); g.lineTo(cx+s*0.34, cy+s*0.34);
+  g.lineTo(cx+s*0.40, cy+s*0.92); g.lineTo(cx+s*0.16, cy+s*0.92);
+  g.closePath(); g.fill();
+
+  g.lineCap = 'butt';
+  g.strokeStyle = bg || '#25100c';                 /* the gap the strap sits in */
+  g.lineWidth = Math.max(2, s*0.34);
+  g.beginPath();
+  g.moveTo(cx+s*0.52, cy-s*0.86); g.lineTo(cx-s*0.34, cy+s*0.20);
   g.stroke();
   g.beginPath();
-  g.moveTo(cx-s*0.34, cy-s*0.40); g.lineTo(cx-s*0.34, cy+s*0.72);
-  g.lineTo(cx+s*0.20, cy+s*0.72);
+  g.moveTo(cx-s*0.34, cy+s*0.20); g.lineTo(cx+s*0.56, cy+s*0.26);
   g.stroke();
-  g.beginPath();                                   /* the sash */
-  g.moveTo(cx+s*0.34, cy-s*0.72); g.lineTo(cx-s*0.24, cy+s*0.10);
-  g.lineWidth = Math.max(1.2, s*0.16);
+  g.strokeStyle = col;                             /* the strap itself */
+  g.lineWidth = Math.max(1.2, s*0.17);
+  g.beginPath();
+  g.moveTo(cx+s*0.50, cy-s*0.84); g.lineTo(cx-s*0.30, cy+s*0.18);
+  g.stroke();
+  g.beginPath();
+  g.moveTo(cx-s*0.30, cy+s*0.18); g.lineTo(cx+s*0.54, cy+s*0.24);
   g.stroke();
 }
 /* Parking brake: a circled P inside a broken ring. */
@@ -3057,7 +3081,7 @@ function drawDash(r){
   var sxAt = function(n){ return T.x + sl*(n+0.5); };
   glyphArrow(g, sxAt(0), sy, gs*1.15, false, input.left ? DC.amber : DC.grey);
   glyphHeadlight(g, sxAt(1), sy, gs, DC.green);
-  glyphBelt(g, sxAt(2), sy, gs*1.20, DC.red);
+  glyphBelt(g, sxAt(2), sy, gs*1.05, DC.red, DC.redPanel);
   glyphPark(g, sxAt(3), sy, gs*0.95, hudCtl.hb > 0.4 ? '#ff6a58' : DC.red);
   glyphArrow(g, sxAt(4), sy, gs*1.15, true, input.right ? DC.amber : DC.grey);
 
@@ -3828,8 +3852,8 @@ function groundPattern(g, theme){
     for(y=0;y<n;y+=3) for(x=0;x<n;x+=3){
       v = rnd2(x, y, 41);
       var px = x*GROUND_CELL, py = y*GROUND_CELL, k = GROUND_CELL;
-      if(v > 0.858){
-        var big = v > 0.952;
+      if(v > 0.945){
+        var big = v > 0.982;
         tg.fillStyle = 'rgba(0,0,0,.22)';
         tg.fillRect(px+k, py+(big?4:3)*k, k*2, k);
         tg.fillStyle = pal.tuft[big ? 1 : 0];
@@ -3837,7 +3861,7 @@ function groundPattern(g, theme){
         tg.fillRect(px+k,   py,     k, k*(big?4:3));
         tg.fillRect(px+2*k, py+k,   k, k*2);
         if(big){ tg.fillRect(px-k, py+2*k, k, k*2); tg.fillRect(px+3*k, py+2*k, k, k*2); }
-      } else if(v > 0.836){
+      } else if(v > 0.978){
         tg.fillStyle = 'rgba(0,0,0,.34)';
         tg.fillRect(px+k, py+2*k, k*3, k*2);
         tg.fillStyle = pal.stone[0];
@@ -3875,7 +3899,7 @@ function ROAD_MOTTLE(S){
     m = mottleCache[S.name] = [
       S.color2, shade(S.color,-0.045), shade(S.color, 0.045), shade(S.color,-0.085),
       shade(S.color, 0.080), shade(S.color,-0.125), S.color, shade(S.color,-0.020),
-      S.grit || shade(S.color, 0.110), shade(S.color,-0.165), shade(S.color, 0.150),
+      S.grit || shade(S.color, 0.095), shade(S.color,-0.140), shade(S.color, 0.150),
       S.color2, shade(S.color, 0.060), shade(S.color,-0.060),
       S.grit || shade(S.color, 0.130), shade(S.color,-0.200),
       S.grit || shade(S.color, 0.150), shade(S.color, 0.100)
