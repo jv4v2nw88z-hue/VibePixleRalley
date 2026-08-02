@@ -120,7 +120,7 @@ var ACCENTS = { '#ab221c':'#ffffff','#e8892b':'#20242a','#f2d02c':'#20242a','#4f
                      note:'text' (optional extra pacenote), w:width override }   */
 var STAGES = [
   {
-    id:'s1', name:'PINE HOLLOW', theme:'forest', surface:'gravel', width:132,
+    id:'s1', name:'PINE HOLLOW', theme:'forest', surface:'gravel', width:139,
     country:'FOREST GRAVEL · 9.1 KM', refSpeed:178, payout:620, sky:'#2f4023',
     req:null,
     segs:[
@@ -1686,7 +1686,7 @@ function drawProp(g, p, theme){
 
 /* on-track car length in world units - held constant so sprite-grid
    changes stay purely visual and never alter the driving footprint */
-var CAR_WORLD_LEN = 76;
+var CAR_WORLD_LEN = 86;
 
 var cv = document.getElementById('game');
 var ctx = cv.getContext('2d', { alpha:false });
@@ -2095,7 +2095,7 @@ function grainPattern(g){
       var i = (y*n+x)*4, v = rnd2(x, y, 71);
       var lit = v > 0.82, dark = v < 0.20;
       img.data[i] = img.data[i+1] = img.data[i+2] = lit ? 255 : 0;
-      img.data[i+3] = lit ? 26 : (dark ? 34 : 0);
+      img.data[i+3] = lit ? 17 : (dark ? 38 : 0);
     }
     tg.putImageData(img, 0, 0);
   }
@@ -2109,7 +2109,7 @@ function grainPattern(g){
 var DASH_FRAC = 0.40;
 /* the design grid: 300 across, 78 down from the wing tops, the binnacle 13
    proud of them and the paddles reaching 32 above */
-var NW = 300, NH = 78, NTOP = 32, NRISE = 13;
+var NW = 300, NH = 78, NTOP = 32, NRISE = 10.5;
 
 var dash = { cv:null, g:null, base:null, L:null, key:'', S:1,
              nRpm:0, nSpd:0, nBoost:0 };
@@ -2141,8 +2141,8 @@ function dashLayout(){
      up to the terrace, terrace, chamfer up to the binnacle, and back down */
   L.contour = [
     [  0,   0,  'L'], [ 42,   0,  'L'], [ 57, -4.5,'L'],
-    [ 92, -4.5,'C'], [105, -13, 'C'],
-    [195, -13, 'C'], [208, -4.5,'C'],
+    [ 92, -4.5,'C'], [105, -10.5,'C'],
+    [195, -10.5,'C'], [208, -4.5,'C'],
     [243, -4.5,'R'], [258,  0,  'R'], [NW,  0,  'R']
   ];
 
@@ -2384,14 +2384,30 @@ function buildDashBase(L, S){
 
   g.save();
   polyPath(g, shape); g.clip();
-  /* The fascia is far darker than it looks: what reads as grey is the lit
-     top lip and the panel edges, not the moulding, which falls away to
-     nearly black within a few units of the top. */
+  /* The fascia is far darker than it looks — measured, it sits around a
+     tenth luminance through the middle. What reads as grey is a lit band
+     under the top edge, and there is one under EVERY top edge: the wings,
+     both terraces and the binnacle each catch the sky where they turn over.
+     A single vertical ramp cannot do that, so the base goes down flat and
+     dark and the light is painted along the contour itself. */
   g.fillStyle = vGrad(g, Y(-NRISE), L.CH, [
-    [0.00, '#3a4143'], [0.05, DC.faceHi], [0.14, '#202426'],
-    [0.34, '#181c1d'], [0.70, '#121516'], [1.00, '#08090a']
+    [0.00, '#131618'], [0.35, '#0e1112'], [0.62, '#0c0f10'],
+    [0.86, '#0f1213'], [1.00, '#070809']
   ]);
   g.fillRect(0, 0, L.W, L.CH);
+  var lit = Math.max(3, u(9));                  /* how far the light reaches */
+  for(i=0;i<14;i++){
+    var f = i/13;
+    g.save();
+    g.translate(0, f*lit);
+    g.beginPath();
+    g.moveTo(top[0][0], top[0][1]);
+    for(var q=1;q<top.length;q++) g.lineTo(top[q][0], top[q][1]);
+    g.lineWidth = Math.max(1, lit/9);
+    g.strokeStyle = 'rgba(196,210,216,' + (0.072*(1-f)*(1-f)).toFixed(3) + ')';
+    g.stroke();
+    g.restore();
+  }
   /* horizontal moulding seams: a dark cut with a lit lip under it */
   var seams = [ Y(24), Y(48.5) ];
   for(i=0;i<seams.length;i++){
@@ -2504,7 +2520,7 @@ function buildDashBase(L, S){
 
   /* ------------------------------------------------- indicator strip -- */
   var T = L.strip;
-  pad(g, T.x, T.y, T.w, T.h, u(5), '#1e2224', '#101314');
+  pad(g, T.x, T.y, T.w, T.h, u(5), '#121516', '#0a0c0d');
   g.save(); chamferPath(g, T.x, T.y, T.w, T.h, u(5)); g.clip();
   g.fillStyle = grainPattern(g); g.fillRect(T.x, T.y, T.w, T.h);
   g.restore();
@@ -2521,7 +2537,7 @@ function buildDashBase(L, S){
   var xs = [L.stat.x0, L.stat.x1, L.stat.x2];
   for(i=0;i<3;i++){
     var sx = xs[i], sy = L.stat.y, sw = L.stat.w, sh = L.stat.h;
-    pad(g, sx, sy, sw, sh, u(1.4), '#252a2c', '#121617');
+    pad(g, sx, sy, sw, sh, u(1.4), '#1c2022', '#0e1112');
     well(g, sx+u(1.2), sy+u(7.4), sw-u(2.4), sh-u(8.6), u(1.0), '#0b0d0e');
     capTextFit(g, names[i], sx+sw/2, sy+u(4.3), u(3.3), sw-u(6.5), DC.label, '500', 0);
   }
@@ -3782,7 +3798,7 @@ function renderRace(){
   /* The reference leaves a clear margin of road between the car's tail and
      the top of the binnacle rather than parking it on the moulding, so the
      deck is pulled up a further slice of the frame. */
-  var deck = H - dashBandH() - carHalf - H*0.075;
+  var deck = H - dashBandH() - carHalf - H*0.050;
   if(focal + carDrop > deck) focal = clamp(deck - carDrop, H*0.30, H*0.62);
 
   /* park the countdown and the big messages just above the car's roof */
@@ -4103,7 +4119,7 @@ function drawCar(g, r){
   g.rotate(c.a);
   /* The sun is off to the left in the reference, so the car throws its own
      silhouette out to the right and a touch behind. */
-  var so = [[0.20,0.035,1.02,0.30],[0.215,0.045,1.05,0.16],[0.185,0.025,0.99,0.16]];
+  var so = [[0.20,0.035,1.02,0.24],[0.215,0.045,1.05,0.12],[0.185,0.025,0.99,0.12]];
   for(var si=0; si<so.length; si++){
     g.globalAlpha = so[si][3];
     g.drawImage(sp.shadow, -ww/2 + ww*so[si][0], -wh/2 + wh*so[si][1],
