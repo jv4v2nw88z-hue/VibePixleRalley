@@ -53,7 +53,7 @@ var OFFTRACK = {
 var CARS = [
   { id:'hatch', name:'KESTREL 1.6 GTI', cls:'GROUP N', price:0,
     topSpeed:300, accel:190, handling:36, gripBase:1.00, sprite:'hatch',
-    paint:'#c02a1d', blurb:'Cheap, light, honest. A proper starter rally hatch.' },
+    paint:'#ab221c', blurb:'Cheap, light, honest. A proper starter rally hatch.' },
   { id:'rally', name:'FALCON RS EVO', cls:'GROUP A', price:5200,
     topSpeed:392, accel:268, handling:52, gripBase:1.12, sprite:'rally',
     paint:'#1f6fd0', blurb:'Turbo four, real diff, made for loose surfaces.' },
@@ -110,8 +110,8 @@ var LIVERIES = [
   { id:2, name:'RALLY #7' },
   { id:3, name:'CHEVRON' }
 ];
-var PAINTS = ['#c02a1d','#e8892b','#f2d02c','#4fae3f','#1f6fd0','#7b3fbf','#f0f0e6','#2b2f33','#0e8f86','#c9367f'];
-var ACCENTS = { '#c02a1d':'#ffffff','#e8892b':'#20242a','#f2d02c':'#20242a','#4fae3f':'#ffffff','#1f6fd0':'#ffd23f',
+var PAINTS = ['#ab221c','#e8892b','#f2d02c','#4fae3f','#1f6fd0','#7b3fbf','#f0f0e6','#2b2f33','#0e8f86','#c9367f'];
+var ACCENTS = { '#ab221c':'#ffffff','#e8892b':'#20242a','#f2d02c':'#20242a','#4fae3f':'#ffffff','#1f6fd0':'#ffd23f',
                 '#7b3fbf':'#ffffff','#f0f0e6':'#1f6fd0','#2b2f33':'#ffb432','#0e8f86':'#ffffff','#c9367f':'#ffffff' };
 
 /* ---------------------------------------------------------------- stages
@@ -551,10 +551,10 @@ var CAR_SPRITES = {
   hatch: [
     '............................',
     '............................',
-    '...........SSSSSS...........',
-    '.........SSSSSSSSSS.........',
-    '........CCCCCCCCCCCC........',
-    '.......YYBBBBBBBBBBYY.......',
+    '...........KKKKKK...........',
+    '..........SSSSSSSS..........',
+    '........YYBBBBBBBBYY........',
+    '.......BBBBBBBBBBBBBB.......',
     '......BBBBBBBBBBBBBBBB......',
     '....TTBBBBBBBBBBBBBBBBTT....',
     '...TTBBBBBBBBBBBBBBBBBBTT...',
@@ -565,30 +565,30 @@ var CAR_SPRITES = {
     '.....BBBBBHHHHHHHHBBBBB.....',
     '.....BBBBBBBBBBBBBBBBBB.....',
     '.....BSSSSSSSSSSSSSSSSB.....',
+    '.....BBggggggggggggggBB.....',
+    '.....BBggggggggggggggBB.....',
+    '....DBBGGGGGGGGGGGGGGBBD....',
+    '....DBBGGGGGGGGGGGGGGBBD....',
+    '.....BBGGGGGGGGGGGGGGBB.....',
+    '.....BBGGGGGGGGGGGGGGBB.....',
+    '.....BHHHHHHHHHHHHHHHHB.....',
+    '.....BHHHHHHHHHHHHHHHHB.....',
+    '.....BHHHHHHHHHHHHHHHHB.....',
+    '.....BHHHHHHHHHHHHHHHHB.....',
+    '.....BHHHHHHHHHHHHHHHHB.....',
     '.....BBBggggggggggggBBB.....',
-    '.....DBBggggggggggggBBD.....',
-    '.....DBBGGGGGGGGGGGGBBD.....',
     '.....BBBGGGGGGGGGGGGBBB.....',
-    '.....BBBGGGGGGGGGGGGBBB.....',
-    '.....BBBBHHHHHHHHHHBBBB.....',
-    '.....BBBBHHHHHHHHHHBBBB.....',
-    '.....BBBBHHHHHHHHHHBBBB.....',
-    '.....BBBBHHHHHHHHHHBBBB.....',
-    '.....BBBBHHHHHHHHHHBBBB.....',
-    '.....BBBggggggggggggBBB.....',
-    '.....BBBggggggggggggBBB.....',
     '.....BBBGGGGGGGGGGGGBBB.....',
     '.....BBBGGGGGGGGGGGGBBB.....',
     '.....BSSSSSSSSSSSSSSSSB.....',
     '...TTBBBBBBBBBBBBBBBBBBTT...',
     '...TTBBBBBBBBBBBBBBBBBBTT...',
     '...TTBBBBBBBBBBBBBBBBBBTT...',
-    '...TTBBBBBBBBBBBBBBBBBBTT...',
     '....TTBBBBBBBBBBBBBBBBTT....',
-    '......CCCCCCCCCCCCCCCC......',
+    '....TTBBBBBBBBBBBBBBBBTT....',
     '.......RRBBBBBBBBBBRR.......',
     '........SSSSSSSSSSSS........',
-    '...........SSSSSS...........',
+    '...........KKKKKK...........',
     '............................',
     '............................'
   ],
@@ -596,13 +596,13 @@ var CAR_SPRITES = {
   rally: [
     '............................',
     '............................',
-    '..........SSSSSSS...........',
+    '..........KKKKKKK...........',
     '.........SSSSSSSSSS.........',
-    '........CCCCCCCCCCCCC.......',
-    '......YYBBBBBBBBBBBBYY......',
+    '........YYBBBBBBBBYY........',
+    '.......BBBBBBBBBBBBBB.......',
+    '....TTBBBBBBBBBBBBBBBBTT....',
     '...TTBBBBBBBBBBBBBBBBBBTT...',
     '...TTBBBBBBBBBBBBBBBBBBTT...',
-    '..TTBBBBBBBBBBBBBBBBBBBBTT..',
     '..TTBBBBBBSSSSSSSSSBBBBBTT..',
     '..TTBBBBBBSSSSSSSSSBBBBBTT..',
     '..TTBBBBBBSSSSSSSSSBBBBBTT..',
@@ -610,30 +610,30 @@ var CAR_SPRITES = {
     '....BBBBBBSSSSSSSSSBBBBB....',
     '....BBBBBBBBBBBBBBBBBBBB....',
     '....BSSSSSSSSSSSSSSSSSSB....',
+    '....BBggggggggggggggggBB....',
+    '....BBggggggggggggggggBB....',
+    '...DBBGGGGGGGGGGGGGGGGBBD...',
+    '...DBBGGGGGGGGGGGGGGGGBBD...',
+    '....BBGGGGGGGGGGGGGGGGBB....',
+    '....BBGGGGGGGGGGGGGGGGBB....',
+    '....BHHHHHHHHHHHHHHHHHHB....',
+    '....BHHHHHHHHHHHHHHHHHHB....',
+    '....BHHHHHHHHHHHHHHHHHHB....',
+    '....BHHHHHHHHHHHHHHHHHHB....',
+    '....BHHHHHHHHHHHHHHHHHHB....',
     '....BBBggggggggggggggBBB....',
-    '....DBBggggggggggggggBBD....',
-    '....DBBGGGGGGGGGGGGGGBBD....',
     '....BBBGGGGGGGGGGGGGGBBB....',
-    '....BBBGGGGGGGGGGGGGGBBB....',
-    '....BBBBHHHHHHHHHHHBBBBB....',
-    '....BBBBHHHHHHHHHHHBBBBB....',
-    '....BBBBHHHHHHHHHHHBBBBB....',
-    '....BBBBHHHHHHHHHHHBBBBB....',
-    '....BBBBHHHHHHHHHHHBBBBB....',
-    '....BBBggggggggggggggBBB....',
-    '....BBBggggggggggggggBBB....',
     '....BBBGGGGGGGGGGGGGGBBB....',
     '....BBBGGGGGGGGGGGGGGBBB....',
     '..TTBSSSSSSSSSSSSSSSSSSBTT..',
     '..TTBBBBBBBBBBBBBBBBBBBBTT..',
     '..TTBBBBBBBBBBBBBBBBBBBBTT..',
-    '..TTBBBBBBBBBBBBBBBBBBBBTT..',
     '...TTBBBBBBBBBBBBBBBBBBTT...',
     '...TTBBBBBBBBBBBBBBBBBBTT...',
-    '.....CCCCCCCCCCCCCCCCCC.....',
+    '...TTBBBBBBBBBBBBBBBBBBTT...',
     '.......RRBBBBBBBBBBRR.......',
     '........SSSSSSSSSSSS........',
-    '..........SSSSSSS...........',
+    '..........KKKKKKK...........',
     '............................',
     '............................'
   ],
@@ -641,44 +641,44 @@ var CAR_SPRITES = {
   wrc: [
     '............................',
     '............................',
-    '..........SSSSSSSS..........',
+    '..........KKKKKKKK..........',
     '.........SSSSSSSSSS.........',
-    '.......CCCCCCCCCCCCCC.......',
-    '......YYBBBBBBBBBBBBYY......',
+    '........YYBBBBBBBBBYY.......',
+    '......BBBBBBBBBBBBBBBB......',
     '...TTBBBBBBBBBBBBBBBBBBTT...',
+    '..TTBBBBBBBBBBBBBBBBBBBTT...',
     '..TTBBBBBBBBBBBBBBBBBBBBTT..',
-    '..TTBBBBBBBBBBBBBBBBBBBBTT..',
-    '.TTBBBBBBDDDDDDDDDDBBBBBBTT.',
+    '..TTBBBBBDDDDDDDDDDBBBBBTT..',
     '.TTBBBBBBDDDDDDDDDDBBBBBBTT.',
     '.TTBBBBBBDDDDDDDDDDBBBBBBTT.',
     '.TTBBBBBBDDDDDDDDDDBBBBBBTT.',
     '.TTBBBBBBDDDDDDDDDDBBBBBBTT.',
     '...BBBBBBBBBBBBBBBBBBBBBB...',
     '...BSSSSSSSSSSSSSSSSSSSSB...',
+    '...BBggggggggggggggggggBB...',
+    '...BBggggggggggggggggggBB...',
+    '..DBBGGGGGGGGGGGGGGGGGGBBD..',
+    '..DBBGGGGGGGGGGGGGGGGGGBBD..',
+    '...BBGGGGGGGGGGGGGGGGGGBB...',
+    '...BBGGGGGGGGGGGGGGGGGGBB...',
+    '...BHHHHHHHHHHHHHHHHHHHHB...',
+    '...BHHHHHHHHHHHHHHHHHHHHB...',
+    '...BHHHHHHHHHHHHHHHHHHHHB...',
+    '...BHHHHHHHHHHHHHHHHHHHHB...',
+    '...BHHHHHHHHHHHHHHHHHHHHB...',
     '...BBBggggggggggggggggBBB...',
-    '...DBBggggggggggggggggBBD...',
-    '...DBBGGGGGGGGGGGGGGGGBBD...',
     '...BBBGGGGGGGGGGGGGGGGBBB...',
-    '...BBBGGGGGGGGGGGGGGGGBBB...',
-    '...BBBBBDDDDDDDDDDDDBBBBB...',
-    '...BBBBBDDDDDDDDDDDDBBBBB...',
-    '...BBBBBDDDDDDDDDDDDBBBBB...',
-    '...BBBBBDDDDDDDDDDDDBBBBB...',
-    '...BBBBBDDDDDDDDDDDDBBBBB...',
-    '...BBBggggggggggggggggBBB...',
-    '...BBBggggggggggggggggBBB...',
     '...BBBGGGGGGGGGGGGGGGGBBB...',
     '.TTBBBGGGGGGGGGGGGGGGGBBBTT.',
     '.TTBSSSSSSSSSSSSSSSSSSSSBTT.',
     '.TTBBBBBBBBBBBBBBBBBBBBBBTT.',
-    '.TTBBBBBBBBBBBBBBBBBBBBBBTT.',
     '..TTBBBBBBBBBBBBBBBBBBBBTT..',
     '..TTBBBBBBBBBBBBBBBBBBBBTT..',
     '..TTBBBBBBBBBBBBBBBBBBBBTT..',
-    '.....CCCCCCCCCCCCCCCCCC.....',
+    '...TTBBBBBBBBBBBBBBBBBBTT...',
     '......RRBBBBBBBBBBBBRR......',
     '.......SSSSSSSSSSSSSS.......',
-    '..........SSSSSSSS..........',
+    '..........KKKKKKKK..........',
     '............................',
     '............................'
   ]
@@ -698,14 +698,14 @@ function shade(hex, amt){
 function carPalette(paint, damageTier){
   return {
     body:   paint,
-    lite:   shade(paint, 0.055),
-    hi:     shade(paint, 0.13),
-    dark:   shade(paint,-0.15),
-    darker: shade(paint,-0.28),
-    deep:   shade(paint,-0.44),
+    lite:   shade(paint, 0.035),
+    hi:     shade(paint, 0.075),
+    dark:   shade(paint,-0.055),
+    darker: shade(paint,-0.115),
+    deep:   shade(paint,-0.20),
     accent: ACCENTS[paint] || '#ffffff',
     glass:      damageTier>=1 ? '#5c6a72' : '#14191c',
-    glassLite:  damageTier>=1 ? '#78868e' : '#26313a',
+    glassLite:  damageTier>=1 ? '#78868e' : '#1e262c',
     tyre:'#141516', tyreLite:'#26292c',
     chrome:'#b9bec4', chromeDark:'#767b82',
     lamp:'#ffe9a8', tail:'#e8352a', black:'#171a1c', white:'#f2f2ea'
@@ -2167,14 +2167,19 @@ function dashLayout(){
                boxY:  Y(23.6), boxH:u(21.9) };
   L.padL   = { x:X(59.4), y:Y(-30), w:u(18.7), h:u(42) };
   L.padR   = { x:X(223.4), y:Y(-30), w:u(18.7), h:u(42) };
-  L.strip  = { x:X(60.5), y:Y(55.3), w:X(221.7)-X(60.5), h:u(18.5) };
+  /* The strip's five lamps are not evenly spaced: the reference bunches the
+     two red panels together in the middle and hangs the arrows out wide, so
+     their centres are given here as measured rather than divided up. */
+  L.strip  = { x:X(61), y:Y(55.3), w:X(222)-X(61), h:u(15.8),
+               slots:[X(84.4), X(106.4), X(136.1), X(162.6), X(192.5)],
+               panelW:u(23.2) };
 
   /* ------------------------------------------------------ right bank */
   /* the boost gauge belongs to the binnacle, not the right bank: it has to
      stay tucked under the speedo's shoulder however wide the screen gets */
   L.boost  = { x:X(231.6), y:Y(35), r:u(13.4) };
   L.hb     = { x:X(252.3,'R'), y:Y(19.5), w:u(42), h:u(24.1),
-               rise:u(21), slotOff:u(9.4), slotH:u(6.3) };
+               rise:u(25), slotOff:u(9.4), slotH:u(5.4) };
   var sw = u(21.5), sg = u(1.4);
   L.stat   = { y:Y(50.4), h:u(24.4), w:sw, gap:sg,
                x0:X(227.3,'R'), x1:X(227.3,'R')+sw+sg, x2:X(227.3,'R')+2*(sw+sg) };
@@ -2504,11 +2509,10 @@ function buildDashBase(L, S){
   g.fillStyle = grainPattern(g); g.fillRect(T.x, T.y, T.w, T.h);
   g.restore();
   /* the two red tell-tale panels get their own recessed tiles */
-  var sl = T.w/5;
   for(i=2;i<=3;i++){
-    var pw = sl*0.84, pxx = T.x + sl*(i+0.5) - pw/2;
-    well(g, pxx, T.y+T.h*0.14, pw, T.h*0.72, u(1.4), DC.redPanel);
-    chamferPath(g, pxx, T.y+T.h*0.14, pw, T.h*0.72, u(1.4));
+    var pw = L.strip.panelW, pxx = L.strip.slots[i] - pw/2;
+    well(g, pxx, T.y+T.h*0.10, pw, T.h*0.80, u(1.2), DC.redPanel);
+    chamferPath(g, pxx, T.y+T.h*0.10, pw, T.h*0.80, u(1.2));
     g.lineWidth = Math.max(1, u(0.4)); g.strokeStyle = DC.redEdge; g.stroke();
   }
 
@@ -2802,9 +2806,9 @@ function drawPaddle(g, w, h, up, press, active){
    raked back at rest and pulled upright as the handbrake goes on. */
 function drawShifter(g, w, h, v, gateY){
   var px0 = w*0.50, py0 = gateY;
-  var ang = (72 - v*16) * Math.PI/180;
+  var ang = (66 - v*14) * Math.PI/180;
   var dx = Math.cos(ang), dy = -Math.sin(ang);
-  var len = gateY - h*0.30;
+  var len = gateY - h*0.16;
   var on = v > 0.5;
   var tx = px0 + dx*len, ty = py0 + dy*len;
   /* A proper gear lever is a thick barrel, not a wand: the reference's is a
@@ -2847,14 +2851,15 @@ function drawShifter(g, w, h, v, gateY){
   }
   g.restore();
   /* the domed cap */
-  g.beginPath(); g.ellipse(tx, ty, aw*1.02, aw*0.80, ang, 0, TAU);
+  g.beginPath(); g.ellipse(tx, ty, aw*1.06, aw*0.62, ang, 0, TAU);
   var kg = g.createLinearGradient(tx-nx*aw, ty-ny*aw, tx+nx*aw, ty+ny*aw);
-  kg.addColorStop(0, '#6b7274');
-  kg.addColorStop(0.38, on ? '#ffd487' : '#d6dcde');
-  kg.addColorStop(0.72, on ? '#8a7440' : '#767d7f');
-  kg.addColorStop(1, '#2a3032');
+  kg.addColorStop(0, '#8d9496');
+  kg.addColorStop(0.42, on ? '#ffd487' : '#e2e8ea');
+  kg.addColorStop(1, '#525a5c');
   g.fillStyle = kg; g.fill();
-  g.lineWidth = Math.max(1, w*0.008); g.strokeStyle = 'rgba(0,0,0,.5)'; g.stroke();
+  g.lineWidth = Math.max(1, w*0.010); g.strokeStyle = 'rgba(10,14,15,.7)'; g.stroke();
+  g.beginPath(); g.ellipse(tx, ty, aw*0.62, aw*0.36, ang, 0, TAU);
+  g.fillStyle = on ? '#a37f38' : '#9aa1a3'; g.fill();
 }
 
 /* ---------------------------------------------------- indicator glyphs */
@@ -2880,16 +2885,16 @@ function glyphHeadlight(g, cx, cy, s, col){
   g.strokeStyle = col; g.lineCap = 'butt'; g.lineJoin = 'miter';
   g.lineWidth = Math.max(1.3, s*0.17);
   g.beginPath();                                   /* the bowl */
-  g.moveTo(cx+s*0.16, cy-s*0.80);
-  g.lineTo(cx+s*0.16, cy+s*0.80);
-  g.arc(cx+s*0.16, cy, s*0.80, Math.PI/2, -Math.PI/2, true);
+  g.moveTo(cx+s*0.16, cy-s*0.66);
+  g.lineTo(cx+s*0.16, cy+s*0.66);
+  g.ellipse(cx+s*0.16, cy, s*0.80, s*0.66, 0, Math.PI/2, -Math.PI/2, true);
   g.closePath();
   g.stroke();
   var i;                                           /* four beams, running out */
   for(i=0;i<4;i++){
     g.beginPath();
-    g.moveTo(cx-s*1.10, cy-s*0.62+i*s*0.41);
-    g.lineTo(cx-s*0.16, cy-s*0.62+i*s*0.41);
+    g.moveTo(cx-s*1.32, cy-s*0.51+i*s*0.34);
+    g.lineTo(cx-s*0.16, cy-s*0.51+i*s*0.34);
     g.stroke();
   }
 }
@@ -2897,48 +2902,51 @@ function glyphHeadlight(g, cx, cy, s, col){
    The strap is cut back out of the body in the panel's own colour, which is
    how the reference reads as a belt rather than a scratch. */
 function glyphBelt(g, cx, cy, s, col, bg){
+  /* The occupant is wider than tall through the shoulders — measured off the
+     reference at forty by forty-six — so the figure is built on a squarer
+     footprint than a stick figure would suggest. */
   g.fillStyle = col;
   g.beginPath();                                   /* the head */
-  g.arc(cx-s*0.06, cy-s*0.74, s*0.27, 0, TAU); g.fill();
+  g.arc(cx-s*0.14, cy-s*0.66, s*0.29, 0, TAU); g.fill();
   g.beginPath();                                   /* the torso */
-  g.moveTo(cx-s*0.50, cy+s*0.30);
-  g.quadraticCurveTo(cx-s*0.50, cy-s*0.36, cx-s*0.04, cy-s*0.36);
-  g.quadraticCurveTo(cx+s*0.44, cy-s*0.36, cx+s*0.44, cy+s*0.30);
+  g.moveTo(cx-s*0.72, cy+s*0.26);
+  g.quadraticCurveTo(cx-s*0.72, cy-s*0.32, cx-s*0.14, cy-s*0.32);
+  g.quadraticCurveTo(cx+s*0.44, cy-s*0.32, cx+s*0.44, cy+s*0.26);
   g.closePath(); g.fill();
   g.beginPath();                                   /* the two legs */
-  g.moveTo(cx-s*0.36, cy+s*0.34); g.lineTo(cx-s*0.02, cy+s*0.34);
-  g.lineTo(cx-s*0.20, cy+s*0.92); g.lineTo(cx-s*0.46, cy+s*0.92);
+  g.moveTo(cx-s*0.60, cy+s*0.30); g.lineTo(cx-s*0.14, cy+s*0.30);
+  g.lineTo(cx-s*0.34, cy+s*0.88); g.lineTo(cx-s*0.68, cy+s*0.88);
   g.closePath(); g.fill();
   g.beginPath();
-  g.moveTo(cx+s*0.06, cy+s*0.34); g.lineTo(cx+s*0.34, cy+s*0.34);
-  g.lineTo(cx+s*0.40, cy+s*0.92); g.lineTo(cx+s*0.16, cy+s*0.92);
+  g.moveTo(cx-s*0.02, cy+s*0.30); g.lineTo(cx+s*0.42, cy+s*0.30);
+  g.lineTo(cx+s*0.50, cy+s*0.88); g.lineTo(cx+s*0.14, cy+s*0.88);
   g.closePath(); g.fill();
 
   g.lineCap = 'butt';
   g.strokeStyle = bg || '#25100c';                 /* the gap the strap sits in */
-  g.lineWidth = Math.max(2, s*0.34);
+  g.lineWidth = Math.max(2, s*0.32);
   g.beginPath();
-  g.moveTo(cx+s*0.52, cy-s*0.86); g.lineTo(cx-s*0.34, cy+s*0.20);
+  g.moveTo(cx+s*0.66, cy-s*0.84); g.lineTo(cx-s*0.44, cy+s*0.18);
   g.stroke();
   g.beginPath();
-  g.moveTo(cx-s*0.34, cy+s*0.20); g.lineTo(cx+s*0.56, cy+s*0.26);
+  g.moveTo(cx-s*0.44, cy+s*0.18); g.lineTo(cx+s*0.70, cy+s*0.24);
   g.stroke();
   g.strokeStyle = col;                             /* the strap itself */
-  g.lineWidth = Math.max(1.2, s*0.17);
+  g.lineWidth = Math.max(1.2, s*0.16);
   g.beginPath();
-  g.moveTo(cx+s*0.50, cy-s*0.84); g.lineTo(cx-s*0.30, cy+s*0.18);
+  g.moveTo(cx+s*0.64, cy-s*0.82); g.lineTo(cx-s*0.40, cy+s*0.16);
   g.stroke();
   g.beginPath();
-  g.moveTo(cx-s*0.30, cy+s*0.18); g.lineTo(cx+s*0.54, cy+s*0.24);
+  g.moveTo(cx-s*0.40, cy+s*0.16); g.lineTo(cx+s*0.68, cy+s*0.22);
   g.stroke();
 }
 /* Parking brake: a circled P inside a broken ring. */
 function glyphPark(g, cx, cy, s, col){
   g.strokeStyle = col; g.lineWidth = Math.max(1.2, s*0.15);
-  g.beginPath(); g.arc(cx, cy, s, Math.PI*0.10, Math.PI*0.90); g.stroke();
-  g.beginPath(); g.arc(cx, cy, s, Math.PI*1.10, Math.PI*1.90); g.stroke();
-  g.beginPath(); g.arc(cx, cy, s*0.62, 0, TAU); g.stroke();
-  capText(g, 'P', cx, cy, s*0.92, col, '700');
+  g.beginPath(); g.ellipse(cx, cy, s, s*0.74, 0, Math.PI*0.12, Math.PI*0.88); g.stroke();
+  g.beginPath(); g.ellipse(cx, cy, s, s*0.74, 0, Math.PI*1.12, Math.PI*1.88); g.stroke();
+  g.beginPath(); g.ellipse(cx, cy, s*0.60, s*0.46, 0, 0, TAU); g.stroke();
+  capText(g, 'P', cx, cy, s*0.72, col, '700');
 }
 
 /* =========================================================================
@@ -3076,14 +3084,13 @@ function drawDash(r){
   blitArt(g, art, B.x, B.y-B.rise, S);
 
   /* -------------------------------------------------- indicator strip - */
-  var T = L.strip, sl = T.w/5, sy = T.y + T.h*0.5;
+  var T = L.strip, sy = T.y + T.h*0.5, sl = T.slots;
   var gs = T.h*0.30;
-  var sxAt = function(n){ return T.x + sl*(n+0.5); };
-  glyphArrow(g, sxAt(0), sy, gs*1.15, false, input.left ? DC.amber : DC.grey);
-  glyphHeadlight(g, sxAt(1), sy, gs, DC.green);
-  glyphBelt(g, sxAt(2), sy, gs*1.05, DC.red, DC.redPanel);
-  glyphPark(g, sxAt(3), sy, gs*0.95, hudCtl.hb > 0.4 ? '#ff6a58' : DC.red);
-  glyphArrow(g, sxAt(4), sy, gs*1.15, true, input.right ? DC.amber : DC.grey);
+  glyphArrow(g, sl[0], sy, gs*0.82, false, input.left ? DC.amber : DC.grey);
+  glyphHeadlight(g, sl[1], sy, gs*0.80, DC.green);
+  glyphBelt(g, sl[2], sy, gs*1.12, DC.red, DC.redPanel);
+  glyphPark(g, sl[3], sy, gs*0.98, hudCtl.hb > 0.4 ? '#ff6a58' : DC.red);
+  glyphArrow(g, sl[4], sy, gs*0.82, true, input.right ? DC.amber : DC.grey);
 
   /* ------------------------------------------------------ status bars -
      Every tile carries the same row of segments: how much grip is left, how
@@ -4025,13 +4032,18 @@ function drawRoad(g, r, viewR){
 function drawBanner(g, nd, ca, cb){
   var nx = Math.cos(nd.a), ny = Math.sin(nd.a);
   var dx = Math.sin(nd.a), dy = -Math.cos(nd.a);
-  var n = 8, w = nd.hw*2/n;
+  /* Eleven checks across the road, measured off the reference: its cells run
+     a shade under a twelfth of the width, not the eighth a first pass gives.
+     The band is stepped back far enough to clear the car's tail, so the line
+     sits behind the car on the grid rather than under it. */
+  var n = 11, w = nd.hw*2/n;
+  var back = CAR_WORLD_LEN*0.42 + w;
   for(var i=0;i<n;i++){
     var lat = -nd.hw + i*w;
     for(var k=0;k<2;k++){
       g.fillStyle = ((i+k)%2===0) ? ca : cb;
-      var bx = nd.x + nx*lat + dx*(k*w - w*2.15);
-      var by = nd.y + ny*lat + dy*(k*w - w*2.15);
+      var bx = nd.x + nx*lat + dx*(k*w - back);
+      var by = nd.y + ny*lat + dy*(k*w - back);
       g.save(); g.translate(bx,by); g.rotate(nd.a);
       g.fillRect(0, 0, w+0.6, w+0.6);
       g.restore();
@@ -4091,8 +4103,12 @@ function drawCar(g, r){
   g.rotate(c.a);
   /* The sun is off to the left in the reference, so the car throws its own
      silhouette out to the right and a touch behind. */
-  g.globalAlpha = 0.42;
-  g.drawImage(sp.shadow, -ww/2 + ww*0.20, -wh/2 + wh*0.035, ww*1.02, wh*1.02);
+  var so = [[0.20,0.035,1.02,0.30],[0.215,0.045,1.05,0.16],[0.185,0.025,0.99,0.16]];
+  for(var si=0; si<so.length; si++){
+    g.globalAlpha = so[si][3];
+    g.drawImage(sp.shadow, -ww/2 + ww*so[si][0], -wh/2 + wh*so[si][1],
+                ww*so[si][2], wh*so[si][2]);
+  }
   g.globalAlpha = 1;
   g.drawImage(sp.canvas, -ww/2, -wh/2, ww, wh);
   g.restore();
