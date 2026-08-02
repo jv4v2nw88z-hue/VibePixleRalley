@@ -2448,7 +2448,15 @@ function buildDashBase(L, S){
   /* The steering bay is a raised shelf, not a hole: it stands proud of the
      fascia so the moulding seams run behind it rather than across the keys. */
   var LB = L.leftBay;
-  pad(g, LB.x, LB.y, LB.w, LB.h, u(5), '#232729', '#131617');
+  chamferPath(g, LB.x, LB.y, LB.w, LB.h, u(4));
+  g.fillStyle = vGrad(g, LB.y, LB.y+LB.h, [[0,'#171b1d'],[1,'#0c0f10']]);
+  g.fill();
+  g.lineWidth = Math.max(1, u(0.5)); g.strokeStyle = 'rgba(0,0,0,.55)'; g.stroke();
+  g.save(); chamferPath(g, LB.x, LB.y, LB.w, LB.h, u(4)); g.clip();
+  g.lineWidth = Math.max(1, u(0.7)); g.strokeStyle = 'rgba(188,200,204,.20)';
+  g.beginPath(); g.moveTo(LB.x, LB.y+LB.h*0.5); g.lineTo(LB.x, LB.y+u(4));
+  g.lineTo(LB.x+u(4), LB.y); g.lineTo(LB.x+LB.w*0.62, LB.y); g.stroke();
+  g.restore();
   /* the five tell-tales, in a slot with cast dividers */
   var lb = L.led, cw = lb.w/lb.n;
   well(g, lb.x-u(1.6), lb.y-u(1.4), lb.w+u(3.2), lb.h+u(2.8), u(1.4), '#0d0f10');
@@ -2462,16 +2470,16 @@ function buildDashBase(L, S){
 
   /* ------------------------------------------------- gear selector ---- */
   var G = L.gear;
-  capText(g, 'GEAR', G.x+G.w/2, G.capY, u(3.7), DC.label, '500', L.U*0.10);
+  capText(g, 'GEAR', G.x+G.w/2, G.capY, u(3.5), '#e2e8ea', '500', L.U*0.10);
   rrPath(g, G.x, G.y, G.w, G.h, u(1.8));
-  g.fillStyle = vGrad(g, G.y, G.y+G.h, [[0,'#2e3335'],[1,'#1c2022']]);
+  g.fillStyle = vGrad(g, G.y, G.y+G.h, [[0,'#1b1f21'],[1,'#101314']]);
   g.fill();
-  g.lineWidth = Math.max(1, u(0.55)); g.strokeStyle = 'rgba(170,182,186,.42)'; g.stroke();
+  g.lineWidth = Math.max(1, u(0.5)); g.strokeStyle = 'rgba(150,164,168,.36)'; g.stroke();
   for(i=1;i<G.rows;i++){                              /* row separators */
     y = G.y + G.h*i/G.rows;
-    g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(G.x+u(0.8), y, G.w-u(1.6), Math.max(1, u(0.4)));
-    g.fillStyle = 'rgba(205,215,218,.16)';
-    g.fillRect(G.x+u(0.8), y+Math.max(1, u(0.4)), G.w-u(1.6), Math.max(1, u(0.3)));
+    g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(G.x+u(0.8), y, G.w-u(1.6), Math.max(1, u(0.3)));
+    g.fillStyle = 'rgba(205,215,218,.11)';
+    g.fillRect(G.x+u(0.8), y+Math.max(1, u(0.3)), G.w-u(1.6), Math.max(1, u(0.25)));
   }
 
   /* ------------------------------------------------------ instruments - */
@@ -2605,26 +2613,24 @@ function sevenSeg(g, s, cx, cy, h, on, off){
 /* the cast frame around a steering key — bright on the top left, dark at
    the foot, exactly the double bevel the reference gives them */
 function drawKeyFrame(g, K, u){
-  var c = u(4.5);
+  var c = u(2.6);
   /* the shadow the key drops into its bay */
-  chamferPath(g, K.x-u(2.4), K.y-u(2.4), K.w+u(4.8), K.h+u(4.8), c+u(1.6));
+  rrPath(g, K.x-u(1.8), K.y-u(1.8), K.w+u(3.6), K.h+u(3.6), c+u(2.4));
   g.fillStyle = 'rgba(0,0,0,.62)'; g.fill();
-  /* A cast rim, chamfered the way an injection-moulded surround is, bright
-     where the light lands and dark underneath — and with a groove cut
-     inside it, which is what the reference's keys are read by. */
-  var fg = g.createLinearGradient(K.x, K.y, K.x+K.w*0.6, K.y+K.h);
-  fg.addColorStop(0.00, '#cfd4ce');
-  fg.addColorStop(0.20, '#8d938e');
-  fg.addColorStop(0.52, '#4a504e');
-  fg.addColorStop(0.80, '#767c79');
-  fg.addColorStop(1.00, '#2e3435');
-  chamferPath(g, K.x, K.y, K.w, K.h, c);
+  /* A thin cast rim. The reference's is barely three pixels of metal round a
+     big dark pad — most of what looks like a bezel is the highlight running
+     along its top left, not the rim's own width. */
+  var fg = g.createLinearGradient(K.x, K.y, K.x+K.w*0.7, K.y+K.h*0.8);
+  fg.addColorStop(0.00, '#d6dad4');
+  fg.addColorStop(0.16, '#9ba19c');
+  fg.addColorStop(0.44, '#4c5250');
+  fg.addColorStop(0.72, '#3a403f');
+  fg.addColorStop(1.00, '#6e7472');
+  rrPath(g, K.x, K.y, K.w, K.h, c+u(1.6));
   g.fillStyle = fg; g.fill();
-  g.lineWidth = Math.max(1, u(0.45)); g.strokeStyle = 'rgba(0,0,0,.6)'; g.stroke();
-  chamferPath(g, K.x+u(1.5), K.y+u(1.5), K.w-u(3), K.h-u(3), c-u(1));
-  g.lineWidth = Math.max(1, u(0.8)); g.strokeStyle = 'rgba(8,11,12,.85)'; g.stroke();
-  chamferPath(g, K.x+u(2.4), K.y+u(2.4), K.w-u(4.8), K.h-u(4.8), c-u(1.6));
-  g.lineWidth = Math.max(1, u(0.45)); g.strokeStyle = 'rgba(190,198,194,.35)'; g.stroke();
+  g.lineWidth = Math.max(1, u(0.4)); g.strokeStyle = 'rgba(0,0,0,.65)'; g.stroke();
+  rrPath(g, K.x+u(1.55), K.y+u(1.55), K.w-u(3.1), K.h-u(3.1), c+u(0.6));
+  g.lineWidth = Math.max(1, u(0.9)); g.strokeStyle = 'rgba(6,9,10,.95)'; g.stroke();
 }
 
 /* --------------------------------------------------- status tile icons */
@@ -2748,12 +2754,12 @@ function blitArt(g, cv, x, y, S){
 function drawKeyFace(g, w, h, right, pressed){
   var U = h/45.7;
   var d = pressed ? U*0.9 : 0;
-  var m = U*3.4, r = U*3.2;
-  chamferPath(g, m, m+d, w-2*m, h-2*m-d*0.5, r);
-  g.fillStyle = vGrad(g, m, h-m, pressed ? [[0,'#2f3639'],[1,'#181d1f']]
-                                         : [[0,'#1b2022'],[1,'#0c1011']]);
+  var m = U*1.9, r = U*3.4;
+  rrPath(g, m, m+d, w-2*m, h-2*m-d*0.5, r);
+  g.fillStyle = vGrad(g, m, h-m, pressed ? [[0,'#2c3336'],[1,'#161b1d']]
+                                         : [[0,'#191e20'],[1,'#0a0e0f']]);
   g.fill();
-  g.save(); chamferPath(g, m, m+d, w-2*m, h-2*m-d*0.5, r); g.clip();
+  g.save(); rrPath(g, m, m+d, w-2*m, h-2*m-d*0.5, r); g.clip();
   g.fillStyle = grainPattern(g); g.fillRect(0, 0, w, h);
   g.fillStyle = 'rgba(0,0,0,.40)'; g.fillRect(0, m+d, w, U*1.6);
   g.restore();
@@ -3044,7 +3050,7 @@ function drawDash(r){
             rows[i].on ? DC.amber : '#b6bcbe', rows[i].on ? '700' : '500');
     if(rows[i].on){
       rrPath(g, G.x+G.w-u(0.6), y+rh*0.26, u(3.2), rh*0.48, u(0.7));
-      g.fillStyle = vGrad(g, y, y+rh, [[0,'#b0b6b8'],[1,'#565c5e']]); g.fill();
+      g.fillStyle = vGrad(g, y, y+rh, [[0,'#8d9496'],[1,'#40474a']]); g.fill();
       g.lineWidth = Math.max(1, u(0.35)); g.strokeStyle = 'rgba(0,0,0,.55)'; g.stroke();
     }
   }
