@@ -1,0 +1,14 @@
+import { chromium } from '/home/user/VibePixleRalley/node_modules/playwright/index.mjs';
+const out = process.argv[2] || 'shot.png';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const ctx = await b.newContext({ viewport: { width: 1536, height: 1024 }, deviceScaleFactor: 1 });
+const p = await ctx.newPage();
+p.on('pageerror', e => console.log('PAGEERROR', e.message));
+p.on('console', m => { if (m.type()==='error' && !/404/.test(m.text())) console.log('CONSOLE', m.text()); });
+await p.goto(process.env.URL || 'http://127.0.0.1:5178/', { waitUntil:'networkidle' });
+await p.waitForTimeout(500);
+await p.click('[data-go="stages"]'); await p.waitForTimeout(300);
+await p.click('#stage-list .stage-card button.btn.primary');
+await p.waitForTimeout(1200);
+await p.screenshot({ path: out });
+await b.close();
