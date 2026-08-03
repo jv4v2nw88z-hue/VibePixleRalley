@@ -476,4 +476,92 @@ The gain is the pedal bay: the old footwell repainted a checker-plate face
 cell by cell every frame, a few hundred `fillRect` calls. The travel gauges
 are eight. Everything Phase 1 added went into the cached bitmap.
 
-_(Phase 1 complete. Next: Phase 2, gauges.)_
+---
+
+### Phase 2 — gauges
+
+**What changed.** `drawDialFace` stays the single component both dials are
+built from; it was rewritten rather than forked, and everything in it is now
+expressed as a fraction of the face radius so the pair scales together.
+
+- **Bezel.** Double ring: a dark mounting shoulder the bezel presses into, a
+  polished chrome ring with a two-lobe light sweep (bright top left, second
+  weaker lobe bottom right), a hard catch just inside the outer edge, then a
+  dark inner shoulder the face sits down inside. Face radius is `0.83R`.
+- **Ticks.** Five minors to a major on both dials, matching the reference
+  (`minor:0.2` on the tacho, `minor:4` on the speedo). Majors run
+  `0.87fr-0.975fr` at `0.042fr` wide in pure white; minors `0.905fr-0.975fr`
+  at `0.017fr`. A hairline at `0.855fr` separates the numerals from the band.
+- **Numerals.** Bold grotesque at `0.185fr`, not the monospace the rest of the
+  UI uses — monospaced digits sit on a fixed advance and read loose and
+  mechanical on a dial rim. Full labelling, every major.
+- **Numeral radius adapts to label width.** A three-digit label is nearly half
+  the face wide, so the fixed radius that suits the tacho's single digits
+  drove the speedo's hundreds into the tick band. `numR` is now
+  `min(0.755fr, majR0 - 0.03fr - widest/2)`, with `widest` measured with
+  `measureText` rather than estimated from character count.
+- **Redline.** A run of heavy radial blocks at minor intervals, set outside
+  the tick band and running up to the bezel, replacing the solid two-layer
+  arc painted under the ticks. The white majors at 7 and 8 still show.
+- **Scale.** `TACH_MAX` 9 to 8, `TACH_RED` and `TACH_SCALE` 7 to 6.5. On the
+  old numbers nothing could drive the needle past 7 of a 9 dial short of an
+  overrev, so the top fifth of the sweep was dead. Display constants only —
+  the gearbox and the shift bar still read `race.rpm` against 1.0.
+- **Needle.** One tapered blade with no counterweight, tip at `0.805fr`, a
+  soft shadow dropped down and right, and a domed pivot cap at `0.165fr`
+  carrying a bright boss in the needle's own colour.
+- **Glass.** Was an arc stroke, so its gradient stopped dead at each end and
+  left a grey wedge with a hard edge on the upper right of the face. Now a
+  radial sheen clipped to the face, which has no ends to show.
+- **Digital readout** moved off the dial into the centre stack. Inside the
+  face it had nowhere to go that did not foul the full-scale numeral: the
+  wedge at the foot of a 0-160 dial is exactly where the 160 sits. This is
+  Phase 3's element and Phase 3 gives it its caption and segment treatment;
+  it moved early because the collision was a Phase 2 numeral-placement defect.
+
+**Two deliberate deviations from the reference.**
+
+1. **The speedo stays in km/h.** The reference reads MPH. Converting the dial
+   alone would leave it contradicting the rest of the game, which is metric
+   throughout: stage lengths are quoted in km (`FOREST GRAVEL · 9.1 KM`) and
+   the unlock requirements in km/h (`HANDLING 58+ · 170 KM/H+`). Changing
+   those is content, not rendering, and outside this pass. Everything else
+   about the dial — scale, tick density, numeral weight, placement — matches.
+   One constant if you want MPH instead.
+2. **The reference's own numerals are garbled.** Its tacho reads
+   `0 1 2 4 5 5 ? 7 8` — two fives, and a question mark where the 3 and 6
+   belong. Those are mockup artefacts. Geometry, weight and placement are
+   matched; the sequence is drawn correctly.
+
+**Responsive behaviour.** At 3:2 the speedo labels every 20 as the reference
+does. On a phone the dial is a quarter the relative size and nine three-digit
+labels genuinely will not fit, so `drawDialFace` thins to every 40 rather than
+overlapping them. That is the auto-thin doing its job, not a layout failure.
+
+**Scored against `reference/target.png`** (captures:
+`reference/shots/phase2-desktop.png`, `phase2-phone.png`, plus the attempt
+series).
+
+| Element | Score | Remaining delta |
+| --- | --- | --- |
+| Bezel: double ring, chrome sweep | 9 | Dark inner shoulder is a shade thicker than the reference's |
+| Face gradient and glass | 9 | — |
+| Tick density, major/minor differentiation | 9 | — |
+| Numeral typography and placement | 9 | Thins to every 40 on a phone-width dial (see above) |
+| Redline arc geometry | 9 | — |
+| Tacho scale and dead-zone fix | 10 | — |
+| Needle taper, pivot cap, drop shadow | 9 | Reference blade is fractionally heavier at the hub |
+| Dials read as a matched pair | 9 | — |
+
+**Regression guard:** 29/29 pass.
+
+**Frame cost:** up slightly, from the second needle pass for the shadow and
+the radial-gradient hub — two dials, every frame. Well inside the 1ms
+reporting threshold and 6-8% of the 16.67ms budget.
+
+| Preset | Phase 1 mean | Phase 2 mean | delta | p95 | max |
+| --- | --- | --- | --- | --- | --- |
+| phone | 0.98 | 1.28 | +0.30 | 1.90 | 3.30 |
+| desktop | 0.83 | 1.02 | +0.19 | 1.40 | 2.00 |
+
+_(Phase 2 complete. Next: Phase 3, secondary instruments.)_

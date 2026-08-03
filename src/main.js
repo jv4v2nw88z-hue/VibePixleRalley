@@ -1848,6 +1848,14 @@ function hudFont(g, size, weight){
   g.font = (weight||'bold') + ' ' + size.toFixed(1) +
            'px ui-monospace,"SF Mono",Menlo,Consolas,monospace';
 }
+/* Instrument lettering is a grotesque, not the monospace the rest of the UI
+   uses. Monospaced digits sit on a fixed advance, which on a dial rim reads
+   as loose and mechanical — every reference instrument sets its numerals in
+   a tight bold sans, so the dials get their own stack. */
+function dialFont(g, size, weight){
+  g.font = (weight||'bold') + ' ' + size.toFixed(1) +
+           'px system-ui,-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif';
+}
 
 /* =========================================================================
    GAUGE CLUSTER
@@ -1859,9 +1867,15 @@ var DIAL_A0 = Math.PI*0.75, DIAL_SWEEP = Math.PI*1.5;
 function dialAngle(v, min, max){ return DIAL_A0 + DIAL_SWEEP*clamp((v-min)/(max-min),0,1); }
 
 /* The tacho reads in thousands of rpm. race.rpm is a fraction of redline,
-   so redline sits exactly on the 7 mark and the dial runs on to 9 — the
-   same 1.0 threshold the gearbox and the shift bar use. */
-var TACH_MAX = 9, TACH_RED = 7, TACH_SCALE = 7;
+   so redline sits exactly where the red band starts and the dial runs on to
+   8 — the same 1.0 threshold the gearbox and the shift bar use.
+
+   Scaled to 6.5 of 8 rather than the old 7 of 9. On the old numbers the top
+   fifth of the sweep was unreachable: nothing could ever drive the needle
+   past 7 of a 9 dial short of an overrev, so a whole quadrant of the face
+   was dead. At 6.5 of 8 the needle uses the dial the way the reference
+   does, and the overrev still has somewhere to go. */
+var TACH_MAX = 8, TACH_RED = 6.5, TACH_SCALE = 6.5;
 
 var cluster = {
   cv:null, g:null, base:null, L:null, key:'',
@@ -2159,102 +2173,131 @@ function dashShellPath(g, L, dy){
   g.closePath();
 }
 
-/* --------------------------------------------------------- static face */
+/* --------------------------------------------------------- static face
+   Both dials are this one function. The reference draws them as a matched
+   pair — same double-ring chrome bezel, same tick geometry, same numeral
+   weight and radius — and only the scale, the caption and the redline
+   differ, so everything below is expressed as a fraction of the face
+   radius and driven off the options object.
+
+   Note on the reference: its dial numerals are garbled (the tacho reads
+   0 1 2 4 5 5 ? 7 8, with two fives and a question mark where 3 and 6
+   belong). Those are artefacts of the mockup, not a design; the geometry,
+   weight and placement are matched, the sequence is drawn correctly. */
 function drawDialFace(g, cx, cy, R, o){
-  var i, v, a, maj, red, r0, r1, len;
-  var num = o.num || HUDC.numSpd;
+  var i, v, a, maj, r0, r1, red;
 
-  /* --- chrome bezel. A polished ring reads as a sweep of light around the
-     circumference, not a flat tint: bright at the top left where the sky
-     catches it, dark through the middle, picking up a second, weaker
-     highlight at the bottom right as it turns back up. --- */
-  var bw = Math.max(2.4, R*0.13);
-  var bez = g.createLinearGradient(cx - R*0.75, cy - R*0.85, cx + R*0.68, cy + R*0.82);
+  /* --- mounting shoulder: the dark ring the bezel is pressed into --- */
+  g.beginPath(); g.arc(cx,cy,R,0,TAU); g.fillStyle = '#15181b'; g.fill();
+
+  /* --- chrome bezel. Polished steel reads as a sweep of light around the
+     circumference rather than a flat tint: bright where the sky catches it
+     at the top left, falling away through the middle, then picking up a
+     second, weaker lobe at the bottom right as the surface turns back up. */
+  var bezR = R*0.972, faceR = R*0.830;
+  var bez = g.createLinearGradient(cx - R*0.78, cy - R*0.86, cx + R*0.70, cy + R*0.84);
   bez.addColorStop(0.00, '#ffffff');
-  bez.addColorStop(0.13, HUDC.bezelHi);
-  bez.addColorStop(0.30, '#b0bcc8');
-  bez.addColorStop(0.47, '#6d7884');
-  bez.addColorStop(0.62, '#414a55');
-  bez.addColorStop(0.79, '#98a4b1');
-  bez.addColorStop(0.92, '#5c6672');
-  bez.addColorStop(1.00, HUDC.bezelLo);
-  g.beginPath(); g.arc(cx,cy,R,0,TAU); g.fillStyle = bez; g.fill();
-  /* crisp rim catch just inside the outer edge, and a dark inner shoulder */
-  g.beginPath(); g.arc(cx,cy,R-bw*0.22,Math.PI*1.02,Math.PI*1.82);
-  g.lineWidth = Math.max(0.7, bw*0.20); g.strokeStyle = 'rgba(255,255,255,.72)'; g.stroke();
-  g.beginPath(); g.arc(cx,cy,R-bw*0.80,0,TAU);
-  g.lineWidth = Math.max(0.8, bw*0.30); g.strokeStyle = 'rgba(10,14,20,.75)'; g.stroke();
-  g.beginPath(); g.arc(cx,cy,R-bw,0,TAU); g.fillStyle = '#010204'; g.fill();
+  bez.addColorStop(0.11, '#e8eef4');
+  bez.addColorStop(0.27, '#aeb8c2');
+  bez.addColorStop(0.44, '#69737e');
+  bez.addColorStop(0.58, '#3d454e');
+  bez.addColorStop(0.74, '#9aa5b0');
+  bez.addColorStop(0.88, '#5d6772');
+  bez.addColorStop(1.00, '#2b3138');
+  g.beginPath(); g.arc(cx,cy,bezR,0,TAU); g.fillStyle = bez; g.fill();
 
-  /* --- near-black glass, vignetted so the middle lifts slightly --- */
-  var fr = R - bw - 0.5;
-  var face = g.createRadialGradient(cx - R*0.30, cy - R*0.36, R*0.03, cx, cy, R*1.05);
-  face.addColorStop(0.00, '#1d242e');
-  face.addColorStop(0.42, '#0b0f15');
-  face.addColorStop(1.00, '#020406');
-  g.beginPath(); g.arc(cx,cy,fr,0,TAU); g.fillStyle = face; g.fill();
+  /* hard catch just inside the outer edge, and the dark inner shoulder the
+     face sits down inside */
+  g.beginPath(); g.arc(cx,cy,bezR - Math.max(0.5, R*0.014), Math.PI*1.03, Math.PI*1.80);
+  g.lineWidth = Math.max(0.6, R*0.020); g.strokeStyle = 'rgba(255,255,255,.80)'; g.stroke();
+  g.beginPath(); g.arc(cx,cy,R*0.868,0,TAU);
+  g.lineWidth = Math.max(0.8, R*0.045); g.strokeStyle = '#0a0d10'; g.stroke();
 
-  /* Both dials reserve the same outer ring so they read as a matched pair;
-     on the tacho it carries the redline band. */
-  var trackR = fr - Math.max(1.4, R*0.055), trackW = Math.max(2, R*0.075);
+  /* --- face: near black, lifted very slightly toward the top left --- */
+  var face = g.createRadialGradient(cx - R*0.28, cy - R*0.34, R*0.04, cx, cy, R*0.98);
+  face.addColorStop(0.00, '#191d22');
+  face.addColorStop(0.46, '#0d1013');
+  face.addColorStop(1.00, '#050709');
+  g.beginPath(); g.arc(cx,cy,faceR,0,TAU); g.fillStyle = face; g.fill();
+
+  var fr = faceR;
   var a0 = dialAngle(o.min,o.min,o.max), a1 = dialAngle(o.max,o.min,o.max);
-  g.lineCap = 'butt';
-  g.beginPath(); g.arc(cx,cy,trackR, a0, a1);
-  g.lineWidth = trackW; g.strokeStyle = 'rgba(170,196,232,.13)'; g.stroke();
-  if(o.redFrom != null){                       /* redline band */
-    var ra = dialAngle(o.redFrom,o.min,o.max);
-    g.beginPath(); g.arc(cx,cy,trackR, ra, a1);
-    g.lineWidth = trackW + 2; g.strokeStyle = 'rgba(255,59,47,.25)'; g.stroke();
-    g.beginPath(); g.arc(cx,cy,trackR, ra, a1);
-    g.lineWidth = trackW; g.strokeStyle = HUDC.needle; g.stroke();
-  }
 
+  /* hairline between the numerals and the tick band, as on the reference */
+  g.beginPath(); g.arc(cx,cy,fr*0.855, a0, a1);
+  g.lineWidth = Math.max(0.5, fr*0.012); g.strokeStyle = 'rgba(190,202,216,.30)'; g.stroke();
+
+  /* --- ticks. Minor every o.minor, major every o.major, and the major is
+     both longer and heavier so the scale reads at a glance. --- */
   var steps = Math.round((o.max-o.min)/o.minor);
+  var perMaj = Math.round(o.major/o.minor);
+  var majR0 = fr*0.870, minR0 = fr*0.905, tickR1 = fr*0.975;
+
+  /* how many numerals the rim can actually carry without them touching */
+  var every = o.labelEvery || 1;
+  var numSize = Math.max(4.2, fr*0.185);
+  dialFont(g, numSize);
+  var widest = g.measureText(String(Math.round(o.max))).width;
+  var numR = Math.min(fr*0.755, majR0 - fr*0.030 - widest/2);
+  var arcPer = Math.abs(a1-a0)/((o.max-o.min)/o.major) * numR;
+  while(arcPer*every < widest*1.12) every++;
+
   for(i=0;i<=steps;i++){
     v = o.min + i*o.minor;
-    maj = (i % Math.round(o.major/o.minor)) === 0;
+    maj = (i % perMaj) === 0;
     red = o.redFrom != null && v >= o.redFrom - 1e-6;
     a = dialAngle(v,o.min,o.max);
-    len = maj ? R*0.125 : R*0.065;
-    r1 = trackR - trackW/2 - 1;
-    r0 = r1 - len;
+    r0 = maj ? majR0 : minR0;
+    r1 = tickR1;
+    if(red){
+      /* The redline is a run of heavy blocks set outside the tick band and
+         running up to the bezel, not a painted arc under it. */
+      g.beginPath();
+      g.moveTo(cx+Math.cos(a)*fr*0.955, cy+Math.sin(a)*fr*0.955);
+      g.lineTo(cx+Math.cos(a)*fr*1.082, cy+Math.sin(a)*fr*1.082);
+      g.lineWidth = Math.max(1.8, fr*0.078);
+      g.lineCap = 'butt'; g.strokeStyle = '#e2180d'; g.stroke();
+      /* the majors still get their white tick under the red */
+      if(!maj) continue;
+    }
     g.beginPath();
     g.moveTo(cx+Math.cos(a)*r0, cy+Math.sin(a)*r0);
     g.lineTo(cx+Math.cos(a)*r1, cy+Math.sin(a)*r1);
-    g.lineWidth = maj ? Math.max(1.4, R*0.05) : 1;
-    g.strokeStyle = red ? (maj ? HUDC.needle : HUDC.tickRed) : (maj ? HUDC.tick : HUDC.tickDim);
+    g.lineWidth = maj ? Math.max(1.2, fr*0.042) : Math.max(0.5, fr*0.017);
+    g.strokeStyle = maj ? '#ffffff' : 'rgba(226,234,244,.72)';
     g.stroke();
-    if(maj && (i % Math.round(o.major*o.labelEvery/o.minor)) === 0){
-      var lr = r0 - R*0.15;
-      hudFont(g, Math.max(7, R*0.29));
-      g.fillStyle = red ? '#ff8b78' : num;
+
+    if(maj && ((i/perMaj) % every) === 0){
+      dialFont(g, numSize);
+      g.fillStyle = '#ffffff';
       g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText(String(Math.round(v)), cx+Math.cos(a)*lr, cy+Math.sin(a)*lr);
+      g.fillText(String(Math.round(v)), cx+Math.cos(a)*numR, cy+Math.sin(a)*numR);
     }
   }
 
-  /* Unit captions ride close in to the hub. The numerals sit out on the
-     diagonals, so anything much further out than this collides with them
-     once the dial gets small — which, on a dash this size, is always. */
+  /* --- captions --- */
   g.textAlign = 'center'; g.textBaseline = 'middle';
   if(o.label){
-    hudFont(g, Math.max(4.5, R*0.145));
-    g.fillStyle = 'rgba(226,236,252,.74)';
-    g.fillText(o.label, cx, cy - R*0.23);
+    dialFont(g, Math.max(4, fr*0.185));
+    g.fillStyle = '#ffffff';
+    g.fillText(o.label, cx, cy - fr*0.300);
   }
   if(o.sub){
-    hudFont(g, Math.max(4, R*0.115));
-    g.fillStyle = 'rgba(196,212,234,.46)';
-    g.fillText(o.sub, cx, cy + R*0.25);
+    dialFont(g, Math.max(3.5, fr*0.140));
+    g.fillStyle = '#8b9096';
+    g.fillText(o.sub, cx, cy + fr*0.272);
   }
 
-  /* --- glass: a soft crescent of reflected light across the top left --- */
-  var gl = g.createLinearGradient(cx - R*0.8, cy - R*0.9, cx + R*0.35, cy + R*0.55);
-  gl.addColorStop(0.00, 'rgba(255,255,255,.20)');
-  gl.addColorStop(0.45, 'rgba(255,255,255,.055)');
+  /* --- glass: a soft sheen off the top left of the cover --- */
+  g.save();
+  g.beginPath(); g.arc(cx, cy, fr, 0, TAU); g.clip();
+  var gl = g.createRadialGradient(cx - fr*0.38, cy - fr*0.48, fr*0.04,
+                                  cx - fr*0.20, cy - fr*0.26, fr*1.10);
+  gl.addColorStop(0.00, 'rgba(255,255,255,.115)');
+  gl.addColorStop(0.42, 'rgba(255,255,255,.038)');
   gl.addColorStop(1.00, 'rgba(255,255,255,0)');
-  g.beginPath(); g.arc(cx, cy, fr - R*0.14, Math.PI*0.90, Math.PI*1.80);
-  g.lineWidth = R*0.30; g.strokeStyle = gl; g.stroke();
+  g.fillStyle = gl; g.fillRect(cx - fr, cy - fr, fr*2, fr*2);
+  g.restore();
 }
 
 /* Everything that never moves, painted once at device resolution.
@@ -2362,20 +2405,16 @@ function buildClusterBase(L, S){
 
   drawPedalBayBase(g, L);
 
+  /* Both dials label every major and let drawDialFace thin them only if the
+     rim genuinely cannot carry them, rather than giving up at a fixed size.
+     Five minors to a major on each, as on the reference. */
   drawDialFace(g, L.tachX, L.dialY, L.R, {
-    min:0, max:TACH_MAX, major:1, minor:0.5, redFrom:TACH_RED,
-    /* no "x1000" caption: at this dial size it lands on the 0 and the 9 */
-    labelEvery: L.R >= 44 ? 1 : 3, label:'RPM',
-    num: HUDC.numTach
+    min:0, max:TACH_MAX, major:1, minor:0.2, redFrom:TACH_RED,
+    label:'RPM', sub:'x1000'
   });
-  /* three-digit numbers need room: thin the labelling out once the dial
-     carries more than five divisions, or once the dial itself is small */
-  var divs = cluster.kmhMax/40;
   drawDialFace(g, L.spdX, L.dialY, L.R, {
-    min:0, max:cluster.kmhMax, major:40,
-    minor: cluster.kmhMax <= 160 ? 10 : 20,
-    labelEvery: (divs > 4 || L.R < 44) ? 2 : 1,  /* unit lives on the readout */
-    label:'KMH', num: HUDC.numSpd
+    min:0, max:cluster.kmhMax, major:20, minor:4,
+    label:'KMH'
   });
 
   /* --- gear strip, to the left of the tacho as on the reference --- */
@@ -2454,46 +2493,55 @@ function drawPedalPlates(g, L, gasV, brakeV){
 }
 
 /* ------------------------------------------------------------- needles */
-/* A thin, sharp instrument pointer: a hair-width blade that tapers to a
-   point just short of the tick ring, with a stubby counterweight behind
-   the hub. Kept crisp rather than chunky, as on the reference cluster. */
+/* A single tapered blade: widest at the hub, running out to a point just
+   short of the tick ring, with a soft shadow dropped down and to the right
+   so it reads as sitting above the dial face rather than printed on it.
+   No counterweight tail — the reference has none, and at this size a tail
+   only muddies the hub. The pivot is a domed black cap carrying a bright
+   boss in the needle's own colour. */
 function drawNeedle(g, cx, cy, R, ang, col){
-  var w0 = Math.max(0.9, R*0.042);                      /* width at the hub */
-  var w1 = Math.max(0.4, R*0.011);                      /* width at the tip */
-  g.save();
-  g.translate(cx, cy); g.rotate(ang);
+  var fr = R*0.830;
+  var w0 = Math.max(0.9, fr*0.056);                     /* width at the hub */
+  var tip = fr*0.805;
+  var i;
 
-  g.beginPath();                                        /* counterweight tail */
-  g.moveTo(-R*0.19, -w0*0.62);
-  g.lineTo(-R*0.19,  w0*0.62);
-  g.lineTo(-R*0.03,  w0*0.85);
-  g.lineTo(-R*0.03, -w0*0.85);
-  g.closePath();
-  g.fillStyle = 'rgba(8,10,14,.72)'; g.fill();
+  for(i=0;i<2;i++){                                     /* shadow, then blade */
+    g.save();
+    if(i === 0){ g.translate(cx + fr*0.030, cy + fr*0.038); }
+    else       { g.translate(cx, cy); }
+    g.rotate(ang);
+    g.beginPath();
+    g.moveTo(-fr*0.085,  w0*0.86);
+    g.lineTo( tip,       w0*0.16);
+    g.lineTo( tip + fr*0.020, 0);
+    g.lineTo( tip,      -w0*0.16);
+    g.lineTo(-fr*0.085, -w0*0.86);
+    g.closePath();
+    g.fillStyle = i === 0 ? 'rgba(0,0,0,.45)' : col;
+    g.fill();
+    if(i === 1){                                        /* lit upper flank */
+      g.beginPath();
+      g.moveTo(-fr*0.085, -w0*0.86);
+      g.lineTo( tip,      -w0*0.16);
+      g.lineTo( tip,      -w0*0.02);
+      g.lineTo(-fr*0.085, -w0*0.34);
+      g.closePath();
+      g.fillStyle = 'rgba(255,255,255,.30)'; g.fill();
+    }
+    g.restore();
+  }
 
-  g.beginPath();                                        /* blade */
-  g.moveTo(-R*0.05,  w0);
-  g.lineTo( R*0.90,  w1);
-  g.lineTo( R*0.93,  0);
-  g.lineTo( R*0.90, -w1);
-  g.lineTo(-R*0.05, -w0);
-  g.closePath();
-  g.fillStyle = col; g.fill();
-
-  g.beginPath();                                        /* lit upper edge */
-  g.moveTo(-R*0.05, -w0);
-  g.lineTo( R*0.90, -w1);
-  g.lineTo( R*0.90, -w1*0.2);
-  g.lineTo(-R*0.05, -w0*0.42);
-  g.closePath();
-  g.fillStyle = 'rgba(255,255,255,.40)'; g.fill();
-  g.restore();
-
-  var hub = g.createLinearGradient(cx-R*0.11, cy-R*0.11, cx+R*0.11, cy+R*0.11);
-  hub.addColorStop(0,'#8a95a2'); hub.addColorStop(0.5,'#39424c'); hub.addColorStop(1,'#161c22');
-  g.beginPath(); g.arc(cx,cy,R*0.115,0,TAU);
+  /* domed pivot cap */
+  var hr = fr*0.165;
+  g.beginPath(); g.arc(cx + fr*0.020, cy + fr*0.026, hr, 0, TAU);
+  g.fillStyle = 'rgba(0,0,0,.45)'; g.fill();
+  var hub = g.createRadialGradient(cx - hr*0.42, cy - hr*0.46, hr*0.12, cx, cy, hr);
+  hub.addColorStop(0.00, '#4a5158');
+  hub.addColorStop(0.55, '#20252a');
+  hub.addColorStop(1.00, '#080a0c');
+  g.beginPath(); g.arc(cx, cy, hr, 0, TAU);
   g.fillStyle = hub; g.fill();
-  g.beginPath(); g.arc(cx,cy,R*0.045,0,TAU);
+  g.beginPath(); g.arc(cx, cy, hr*0.46, 0, TAU);
   g.fillStyle = col; g.fill();
 }
 
@@ -2601,17 +2649,20 @@ function drawCluster(r){
   drawNeedle(g, L.spdX, L.dialY, L.R,
              dialAngle(clamp(kmh,0,cluster.kmhMax), 0, cluster.kmhMax),
              HUDC.needleSpd);
-  /* the readout sits in the blank wedge at the foot of the dial, clear of
-     the 0 and full-scale numbers on either side of it */
-  var lh = L.R*0.34, lw = L.R*0.88;
-  var lx = L.spdX - lw/2, ly = L.dialY + L.R*0.68 - lh/2;
+  /* The readout has moved off the dial and into the centre stack, where the
+     reference keeps it. Inside the face it had nowhere to go that did not
+     foul the full-scale numeral: the wedge at the foot of a 0-160 dial is
+     exactly where the 160 sits. Phase 3 gives it its caption and its
+     seven-segment treatment. */
+  var lh = Math.max(5, Math.round(L.colH*0.30)), lw = L.stackW - 6;
+  var lx = L.stackX + 3, ly = Math.round(L.colY + L.colH*0.40);
   roundPath(g, lx, ly, lw, lh, 2);
   g.fillStyle = HUDC.lcd; g.fill();
   g.lineWidth = 1; g.strokeStyle = 'rgba(180,200,228,.36)'; g.stroke();
   g.textAlign = 'center'; g.textBaseline = 'middle';
-  hudFont(g, lh*0.80);
+  hudFont(g, lh*0.74);
   g.fillStyle = HUDC.lcdOn;
-  g.fillText(String(Math.round(Math.max(0,kmh))), lx + lw/2, ly + lh*0.52);
+  g.fillText(String(Math.round(Math.max(0,kmh))), lx + lw/2, ly + lh*0.54);
 
   /* ---- gear strip ---- */
   var spd = r ? Math.abs(r.car.fwd) : 0;
