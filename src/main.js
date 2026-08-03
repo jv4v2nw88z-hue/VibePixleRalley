@@ -1820,25 +1820,6 @@ var hudCtl = { gas:0, brake:0, hb:0, padUp:0, padDn:0,
                drawnHb:-1, drawnUp:-1, drawnDn:-1, drawnMode:null,
                drawnL:null, drawnR:null };
 
-/* integer-scaled pixel painter for a small HUD canvas */
-function hudPainter(cv, gw, gh, cssScale){
-  var dpr = Math.min(window.devicePixelRatio || 1, 2);
-  var S = Math.max(1, Math.round(cssScale*dpr));
-  if(cv.width !== gw*S || cv.height !== gh*S){
-    cv.width = gw*S; cv.height = gh*S;
-    cv.style.width = (gw*cssScale)+'px';
-    cv.style.height = (gh*cssScale)+'px';
-  }
-  var g = cv.getContext('2d');
-  g.imageSmoothingEnabled = false;
-  g.clearRect(0,0,cv.width,cv.height);
-  return function(x,y,w,h,col){
-    g.fillStyle = col;
-    g.fillRect(Math.round(x)*S, Math.round(y)*S,
-               Math.max(1,Math.round(w))*S, Math.max(1,Math.round(h))*S);
-  };
-}
-
 var HUDC = {
   steel:'#9aa2a8', steelHi:'#c6ccd1', steelLo:'#5c6167',
   dark:'#20262a', black:'#12161a', rubber:'#2b3036', rubberHi:'#3c434a',
@@ -1853,15 +1834,6 @@ var HUDC = {
   lcd:'#05070a', lcdOn:'#f2f7ff', lampOff:'#39423a'
 };
 
-/* pixel painter that draws into an existing context at an offset, so the
-   chunky pixel art can share a canvas with the smooth dial faces */
-function pxInto(g, ox, oy, s){
-  return function(x,y,w,h,col){
-    g.fillStyle = col;
-    g.fillRect(ox + Math.round(x)*s, oy + Math.round(y)*s,
-               Math.max(1,Math.round(w))*s, Math.max(1,Math.round(h))*s);
-  };
-}
 function roundPath(g,x,y,w,h,r){
   r = Math.min(r, w/2, h/2);
   g.beginPath();
@@ -1899,80 +1871,129 @@ var cluster = {
 
 /* Sizing.
 
-   The dash is deliberately kept to under a fifth of the screen height. This
-   is a chase cam: the car is drawn below the camera's focal point by however
-   far the camera is looking ahead, so it rides low on screen at speed. Every
-   pixel the dash grows is a pixel of road — and eventually of car — that the
-   player loses, so the panel hugs the bottom edge and stays short. Width
-   follows from the height, since the dials are circles. */
-var CLUSTER_BOTTOM = 4;                       /* px above the safe-area edge */
+   The dash is one full-width moulding running to the bottom edge of the
+   screen, not a binnacle floating over it, so the layout is a grid across
+   the whole viewport rather than a strip of columns.
 
-/* Total horizontal safe-area inset. The side controls are positioned inside
-   it, so the panel has to budget for it too — a notched phone in landscape
-   hands back a good 40px on one side. Read off a probe rather than assumed,
-   and only ever called when the viewport changes. */
+   How tall it gets is a trade. This is a chase cam: the car is drawn below
+   the camera's focal point by however far the camera is looking ahead, so
+   every pixel the dash grows is a pixel of road the player loses. The 3:2
+   reference gives the chassis 42% of the picture, which a wide phone cannot
+   spare — but nor does it need to, because on a wide screen the same
+   instruments spread sideways instead of stacking. So the share falls off
+   with the aspect ratio and the art direction survives at either end. */
+var CLUSTER_BOTTOM = 0;                       /* the chassis reaches the edge */
+
+/* Safe-area insets. A notched phone in landscape hands back a good 40px on
+   one side and a home-indicator strip along the bottom; the chassis fills
+   into both, but nothing readable is allowed to sit in them. Read off a
+   probe rather than assumed, and only ever called when the viewport changes. */
 var safeProbe = null;
-function safeInsetX(){
+function safeInsets(){
   if(!safeProbe){
     safeProbe = document.createElement('div');
     safeProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;' +
       'visibility:hidden;pointer-events:none;' +
-      'padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);';
+      'padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);' +
+      'padding-bottom:env(safe-area-inset-bottom);';
     document.body.appendChild(safeProbe);
   }
   var cs = getComputedStyle(safeProbe);
-  return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+  var l = parseFloat(cs.paddingLeft) || 0, r = parseFloat(cs.paddingRight) || 0;
+  return { l:l, r:r, x:l+r, b:parseFloat(cs.paddingBottom) || 0 };
 }
 
 function clusterLayout(){
-  var vw = view.w || window.innerWidth || 800;
-  var vh = view.h || window.innerHeight || 400;
-  var pad = 3, gap = 4;
-  /* The side controls reach SIDE_REACH in from each edge (steering pads and
-     the outboard blade on the left, lever + throttle + blade on the right).
-     The panel is centred on the screen, so its half-width has to clear the
-     deeper of the two — hence the full width less twice that reach. */
-  var SIDE_REACH = 198;
-  var maxW = Math.max(140, vw - safeInsetX() - 2*SIDE_REACH - 8);
-  /* Columns run left to right exactly as on the reference cluster: footwell,
-     gear barrel, tacho, the little auxiliary stack, speedo. As fractions of
-     the dial diameter that is 0.46 + 0.50 + 1 + 0.34 + 1 = 3.30 D, plus the
-     padding and four gaps. Invert it for the largest dial the width allows —
-     though on any real phone it is the HEIGHT cap that binds, not this. */
-  var D = Math.min(clamp(Math.round(vh*0.185), 54, 88) - 2*pad,
-                   Math.floor((maxW - 2*pad - 4*gap)/3.40));
-  var wp = Math.round(D*0.46);                /* footwell */
-  var wg = Math.round(D*0.56);                /* gear barrel */
-  var wa = Math.round(D*0.38);                /* auxiliary stack */
-  var W = 2*pad + wp + wg + 2*D + wa + 4*gap;
-  var H = D + 2*pad;
-  var ps = Math.max(1, Math.floor(wp/24));    /* pedal-art pixel size */
+  var vw = Math.round(view.w || window.innerWidth || 800);
+  var vh = Math.round(view.h || window.innerHeight || 400);
+  var si = safeInsets();
+  var frac = clamp(0.62/(vw/Math.max(1,vh)), 0.25, 0.42);
+  var dashH = Math.round(vh*frac);
+  var L = { W:vw, H:dashH + si.b, dashH:dashH, si:si };
 
-  var x = pad;
-  var L = { W:W, H:H, pad:pad, gap:gap, D:D, R:D/2, dialY:pad + D/2 };
-  L.bayX = x; L.bayY = pad; L.wp = wp;
-  L.ps = ps; L.pgw = Math.floor(wp/ps); L.pgh = Math.floor(D/ps);
-  x += wp + gap;
-  L.gearX = x; L.wg = wg;
-  x += wg + gap;
-  L.tachX = x + D/2;
-  x += D + gap;
-  L.auxX = x; L.wa = wa;
-  x += wa + gap;
-  L.spdX = x + D/2;
+  var pad  = Math.max(3, Math.round(dashH*0.045));
+  L.pad = pad;
+  L.railH = Math.max(5, Math.round(dashH*0.105));    /* sculpted top rail */
+  L.botH  = Math.max(15, Math.round(dashH*0.255));   /* indicator / status band */
+  L.faceY = L.railH;
+  L.botY  = dashH - L.botH;
+  var midH = L.botY - L.faceY - pad;
 
-  /* gear barrel: label, big numeral, then the rev-range bar under it. The
-     barrel takes whatever height the bar leaves, so the numeral fills it. */
-  L.barH  = Math.max(5, Math.round(D*0.15));
-  L.gearH = D - L.barH - 3;
-  L.barY  = pad + L.gearH + 3;
+  /* The dial diameter drives every other measurement. It wants the full
+     depth of the instrument band, but on a narrow screen the row of groups
+     binds first: pedals + gear + tacho + stack + speedo + boost across the
+     middle is 3.6D, the wings another 2.3D, plus margins — call it 6.2D. */
+  var usable = vw - si.x - 2*pad;
+  var D = Math.max(30, Math.min(Math.floor(midH*0.98), Math.floor(usable/6.2)));
+  L.D = D; L.R = D/2;
+  L.dialY = L.faceY + pad + midH/2;
+  var gap = Math.max(2, Math.round(D*0.10));
+  L.gap = gap;
 
-  /* auxiliary stack: paddle tell-tales, knob, then the warning lamps */
-  L.triH  = Math.max(5, Math.round(D*0.13));
-  L.knobY = pad + L.triH + 2;
-  L.knobR = Math.max(4, Math.round(D*0.13));
-  L.lampY = L.knobY + L.knobR*2 + 2;
-  L.lampH = Math.max(6, pad + D - L.lampY);
+  /* ---- centre island, left to right ---- */
+  L.pedW   = Math.max(7,  Math.round(D*0.16));       /* narrowed pedal telltale */
+  L.gearW  = Math.max(10, Math.round(D*0.21));       /* P R N 1 2 strip */
+  L.stackW = Math.max(16, Math.round(D*0.50));       /* SHIFT + digital readout */
+  L.boostD = Math.max(14, Math.round(D*0.50));
+  var islandW = L.pedW + L.gearW + 2*D + L.stackW + L.boostD + 5*gap;
+  var x = Math.round(si.l + (vw - si.x - islandW)/2);
+  L.islandX = x; L.islandW = islandW;
+  L.pedX  = x;                       x += L.pedW  + gap;
+  L.gearX = x;                       x += L.gearW + gap;
+  L.tachX = x + D/2;                 x += D       + gap;
+  L.stackX = x;                      x += L.stackW + gap;
+  L.spdX  = x + D/2;                 x += D       + gap;
+  L.boostX = x + L.boostD/2;
+
+  /* pedal telltale and gear strip share the dial's vertical extent */
+  L.colY = Math.round(L.dialY - D/2);
+  L.colH = D;
+  L.ps = Math.max(1, Math.floor(L.pedW/9));          /* pedal-art pixel size */
+  L.pgw = Math.floor(L.pedW/L.ps); L.pgh = Math.floor(L.colH/L.ps);
+
+  /* ---- left wing: LED pip row over the two steering pads ---- */
+  L.pipH = Math.max(5, Math.round(D*0.13));
+  L.pipY = L.faceY + Math.max(2, Math.round(pad*0.6));
+  L.padW = Math.max(20, Math.round(D*0.43));
+  L.padH2 = Math.max(22, dashH - (L.pipY + L.pipH + pad) - pad);
+  L.padY = L.pipY + L.pipH + pad;
+  L.padLX = si.l + pad;
+  L.padRX = L.padLX + L.padW + Math.max(3, Math.round(gap*0.7));
+  L.pipX = L.padLX + Math.max(2, Math.round(D*0.06));
+  L.pipW = Math.max(20, Math.round(L.padW*1.30));
+
+  /* ---- right wing: lever gate and throttle over the status boxes ---- */
+  var rx = vw - si.r - pad;
+  L.statH = Math.max(13, L.botH - pad);
+  L.statY = dashH - pad - L.statH;
+  L.statW = Math.min(Math.round(D*1.45), Math.round((vw - si.x)*0.30));
+  L.statX = rx - L.statW;
+  var upperH = Math.max(18, L.statY - L.faceY - pad - Math.max(2, Math.round(pad*0.6)));
+  L.gasW  = Math.max(30, Math.round(D*0.62));
+  L.gateW = Math.max(26, Math.round(D*0.66));
+  L.upperY = L.faceY + Math.max(2, Math.round(pad*0.6));
+  L.upperH = upperH;
+  L.gasX  = rx - L.gasW;
+  L.gateX = L.gasX - Math.max(3, Math.round(gap*0.7)) - L.gateW;
+
+  /* ---- indicator strip: centred under the island, so it reads as part of
+     the binnacle rather than as a trough running the width of the car ---- */
+  var lo = L.padRX + L.padW + gap, hi = L.gateX - gap;
+  L.indW = clamp(Math.round(D*2.3), 40, Math.max(40, hi - lo));
+  L.indX = clamp(Math.round(L.islandX + islandW/2 - L.indW/2), lo, hi - L.indW);
+  L.indY = L.statY;
+  L.indH = L.statH;
+
+  /* ---- paddles: mounted on the top rail, flanking the dials.
+     Never further inboard than a thumb's reach from the edge, so a wide
+     screen keeps them where they can actually be hit while steering. */
+  L.padlW = Math.max(18, Math.round(D*0.40));
+  L.padlH = Math.max(28, Math.round(D*0.78));
+  L.padlY = L.faceY + Math.round(L.railH*1.1) - L.padlH;
+  var reach = Math.round((vw - si.x)*0.30);
+  L.padlLX = Math.min(Math.round(L.islandX - L.padlW*0.35), si.l + reach);
+  L.padlRX = Math.max(Math.round(L.islandX + islandW - L.padlW*0.65),
+                      vw - si.r - reach - L.padlW);
   return L;
 }
 
@@ -1980,6 +2001,162 @@ function clusterLayout(){
    can keep the car clear of it. Mirrors the CSS that positions the panel. */
 function clusterBandH(){
   return (cluster.H || clusterLayout().H) + CLUSTER_BOTTOM;
+}
+
+/* =========================================================================
+   DASH CHASSIS
+
+   The moulding every instrument is set into. One material rule runs through
+   the whole thing: a faceted plate with 45deg corners, a lit top edge, a
+   charcoal face graded downwards and a shaded foot. Wells invert it — dark
+   along the top, lit along the bottom — so a recess reads as cut into the
+   moulding rather than sat on top of it.
+
+   All of it is painted once into the cached base bitmap, including the cast
+   grain, so the per-frame cost of the chassis is zero.
+   ========================================================================= */
+var DASH = {
+  railHi:'#949ba1', railTop:'#575d63', railMid:'#41474d', railLo:'#2a2f34',
+  faceTop:'#2c3034', faceMid:'#22262a', faceBot:'#14171a',
+  wellTop:'#04060a', wellBot:'#191d22',
+  seam:'#080a0c', seamHi:'#4e555c',
+  edgeHi:'#7b838a', edgeLo:'#0c0f12',
+  screw:'#767e85', screwLo:'#141719',
+  vent:'#090b0d', ventHi:'#3a4046'
+};
+
+/* faceted panel outline: a rect with its corners cut at 45deg */
+function facetPath(g, x, y, w, h, c){
+  c = Math.min(c, w/2, h/2);
+  g.beginPath();
+  g.moveTo(x+c, y);     g.lineTo(x+w-c, y);   g.lineTo(x+w, y+c);
+  g.lineTo(x+w, y+h-c); g.lineTo(x+w-c, y+h); g.lineTo(x+c, y+h);
+  g.lineTo(x, y+h-c);   g.lineTo(x, y+c);     g.closePath();
+}
+
+/* A plate sitting proud of the moulding. */
+function dashPlate(g, x, y, w, h, c, top, bot){
+  var lg = g.createLinearGradient(0, y, 0, y+h);
+  lg.addColorStop(0, top || DASH.faceTop);
+  lg.addColorStop(1, bot || DASH.faceBot);
+  facetPath(g, x, y, w, h, c); g.fillStyle = lg; g.fill();
+  g.save(); facetPath(g, x, y, w, h, c); g.clip();
+  g.fillStyle = DASH.edgeHi; g.fillRect(x, y, w, 1);          /* lit top edge */
+  g.fillStyle = DASH.edgeLo; g.fillRect(x, y+h-1, w, 1);      /* shaded foot */
+  g.restore();
+}
+
+/* A well cut into the moulding: the lighting flips, so the top lip is in
+   shadow and the bottom lip catches. */
+function dashWell(g, x, y, w, h, c, depth){
+  var lg = g.createLinearGradient(0, y, 0, y+h);
+  lg.addColorStop(0, DASH.wellTop);
+  lg.addColorStop(1, DASH.wellBot);
+  facetPath(g, x, y, w, h, c); g.fillStyle = lg; g.fill();
+  g.save(); facetPath(g, x, y, w, h, c); g.clip();
+  var d = depth || 1;
+  g.fillStyle = 'rgba(0,0,0,.85)';        g.fillRect(x, y, w, d+0.5);
+  g.fillStyle = 'rgba(0,0,0,.60)';        g.fillRect(x, y, d, h);
+  g.fillStyle = 'rgba(176,190,204,.42)';  g.fillRect(x, y+h-d, w, d);
+  g.fillStyle = 'rgba(140,154,168,.20)';  g.fillRect(x+w-d, y, d, h);
+  g.restore();
+  facetPath(g, x, y, w, h, c);
+  g.lineWidth = 1; g.strokeStyle = 'rgba(8,10,12,.85)'; g.stroke();
+}
+
+/* A bright machined surround, the way the steering pads and the lever gate
+   are framed on the reference. Drawn as a plate with a well inside it. */
+function dashBezel(g, x, y, w, h, c, rim){
+  rim = rim || Math.max(2.5, Math.min(w,h)*0.09);
+  var lg = g.createLinearGradient(0, y, 0, y+h);
+  lg.addColorStop(0.00, '#b9c0c6');
+  lg.addColorStop(0.18, '#868e95');
+  lg.addColorStop(0.55, '#4d545b');
+  lg.addColorStop(1.00, '#2a2f34');
+  facetPath(g, x, y, w, h, c); g.fillStyle = lg; g.fill();
+  g.save(); facetPath(g, x, y, w, h, c); g.clip();
+  g.fillStyle = 'rgba(255,255,255,.55)'; g.fillRect(x, y, w, 1);
+  g.restore();
+  dashWell(g, x+rim, y+rim, w-2*rim, h-2*rim, Math.max(1, c-rim*0.7), 1);
+}
+
+/* Panel seam: a scored groove with a lit lower lip, the join between two
+   mouldings. Horizontal only — every seam on the reference runs across. */
+function dashSeam(g, x, y, w){
+  g.fillStyle = DASH.seam;   g.fillRect(x, y, w, 1);
+  g.fillStyle = DASH.seamHi; g.fillRect(x, y+1, w, 1);
+}
+
+/* Moulded louvre vent. A shallow recess with a stack of slots cut into it,
+   each slot dark at the top and catching light on the blade below it. This
+   is what fills the plain panel between a wing and the centre island on a
+   wide screen, so it has to read as deliberate moulding, not as a gap. */
+function dashVent(g, x, y, w, h){
+  var pitch = 3, i, sy;
+  var n = Math.max(2, Math.floor((h - 2)/pitch));
+  var vh = n*pitch + 2;
+  y = Math.round(y + (h - vh)/2);
+  dashWell(g, x, y, w, vh, 2, 1);
+  for(i=0;i<n;i++){
+    sy = y + 1 + i*pitch;
+    g.fillStyle = DASH.vent;   g.fillRect(x+2, sy, w-4, pitch-1);
+    g.fillStyle = DASH.ventHi; g.fillRect(x+2, sy+pitch-1, w-4, 1);
+  }
+  dashScrew(g, x + 2.5, y - 2.5, 1.4);
+  dashScrew(g, x + w - 2.5, y - 2.5, 1.4);
+}
+
+/* Fastener head, countersunk. */
+function dashScrew(g, cx, cy, r){
+  g.beginPath(); g.arc(cx, cy, r, 0, TAU);
+  g.fillStyle = DASH.screwLo; g.fill();
+  g.beginPath(); g.arc(cx-r*0.16, cy-r*0.16, r*0.72, 0, TAU);
+  g.fillStyle = DASH.screw; g.fill();
+  g.fillStyle = 'rgba(0,0,0,.6)';
+  g.fillRect(cx-r*0.66, cy-r*0.16, r*1.32, Math.max(0.7, r*0.30));
+}
+
+/* Cast grain. Fine speckle over the moulding so the big flat panels read as
+   a textured plastic rather than a gradient. Deterministic, and painted once
+   into the cached bitmap, so it costs nothing per frame. */
+function dashGrain(g, x, y, w, h, n, seed){
+  /* mulberry, not rnd2: rnd2 hashes a 2D coordinate and is only well mixed
+     across a plane. Walking it with a running counter puts the samples on a
+     lattice, which shows up as a web of thin diagonals across every panel
+     instead of speckle. */
+  var rand = mulberry(seed*2654435761 + 17), i, gx, gy;
+  for(i=0;i<n;i++){
+    gx = x + rand()*w;
+    gy = y + rand()*h;
+    g.fillStyle = rand() < 0.55 ? 'rgba(255,255,255,.030)' : 'rgba(0,0,0,.085)';
+    g.fillRect(gx|0, gy|0, 1, 1);
+  }
+}
+
+/* The outline of the moulding itself: a stepped rail that crowns over the
+   dials and shoulders down to the wings, chamfered at every change of
+   level the way the reference is faceted. Returns nothing; leaves a path. */
+function dashShellPath(g, L, dy){
+  var W = L.W, H = L.H;
+  dy = dy || 0;
+  var crown = dy, shoulder = Math.round(L.railH*0.55) + dy, wing = L.railH + dy;
+  var cx0 = L.islandX - L.gap*2, cx1 = L.islandX + L.islandW + L.gap*2;
+  var sx0 = Math.max(0, cx0 - L.railH*1.6), sx1 = Math.min(W, cx1 + L.railH*1.6);
+  var ch = L.railH*0.9;                          /* chamfer run */
+  g.beginPath();
+  g.moveTo(0, H);
+  g.lineTo(0, wing);
+  g.lineTo(sx0 - ch, wing);
+  g.lineTo(sx0, shoulder);                       /* step up to the shoulder */
+  g.lineTo(cx0 - ch, shoulder);
+  g.lineTo(cx0, crown);                          /* step up to the crown */
+  g.lineTo(cx1, crown);
+  g.lineTo(cx1 + ch, shoulder);
+  g.lineTo(sx1, shoulder);
+  g.lineTo(sx1 + ch, wing);
+  g.lineTo(W, wing);
+  g.lineTo(W, H);
+  g.closePath();
 }
 
 /* --------------------------------------------------------- static face */
@@ -2080,29 +2257,108 @@ function drawDialFace(g, cx, cy, R, o){
   g.lineWidth = R*0.30; g.strokeStyle = gl; g.stroke();
 }
 
-/* Everything that never moves, painted once at device resolution. */
+/* Everything that never moves, painted once at device resolution.
+
+   This is the whole chassis: the stepped rail, the cast grain, every seam,
+   vent and fastener, the wells the instruments drop into, and the static
+   part of the instruments themselves. A frame is one blit of this bitmap
+   plus the handful of live primitives in drawCluster. */
 function buildClusterBase(L, S){
   var c = document.createElement('canvas');
   c.width = L.W*S; c.height = L.H*S;
   var g = c.getContext('2d');
   g.setTransform(S,0,0,S,0,0);
+  var i, x;
 
-  /* The carrier is deliberately see-through: at this size it reads as a
-     dash moulding the road passes behind, not a slab dropped on the game.
-     The dials themselves stay fully opaque. */
-  var shell = g.createLinearGradient(0,0,0,L.H);
-  shell.addColorStop(0,'rgba(20,25,31,.50)');
-  shell.addColorStop(0.55,'rgba(10,13,17,.62)');
-  shell.addColorStop(1,'rgba(4,6,9,.74)');
-  roundPath(g, 0.75, 0.75, L.W-1.5, L.H-1.5, 7);
-  g.fillStyle = shell; g.fill();
-  g.lineWidth = 1; g.strokeStyle = 'rgba(150,170,196,.30)'; g.stroke();
-  g.save();                                     /* chrome catch along the top */
-  roundPath(g, 0.75, 0.75, L.W-1.5, L.H-1.5, 7); g.clip();
-  var top = g.createLinearGradient(0,0,0,3.5);
-  top.addColorStop(0,'rgba(255,255,255,.34)'); top.addColorStop(1,'rgba(255,255,255,0)');
-  g.fillStyle = top; g.fillRect(0,0,L.W,3.5);
+  /* ---- the moulding ----
+     The rail is a separate plate sitting on the face, not a gradient at the
+     top of one. It gets its depth from a second copy of the shell profile
+     dropped by the rail thickness: fill the whole shell with the rail's
+     colour, then lay the face over the dropped copy, and what survives is a
+     band of rail that follows every step and chamfer of the crown. */
+  g.save();
+  dashShellPath(g, L); g.clip();
+
+  var rail = g.createLinearGradient(0, 0, 0, L.railH*1.6);
+  rail.addColorStop(0.00, DASH.railTop);
+  rail.addColorStop(0.62, DASH.railMid);
+  rail.addColorStop(1.00, DASH.railLo);
+  g.fillStyle = rail; g.fillRect(0, 0, L.W, L.H);
+
+  var face = g.createLinearGradient(0, L.faceY, 0, L.H);
+  face.addColorStop(0.00, DASH.faceTop);
+  face.addColorStop(0.58, DASH.faceMid);
+  face.addColorStop(1.00, DASH.faceBot);
+  dashShellPath(g, L, L.railH);
+  g.fillStyle = face; g.fill();
+
+  dashGrain(g, 0, 0, L.W, L.H, Math.round(L.W*L.H*0.022), 3);
+
+  /* the seam above the bottom band, and a second one across the plain
+     panels so a wide dash does not read as one undivided slab */
+  dashSeam(g, 0, L.botY - Math.max(2, Math.round(L.pad*0.6)), L.W);
+
+  /* moulded louvres in the plain panel between each wing and the island */
+  var ventY = L.faceY + L.railH + Math.max(3, Math.round(L.pad*1.2));
+  var ventH = Math.max(6, Math.round(L.botY - ventY - L.pad));
+  var gapL0 = L.padLX + 2*L.padW + L.gap*2, gapL1 = L.padlLX - L.gap;
+  var gapR0 = L.padlRX + L.padlW + L.gap,   gapR1 = L.gateX - L.gap;
+  var ventFit = function(a, b){
+    var wv = clamp(Math.round((b-a)*0.70), Math.round(L.D*0.45), Math.round(L.D*1.8));
+    if(b - a < wv*1.15) return;
+    dashVent(g, Math.round((a+b)/2 - wv/2), ventY, wv, ventH);
+  };
+  ventFit(gapL0, gapL1);
+  ventFit(gapR0, gapR1);
+
   g.restore();
+
+  /* the rail's own foot: a scored groove with a lit lip, following the
+     profile, so the rail reads as a plate laid over the face */
+  g.save();
+  dashShellPath(g, L); g.clip();
+  dashShellPath(g, L, L.railH);
+  g.lineWidth = 2; g.strokeStyle = 'rgba(6,8,10,.85)'; g.stroke();
+  dashShellPath(g, L, L.railH + 1.5);
+  g.lineWidth = 1; g.strokeStyle = 'rgba(126,138,150,.45)'; g.stroke();
+  var sd = Math.max(3, Math.round(L.railH*0.55));
+  for(i=0;i<sd;i++){
+    dashShellPath(g, L, L.railH + 2.5 + i);
+    g.lineWidth = 1.4;
+    g.strokeStyle = 'rgba(0,0,0,' + (0.26*(1 - i/sd)).toFixed(3) + ')';
+    g.stroke();
+  }
+  g.restore();
+
+  /* the lit crown along the whole stepped top edge, drawn outside the clip
+     so it is not shaved in half by it */
+  g.save();
+  dashShellPath(g, L);
+  g.lineWidth = 2.5; g.strokeStyle = DASH.railHi; g.stroke();
+  g.lineWidth = 1;   g.strokeStyle = 'rgba(230,238,244,.65)'; g.stroke();
+  g.restore();
+
+  /* fasteners along the rail, one pair per wing plus the island shoulders */
+  var sr = Math.max(1, Math.round(L.railH*0.17));
+  var sy = Math.round(L.railH*1.5);              /* mid-band of the wing rail */
+  var scrX = [L.padLX + L.pipW + sr*3, L.W - L.si.r - L.pad - sr*2,
+              L.islandX - L.gap*3, L.islandX + L.islandW + L.gap*3];
+  for(i=0;i<scrX.length;i++){
+    if(scrX[i] > sr*2 && scrX[i] < L.W - sr*2) dashScrew(g, scrX[i], sy, sr);
+  }
+
+  /* ---- wells the instruments and controls drop into ---- */
+  var fc = Math.max(2, Math.round(L.D*0.09));
+  dashWell(g, L.pedX - 1, L.colY - 1, L.pedW + 2, L.colH + 2, Math.max(1, fc*0.5));
+  dashWell(g, L.gearX - 1, L.colY - 1, L.gearW + 2, L.colH + 2, Math.max(1, fc*0.5));
+  dashWell(g, L.stackX, L.colY, L.stackW, L.colH, Math.max(1, fc*0.6));
+  dashWell(g, L.indX, L.indY, L.indW, L.indH, fc);
+  dashWell(g, L.statX, L.statY, L.statW, L.statH, fc);
+  dashBezel(g, L.gateX, L.upperY, L.gateW, L.upperH, fc);
+  dashBezel(g, L.gasX,  L.upperY, L.gasW,  L.upperH, fc);
+  dashBezel(g, L.padLX, L.padY, L.padW, L.padH2, fc);
+  dashBezel(g, L.padRX, L.padY, L.padW, L.padH2, fc);
+  dashWell(g, L.pipX, L.pipY, L.pipW, L.pipH, Math.max(1, L.pipH*0.28));
 
   drawPedalBayBase(g, L);
 
@@ -2122,122 +2378,78 @@ function buildClusterBase(L, S){
     label:'KMH', num: HUDC.numSpd
   });
 
-  /* --- gear barrel, to the left of the tacho as on the reference --- */
-  roundPath(g, L.gearX, L.pad, L.wg, L.gearH, 3);
-  var gp = g.createLinearGradient(0, L.pad, 0, L.pad+L.gearH);
-  gp.addColorStop(0,'#161c24'); gp.addColorStop(0.5,'#080c11'); gp.addColorStop(1,'#020407');
-  g.fillStyle = gp; g.fill();
-  g.lineWidth = 1; g.strokeStyle = 'rgba(168,186,210,.45)'; g.stroke();
-  g.save(); roundPath(g, L.gearX, L.pad, L.wg, L.gearH, 3); g.clip();
-  var gtop = g.createLinearGradient(0, L.pad, 0, L.pad+2.5);
-  gtop.addColorStop(0,'rgba(255,255,255,.30)'); gtop.addColorStop(1,'rgba(255,255,255,0)');
-  g.fillStyle = gtop; g.fillRect(L.gearX, L.pad, L.wg, 2.5);
-  g.restore();
-  hudFont(g, Math.max(4.5, L.wg*0.20));
-  g.fillStyle = 'rgba(196,212,234,.66)'; g.textAlign = 'center'; g.textBaseline = 'top';
-  g.fillText('GEAR', L.gearX + L.wg/2, L.pad + 1.5);
+  /* --- gear strip, to the left of the tacho as on the reference --- */
+  hudFont(g, Math.max(4.5, L.gearW*0.42));
+  g.fillStyle = 'rgba(212,224,240,.72)'; g.textAlign = 'center'; g.textBaseline = 'bottom';
+  g.fillText('GEAR', L.gearX + L.gearW/2, L.colY - 1);
 
-  /* rev-range bar trough, directly under the numeral */
-  roundPath(g, L.gearX, L.barY, L.wg, L.barH, 2);
+  /* rev-range bar trough, in the foot of the centre stack */
+  L.barH = Math.max(4, Math.round(L.colH*0.17));
+  L.barY = L.colY + L.colH - L.barH - 1;
+  roundPath(g, L.stackX + 2, L.barY, L.stackW - 4, L.barH, 1.5);
   g.fillStyle = '#020407'; g.fill();
   g.lineWidth = 1; g.strokeStyle = 'rgba(150,170,196,.28)'; g.stroke();
 
   return c;
 }
 
-/* ----------------------------------------------------------- pedal bay
-   A footwell seen head-on: checker-plate floor, ribbed firewall and two
-   hanging pedals. The floor and walls are static; the plates move. */
-function pedalFloorY(GH){ return GH - Math.max(5, Math.round(GH*0.15)); }
-function pedalShroudY(GH){ return Math.max(4, Math.round(GH*0.36)); }
-function pedalRestY(GH){ return pedalShroudY(GH) + Math.max(3, Math.round(GH*0.13)); }
-/* the two pedals, as grid columns: brake wide on the left, throttle narrow */
-function pedalCols(GW){
-  var bw = Math.round(GW*0.44), gw = Math.round(GW*0.34);
-  return [ { x0:2, w:bw }, { x0:GW-2-gw, w:gw } ];
+/* --------------------------------------------------- pedal travel strip
+   The reference dash has no footwell, and on a full-width chassis there is
+   no room for one — but a touch player has no other way to see what the
+   throttle and brake are actually doing, so it survives as a narrow pair of
+   slotted travel gauges cut into the moulding. Brake left, throttle right.
+   The slots and their scale notches are static; the plates move. */
+function pedalSlots(L){
+  var inset = Math.max(1, Math.round(L.pedW*0.10));
+  var w = Math.max(2, Math.round((L.pedW - inset*3)/2));
+  return [
+    { x:L.pedX + inset,         w:w, hi:'#e0705f', lo:'#5e241d', led:HUDC.red },
+    { x:L.pedX + inset*2 + w,   w:w, hi:'#7fd08c', lo:'#1e4a26', led:HUDC.green }
+  ];
 }
 
 function drawPedalBayBase(g, L){
-  var s = L.ps, GW = L.pgw, GH = L.pgh;
-  var px = pxInto(g, L.bayX, L.bayY, s);
-  var floorY = pedalFloorY(GH), shroudY = pedalShroudY(GH);
-  var cols = pedalCols(GW);
-  var x, y, i;
-
-  px(0,0,GW,GH,'#0e130d');                              /* footwell recess */
-  for(x=2;x<GW-2;x+=4) px(x,shroudY,1,floorY-shroudY,'#182014');   /* bulkhead ribs */
-
-  px(0,floorY,GW,GH-floorY,'#434b52');                  /* floor plate */
-  px(0,floorY,GW,1,'#828d99');                          /* lit leading edge */
-  for(y=floorY+2;y<GH-1;y+=3){                          /* checker plate */
-    var off = (((y-floorY)/3)|0) % 2 ? 1 : 0;
-    for(x=1;x<GW-2;x+=3){
-      px(x+off,y,2,1,'#5d6770');
-      px(x+off,y+1,2,1,'#2d343a');
+  var slots = pedalSlots(L), i, k, n;
+  var y0 = L.colY + Math.round(L.colH*0.30);
+  var h  = L.colH - Math.round(L.colH*0.30) - Math.max(2, Math.round(L.colH*0.06));
+  for(i=0;i<slots.length;i++){
+    var s = slots[i];
+    g.fillStyle = '#04060a';
+    g.fillRect(s.x, y0, s.w, h);
+    g.fillStyle = 'rgba(0,0,0,.70)';  g.fillRect(s.x, y0, s.w, 1);
+    g.fillStyle = 'rgba(150,164,180,.24)'; g.fillRect(s.x, y0+h-1, s.w, 1);
+    /* travel notches down the outer side of the slot */
+    n = Math.max(3, Math.round(h/Math.max(3, L.D*0.12)));
+    for(k=1;k<n;k++){
+      g.fillStyle = 'rgba(150,168,190,.26)';
+      g.fillRect(s.x + (i ? s.w-1 : 0), Math.round(y0 + h*k/n), 1, 1);
     }
   }
-  px(0,GH-1,GW,1,'#060806');
-
-  px(0,0,GW,shroudY,'#20272d');                         /* pedal-box shroud */
-  px(0,0,GW,1,'#525c66');
-  px(1,1,GW-2,1,'#39434c');
-  px(0,Math.round(shroudY*0.55),GW,1,'#141a1f');        /* panel split line */
-  px(0,shroudY-1,GW,1,'#080b0d');
-  px(1,2,1,1,'#7c8792'); px(GW-2,2,1,1,'#7c8792');      /* bolt heads */
-  for(i=0;i<cols.length;i++){                           /* arm slots */
-    var c = cols[i], cx = c.x0 + Math.floor(c.w/2);
-    px(cx-2, shroudY-3, 4, 3, '#0a0e11');
-    px(cx-2, shroudY-3, 4, 1, '#0f151a');
-  }
-  px(0,0,1,GH,'#1c231a'); px(GW-1,0,1,GH,'#080b07');    /* side shading */
 }
 
 function drawPedalPlates(g, L, gasV, brakeV){
-  var s = L.ps, GW = L.pgw, GH = L.pgh;
-  var px = pxInto(g, L.bayX, L.bayY, s);
-  var floorY = pedalFloorY(GH);
-  var cols = pedalCols(GW);
-  var peds = [
-    { x0:cols[0].x0, w:cols[0].w, v:brakeV, hi:'#ff8a7a', lo:'#a33a30', led:HUDC.red },
-    { x0:cols[1].x0, w:cols[1].w, v:gasV,   hi:'#a9f5b2', lo:'#2f7a3c', led:HUDC.green }
-  ];
-  var shroudY = pedalShroudY(GH), restY = pedalRestY(GH);
-  var travel = Math.max(2, Math.round(GH*0.10));
-  var faceH  = Math.max(6, Math.round(GH*0.22));
-
-  for(var i=0;i<peds.length;i++){
-    var p = peds[i], v = p.v, on = v > 0.4;
-    var cx = p.x0 + Math.floor(p.w/2);
-    var topY = restY + Math.round(v*travel);
-    var faceHi = on ? p.hi : '#e8eef4';                 /* bare alloy plate */
-    var faceLo = on ? p.lo : '#5b6670';
-
-    px(cx-2, shroudY-2, 4, topY-shroudY+2, '#333c44');  /* hanging arm */
-    px(cx-2, shroudY-2, 1, topY-shroudY+2, '#6b7681');
-    px(cx+1, shroudY-2, 1, topY-shroudY+2, '#151a1e');
-    px(cx-3, topY-2, 6, 3, '#39424a');                  /* pivot block */
-    px(cx-3, topY-2, 6, 1, '#69747e');
-
-    px(p.x0-1, topY, p.w+2, faceH+3, '#05070a');        /* plate outline */
-    for(var yy=0; yy<faceH; yy+=2){                     /* checker-plate face */
-      for(var xx=0; xx<p.w; xx+=2){
-        var litSq = (((xx>>1) + (yy>>1)) & 1) === 0;
-        px(p.x0+xx, topY+1+yy, 2, 2, litSq ? faceHi : faceLo);
-      }
+  var slots = pedalSlots(L);
+  var vals = [brakeV, gasV];
+  var y0 = L.colY + Math.round(L.colH*0.30);
+  var h  = L.colH - Math.round(L.colH*0.30) - Math.max(2, Math.round(L.colH*0.06));
+  var ph = Math.max(3, Math.round(h*0.24));
+  var travel = h - ph - 2;
+  for(var i=0;i<slots.length;i++){
+    var s = slots[i], v = clamp(vals[i],0,1), on = v > 0.4;
+    var py = Math.round(y0 + 1 + v*travel);
+    /* the travelled part of the slot lights up behind the plate */
+    if(v > 0.04){
+      g.fillStyle = on ? s.lo : '#2a3038';
+      g.fillRect(s.x, y0+1, s.w, py - y0 - 1);
     }
-    px(p.x0, topY+1, p.w, 1, '#ffffff');                    /* top bevel */
-    px(p.x0, topY+faceH, p.w, 1, '#1b2126');                /* bottom shadow */
-    px(p.x0, topY+1, 1, faceH, on ? p.hi : '#c8d2da');      /* left bevel */
-    px(p.x0+p.w-1, topY+1, 1, faceH, '#20272c');            /* right shadow */
-    px(p.x0+1, topY+2, 1, 1, '#d5dbe0');                    /* bolt heads */
-    px(p.x0+p.w-2, topY+2, 1, 1, '#d5dbe0');
-    px(p.x0+1, topY+faceH-1, 1, 1, '#0e1216');
-    px(p.x0+p.w-2, topY+faceH-1, 1, 1, '#0e1216');
-
-    if(v > 0.05){                                       /* travel glow on the floor */
-      px(p.x0, floorY+1, p.w, 1, on ? p.led : HUDC.amberLo);
+    g.fillStyle = '#05070a'; g.fillRect(s.x, py-1, s.w, ph+2);
+    g.fillStyle = on ? s.hi : '#c2ccd6'; g.fillRect(s.x, py, s.w, ph);
+    g.fillStyle = on ? '#ffffff' : '#e8eef4'; g.fillRect(s.x, py, s.w, 1);
+    g.fillStyle = on ? s.lo : '#5b6670'; g.fillRect(s.x, py+ph-1, s.w, 1);
+    if(s.w >= 3){                                       /* centre score line */
+      g.fillStyle = on ? s.lo : '#8a94a0';
+      g.fillRect(s.x + ((s.w/2)|0), py+1, 1, ph-2);
     }
-    px(cx-1, 0, 2, 2, v > 0.35 ? p.led : '#1d242a');    /* channel lamp */
   }
 }
 
@@ -2323,6 +2535,29 @@ function drawLamp(g, x, y, sz, kind, on, col){
   }
 }
 
+/* The touch controls are DOM elements so they stay real tap targets, but
+   they are part of the same moulding as everything else — so the chassis
+   layout, not the stylesheet, decides where they sit and how big they are.
+   Published as custom properties and consumed by a handful of CSS rules. */
+function applyDashLayout(L){
+  var s = document.documentElement.style, i;
+  /* the controls are positioned from the bottom of the screen, the layout
+     measures from the top of the dash canvas — so every y flips through the
+     canvas height, safe-area foot included */
+  var up = function(y, h){ return L.H - y - h; };
+  var vars = {
+    'dash-h': L.H,
+    'pad-l-x': L.padLX, 'pad-r-x': L.padRX, 'pad-y': up(L.padY, L.padH2),
+    'pad-w': L.padW, 'pad-h': L.padH2,
+    'gas-x': L.gasX, 'gate-x': L.gateX, 'upper-y': up(L.upperY, L.upperH),
+    'gas-w': L.gasW, 'gate-w': L.gateW, 'upper-h': L.upperH,
+    'padl-l-x': L.padlLX, 'padl-r-x': L.padlRX,
+    'padl-y': up(L.padlY, L.padlH), 'padl-w': L.padlW, 'padl-h': L.padlH,
+    'dash-label': Math.max(8, Math.round(L.D*0.15))
+  };
+  for(i in vars) s.setProperty('--' + i, Math.round(vars[i]) + 'px');
+}
+
 /* -------------------------------------------------------- live cluster */
 function ensureCluster(){
   var el = document.getElementById('cluster-cv');
@@ -2339,7 +2574,7 @@ function ensureCluster(){
     cluster.g = el.getContext('2d');
     cluster.base = buildClusterBase(L, S);
     cluster.key = key;
-    document.documentElement.style.setProperty('--cluster-h', L.H+'px');
+    applyDashLayout(L);
   }
   cluster.g.setTransform(S,0,0,S,0,0);
   cluster.g.imageSmoothingEnabled = false;
@@ -2378,47 +2613,62 @@ function drawCluster(r){
   g.fillStyle = HUDC.lcdOn;
   g.fillText(String(Math.round(Math.max(0,kmh))), lx + lw/2, ly + lh*0.52);
 
-  /* ---- gear panel ---- */
+  /* ---- gear strip ---- */
   var spd = r ? Math.abs(r.car.fwd) : 0;
   var gearTxt = spd < 2 ? 'N' : String(r ? r.gear : 1);
   var flash = r && r.perfectFlash > 0;
-  hudFont(g, Math.min(L.gearH*0.72, L.wg*0.86));
+  hudFont(g, Math.min(L.colH*0.52, L.gearW*0.86));
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillStyle = flash ? HUDC.green : (hot ? HUDC.red : HUDC.amber);
-  g.fillText(gearTxt, L.gearX + L.wg/2, L.pad + L.gearH*0.60);
+  g.fillText(gearTxt, L.gearX + L.gearW/2, L.colY + L.colH*0.5);
 
-  /* ---- rev-range bar, green through amber to red ---- */
+  /* ---- shift tell-tales in the head of the centre stack ---- */
+  var ax = L.stackX + 2, aw = L.stackW - 4;
+  var th = Math.max(4, Math.round(L.colH*0.20)), tw = (aw - 3)/2;
+  drawAuxTri(g, ax, L.colY + 2, tw, th, false, hudCtl.padDn > 0.15);
+  drawAuxTri(g, ax + tw + 3, L.colY + 2, tw, th, true, hudCtl.padUp > 0.15);
+
+  /* ---- rev-range bar in the foot of the stack, green through amber to red */
   var frac = clamp(rpm/1.12, 0, 1);
-  var segs = L.wg >= 34 ? 7 : 5, sgap = 1;
-  var sw = (L.wg - 3 - (segs-1)*sgap)/segs;
+  var bw = L.stackW - 4;
+  var segs = bw >= 34 ? 7 : 5, sgap = 1;
+  var sw = (bw - 3 - (segs-1)*sgap)/segs;
   for(i=0;i<segs;i++){
     if((i+1)/segs > frac + 1e-6) break;
     g.fillStyle = i < segs-3 ? HUDC.green : (i < segs-1 ? HUDC.amber : HUDC.red);
-    g.fillRect(L.gearX + 1.5 + i*(sw+sgap), L.barY + 1.5, sw, L.barH - 3);
+    g.fillRect(L.stackX + 3.5 + i*(sw+sgap), L.barY + 1.5, sw, L.barH - 3);
   }
 
-  /* ---- auxiliary stack: paddle tell-tales, knob, warning lamps ---- */
-  var ax = L.auxX, aw = L.wa;
-  var tw = (aw - 3)/2, th = L.triH;
-  drawAuxTri(g, ax, L.pad, tw, th, false, hudCtl.padDn > 0.15);
-  drawAuxTri(g, ax + tw + 3, L.pad, tw, th, true, hudCtl.padUp > 0.15);
-
-  var kr = L.knobR, kcx = ax + aw/2, kcy = L.knobY + kr;
-  var kg = g.createLinearGradient(kcx - kr, kcy - kr, kcx + kr, kcy + kr);
-  kg.addColorStop(0,'#8f9aa7'); kg.addColorStop(0.45,'#39424e'); kg.addColorStop(1,'#0d1116');
-  g.beginPath(); g.arc(kcx, kcy, kr, 0, TAU); g.fillStyle = kg; g.fill();
-  g.beginPath(); g.arc(kcx, kcy, Math.max(1.2, kr*0.62), 0, TAU);
-  g.fillStyle = '#0a0e13'; g.fill();
-  g.beginPath(); g.arc(kcx, kcy, kr, Math.PI*1.05, Math.PI*1.72);
-  g.lineWidth = Math.max(0.7, kr*0.22); g.strokeStyle = 'rgba(255,255,255,.5)'; g.stroke();
-
-  var lampSz = Math.min(L.lampH, (aw - 2)/3);
-  var lx0 = ax + (aw - (lampSz*3 + 2))/2;
-  var ly0 = L.lampY + (L.lampH - lampSz)/2;
+  /* ---- indicator strip, integrated into the bottom of the chassis ----
+     Phase 4 replaces these three with the reference's full set; for now the
+     existing telltales live here rather than floating between the dials. */
+  var lampSz = Math.max(6, Math.min(L.indH - 4, Math.round(L.D*0.42)));
+  var lampGap = Math.max(2, Math.round(lampSz*0.35));
+  var lx0 = L.indX + (L.indW - (lampSz*3 + lampGap*2))/2;
+  var ly0 = L.indY + (L.indH - lampSz)/2;
   var dmg = r ? r.car.damage : 0;
-  drawLamp(g, lx0,                ly0, lampSz, 'temp',   cluster.heat > 0.55, HUDC.red);
-  drawLamp(g, lx0 + lampSz + 1,   ly0, lampSz, 'engine', dmg > 45,            HUDC.amber);
-  drawLamp(g, lx0 + lampSz*2 + 2, ly0, lampSz, 'brake',  hudCtl.hb > 0.5,     HUDC.red);
+  drawLamp(g, lx0,                          ly0, lampSz, 'temp',   cluster.heat > 0.55, HUDC.red);
+  drawLamp(g, lx0 + lampSz + lampGap,       ly0, lampSz, 'engine', dmg > 45,            HUDC.amber);
+  drawLamp(g, lx0 + (lampSz + lampGap)*2,   ly0, lampSz, 'brake',  hudCtl.hb > 0.5,     HUDC.red);
+
+  /* ---- LED pip row over the steering pads ---- */
+  var pipN = 5, pipInset = Math.max(2, Math.round(L.pipH*0.22));
+  var pipGap = Math.max(1, Math.round(L.pipH*0.26));
+  var pipW = (L.pipW - pipInset*2 - (pipN-1)*pipGap)/pipN;
+  var lit = Math.round(clamp(rpm, 0, 1)*pipN);
+  for(i=0;i<pipN;i++){
+    var on = i < lit;
+    var px0 = L.pipX + pipInset + i*(pipW+pipGap), py0 = L.pipY + pipInset;
+    var ph2 = L.pipH - pipInset*2;
+    g.fillStyle = on ? '#3f9c1d' : '#132a17';
+    g.fillRect(px0, py0, pipW, ph2);
+    g.fillStyle = on ? '#5ad42a' : '#16301a';        /* domed lens */
+    g.fillRect(px0+0.5, py0+0.5, pipW-1, ph2-1.5);
+    g.fillStyle = on ? 'rgba(212,255,190,.80)' : 'rgba(96,128,96,.22)';
+    g.fillRect(px0+0.5, py0+0.5, pipW-1, Math.max(0.6, ph2*0.22));
+    g.fillStyle = 'rgba(0,0,0,.55)';
+    g.fillRect(px0, py0+ph2-1, pipW, 1);
+  }
 }
 
 /* the pair of little blue triangles above the knob, which wink when the
@@ -2436,141 +2686,177 @@ function drawAuxTri(g, x, y, w, h, up, lit){
   g.fillStyle = lit ? '#dce7ff' : HUDC.numTach; g.fill();
 }
 
-/* A chrome housing, drawn straight into a control's own canvas so every
-   physical control on the dash is cast from the same material as the
-   instrument bezels: dark inset face, bright top edge, shaded foot. */
-function drawHousing(px, w, h, lit){
-  var y, x, t, c;
-  px(0, 0, w, h, '#05070a');                            /* outer edge */
-  for(y=1; y<h-1; y++){                                 /* rolled chrome */
-    t = y/(h-1);
-    c = t < 0.07 ? '#e6edf4' : t < 0.16 ? '#b4bfcb' :
-        t < 0.42 ? '#6f7a87' : t < 0.70 ? '#4a5560' :
-        t < 0.88 ? '#333c46' : '#1a2028';
-    px(1, y, w-2, 1, c);
+/* A smooth-coordinate surface for a control that is mounted in the chassis.
+   The bay's bezel is already painted into the cached dash bitmap, so these
+   only ever draw the moving face and leave their margins transparent. */
+function hudSurface(cv, w, h){
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var S = Math.max(1, Math.round(dpr));
+  w = Math.max(1, Math.round(w)); h = Math.max(1, Math.round(h));
+  if(cv.width !== w*S || cv.height !== h*S){
+    cv.width = w*S; cv.height = h*S;
+    cv.style.width = w+'px'; cv.style.height = h+'px';
   }
-  for(x=3; x<w-3; x+=3)                                 /* brushed grain */
-    px(x, 2, 1, h-4, 'rgba(255,255,255,.055)');
-  px(1, 1, 1, h-2, '#cdd6de');                          /* left bevel */
-  px(w-2, 1, 1, h-2, '#131920');                        /* right shade */
-  px(3, 4, w-6, h-8, lit ? '#3d3111' : '#070b10');      /* inset face */
-  px(3, 4, w-6, 1, lit ? '#7a6420' : '#020407');
-  px(3, h-5, w-6, 1, lit ? '#241d0a' : '#121a23');
+  var g = cv.getContext('2d');
+  g.setTransform(S,0,0,S,0,0);
+  g.clearRect(0,0,w,h);
+  return g;
 }
 
 /* ------------------------------------------------- steering rockers
-   Where the reference cluster carries its NOS button, Rally Pixel needs
-   its steering instead — so the arrows get the same treatment as the
-   rest of the dash: a chrome housing with a rocker that lights and
-   sinks a pixel when pressed. */
+   Where the reference carries its NOS button, Rally Pixel needs its
+   steering instead, so the arrows take the same treatment as the pads on
+   the reference: a dark moulded plate carrying a grey arrowhead, dropped
+   into the bezel the chassis already cut for it. */
 function drawSteer(id, right, pressed){
   var cv = document.getElementById(id);
   if(!cv) return;
-  var px = hudPainter(cv, 34, 30, 2);
-  var drop = pressed ? 1 : 0;
-  drawHousing(px, 34, 30, pressed);
+  var L = cluster.L || clusterLayout();
+  var W = L.padW, H = L.padH2;
+  var g = hudSurface(cv, W, H);
+  var rim = Math.max(1.5, Math.min(W,H)*0.08);
+  var x = rim, y = rim + (pressed ? 1 : 0), w = W - rim*2, h = H - rim*2 - 1;
+  var c = Math.max(1.5, Math.min(w,h)*0.16);
 
-  /* the rocker itself: a raised pad carrying the arrow */
-  var rx = 6, ry = 7 + drop, rw = 22, rh = 16;
-  px(rx-1, ry-1, rw+2, rh+2, '#04060a');
-  px(rx, ry, rw, rh, pressed ? '#e0921a' : '#525c68');
-  px(rx, ry, rw, 1, pressed ? '#ffd487' : '#8b96a3');
-  px(rx, ry+rh-1, rw, 1, pressed ? '#8a6416' : '#242c35');
-  px(rx, ry, 1, rh, pressed ? '#ffc457' : '#78838f');
-  px(rx+rw-1, ry, 1, rh, '#1d242c');
+  var lg = g.createLinearGradient(0, y, 0, y+h);
+  if(pressed){ lg.addColorStop(0,'#e0a733'); lg.addColorStop(1,'#a56910'); }
+  else       { lg.addColorStop(0,'#3a3f45'); lg.addColorStop(1,'#22262b'); }
+  facetPath(g, x, y, w, h, c); g.fillStyle = lg; g.fill();
+  g.save(); facetPath(g, x, y, w, h, c); g.clip();
+  dashGrain(g, x, y, w, h, Math.round(w*h*0.05), 11);
+  g.fillStyle = pressed ? 'rgba(255,226,160,.9)' : 'rgba(139,150,163,.75)';
+  g.fillRect(x, y, w, 1);
+  g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(x, y+h-1, w, 1);
+  g.restore();
 
-  /* solid arrowhead: a column-by-column triangle pointing outboard */
-  var ink = pressed ? '#241800' : '#e8eef6';
-  var n = 8, acy = ry + rh/2, ax0 = rx + rw/2 + (right ? -4 : 4), i;
-  for(i=0;i<n;i++){
-    var hh = n - i;                                     /* 8,7,...,1 */
-    px(right ? ax0 + i : ax0 - i, acy - hh/2, 1, hh, ink);
-  }
+  /* solid arrowhead pointing outboard */
+  var ah = Math.max(6, h*0.30), aw = ah*0.62;
+  var acx = x + w/2 + (right ? -aw*0.25 : aw*0.25), acy = y + h/2;
+  g.beginPath();
+  if(right){ g.moveTo(acx + aw/2, acy); g.lineTo(acx - aw/2, acy - ah/2); g.lineTo(acx - aw/2, acy + ah/2); }
+  else     { g.moveTo(acx - aw/2, acy); g.lineTo(acx + aw/2, acy - ah/2); g.lineTo(acx + aw/2, acy + ah/2); }
+  g.closePath();
+  g.fillStyle = pressed ? '#2a1c00' : '#9aa3ad'; g.fill();
 }
 
 /* ------------------------------------------------------ handbrake lever
-   A console-mounted fly-off lever in a chrome housing to match the rest
-   of the dash: base, gaiter, angled arm and a grip with a release
-   button. Engaging swings the arm up towards vertical. */
+   A gated lever, the way the reference mounts its shifter: a slot cut
+   across the bay floor and a machined rod that swings along it. The rod
+   travels right as the lever comes on, so the gate reads at a glance. */
 function drawHandbrake(v){
   var cv = document.getElementById('hbrake-cv');
   if(!cv) return;
-  var px = hudPainter(cv, 20, 32, 2);
-  var pivotX = 5, pivotY = 24;
+  var L = cluster.L || clusterLayout();
+  var W = L.gateW, H = L.upperH;
+  var g = hudSurface(cv, W, H);
   var on = v > 0.5;
+  var rim = Math.max(1.5, Math.min(W,H)*0.08);
+  var sy = H*0.56, sh = Math.max(3, H*0.17);
+  var sx = rim + W*0.10, sw = W - rim*2 - W*0.20;
 
-  drawHousing(px, 20, 32, on);                          /* chrome surround */
-  px(2, 26, 16, 4, HUDC.dark);                          /* console base */
-  px(2, 26, 16, 1, on ? HUDC.amber : HUDC.steelLo);
-  px(pivotX-2, 21, 7, 5, HUDC.black);                   /* rubber gaiter */
-  px(pivotX-1, 21, 5, 1, HUDC.rubberHi);
+  /* the slot */
+  roundPath(g, sx, sy - sh/2, sw, sh, sh/2);
+  g.fillStyle = '#04060a'; g.fill();
+  g.save(); roundPath(g, sx, sy - sh/2, sw, sh, sh/2); g.clip();
+  g.fillStyle = 'rgba(0,0,0,.8)'; g.fillRect(sx, sy - sh/2, sw, 1);
+  g.restore();
 
-  var ang = (38 + v*36) * Math.PI/180;                  /* 38deg at rest, 74deg pulled */
-  var dx = Math.cos(ang), dy = -Math.sin(ang);
-  var len = 13;
-  for(var i=0;i<=len;i++){
-    px(pivotX + dx*i - 1, pivotY + dy*i - 1, 2, 2, HUDC.steel);
-    px(pivotX + dx*i - 1, pivotY + dy*i - 1, 1, 1, HUDC.steelHi);
-  }
-  px(pivotX-2, pivotY-2, 4, 4, HUDC.steelLo);           /* pivot boss */
-  px(pivotX-1, pivotY-1, 2, 2, HUDC.black);
+  /* the rod: pivots at the foot of the slot and rakes back as it comes on */
+  var t = clamp(v,0,1);
+  var bx = sx + sw*(0.20 + t*0.62), by = sy;
+  var tipX = bx + W*0.20*t + W*0.05, tipY = rim + H*0.10;
+  var rw = Math.max(3, W*0.13);
+  g.save();
+  g.translate(bx, by);
+  g.rotate(Math.atan2(tipX-bx, by-tipY));
+  var len = Math.hypot(tipX-bx, by-tipY);
+  var rod = g.createLinearGradient(-rw/2, 0, rw/2, 0);
+  rod.addColorStop(0.00, '#8b939b');
+  rod.addColorStop(0.28, on ? '#6b5a2a' : '#4c545c');
+  rod.addColorStop(0.70, '#262b31');
+  rod.addColorStop(1.00, '#0e1114');
+  roundPath(g, -rw/2, -len, rw, len + rw*0.6, rw*0.45);
+  g.fillStyle = rod; g.fill();
+  g.beginPath(); g.arc(0, -len + rw*0.5, rw*0.52, 0, TAU);   /* domed cap */
+  g.fillStyle = on ? '#d8a63c' : '#7f878f'; g.fill();
+  g.beginPath(); g.arc(-rw*0.14, -len + rw*0.36, rw*0.28, 0, TAU);
+  g.fillStyle = on ? '#ffdd93' : '#b3bbc2'; g.fill();
+  g.restore();
 
-  var gx = pivotX + dx*len, gy = pivotY + dy*len;       /* grip */
-  px(gx-3, gy-5, 6, 8, HUDC.black);
-  px(gx-2, gy-4, 4, 6, on ? HUDC.amberLo : HUDC.rubber);
-  px(gx-2, gy-4, 4, 1, on ? HUDC.amber : HUDC.rubberHi);
-  px(gx-2, gy+1, 4, 1, HUDC.black);
-  px(gx-1, gy-5, 3, 1, on ? HUDC.amber : HUDC.dim);     /* release button */
+  /* pivot boot */
+  g.beginPath(); g.ellipse(bx, by + sh*0.10, rw*0.85, sh*0.55, 0, 0, TAU);
+  g.fillStyle = '#14181c'; g.fill();
 }
 
 /* --------------------------------------------------------- shift paddles
-   Cast alloy blades in the reference's style: a raked plate, drilled
-   checker-plate face, chrome edge highlight and a stamped +/- at the
-   bottom. The rake runs outward — the left blade leans left, the right
-   blade leans right — so the pair frames the dash. */
+   Cast blades in the reference's style: a dark raked plate with a bright
+   machined edge along its outer side, a mounting bracket at the inboard
+   foot where it bolts to the rail, and a large stamped +/- centred on the
+   face. The rake runs outward, so the pair frames the dials. */
 function drawPaddle(id, up, press, active){
   var cv = document.getElementById(id);
   if(!cv) return;
-  var px = hudPainter(cv, 20, 24, 2);
+  var L = cluster.L || clusterLayout();
+  var W = L.padlW, H = L.padlH;
+  var g = hudSurface(cv, W, H);
   var down = press > 0.5;
-  var drop = down ? 1 : 0;
-  var y, x, lean;
+  var drop = down ? Math.max(1, H*0.02) : 0;
+  var sgn = up ? 1 : -1;                       /* +1 leans right, -1 leans left */
 
-  /* mounting stalk on the screen-inward side */
-  var sx = up ? 0 : 17;
-  px(sx, 9, 3, 7, '#05070a');
-  px(sx, 10, 3, 5, '#2a323c');
-  px(sx + (up?0:2), 10, 1, 5, '#4d5866');
+  /* mounting bracket: a stub on the inboard side, bolted to the rail */
+  var brW = W*0.40, brH = H*0.30;
+  var brX = up ? 0 : W - brW, brY = H*0.66;
+  facetPath(g, brX, brY, brW, brH, brW*0.28);
+  g.fillStyle = '#2c3239'; g.fill();
+  g.save(); facetPath(g, brX, brY, brW, brH, brW*0.28); g.clip();
+  g.fillStyle = '#6b747d'; g.fillRect(brX, brY, brW, 1);
+  g.fillStyle = '#0a0d10'; g.fillRect(brX, brY+brH-1, brW, 1);
+  g.restore();
+  dashScrew(g, brX + brW*0.5, brY + brH*0.5, Math.max(1, brW*0.20));
 
-  /* Raked plate: each row steps sideways, giving the blade its diagonal
-     lean. Rows run 1..22, the face is 11 wide. */
-  var faceW = 11;
-  for(y=1; y<23; y++){
-    lean = Math.round((y - 12) * 0.22) * (up ? 1 : -1);
-    var x0 = (up ? 5 : 4) + lean;
-    px(x0-1, y+drop, faceW+2, 1, '#05070a');            /* cast edge */
-    for(x=0; x<faceW; x++){
-      var col;
-      if(down)                       col = ((x + y) & 2) ? '#ffd487' : '#e2a53c';
-      else if(!active)               col = ((x>>1) + (y>>1)) & 1 ? '#6e757c' : '#585f66';
-      else if(x === 0)               col = '#ffffff';   /* lit outer edge */
-      else if(x >= faceW-2)          col = '#7d858d';   /* shaded inner edge */
-      else if(((x>>1) + (y>>1)) & 1) col = '#f2f5f8';   /* checker plate */
-      else                           col = '#c3cbd2';
-      px(x0+x, y+drop, 1, 1, col);
-    }
-    /* drilled grip holes, in staggered rows down the plate */
-    if(y > 3 && y < 21 && ((y-4) % 4) === 0){
-      px(x0+2, y+drop, 2, 1, down ? '#8a6416' : '#4a525a');
-      px(x0+7, y+drop, 2, 1, down ? '#8a6416' : '#4a525a');
-    }
+  /* the blade: a raked quad, wider at the foot, leaning outboard */
+  var topW = W*0.62, botW = W*0.80;
+  var cxTop = W/2 - sgn*W*0.14, cxBot = W/2 + sgn*W*0.08;
+  g.save();
+  g.translate(0, drop);
+  g.beginPath();
+  g.moveTo(cxTop - topW/2, H*0.03);
+  g.lineTo(cxTop + topW/2, H*0.03);
+  g.lineTo(cxBot + botW/2, H*0.97);
+  g.lineTo(cxBot - botW/2, H*0.97);
+  g.closePath();
+  var bl = g.createLinearGradient(cxTop - topW/2, 0, cxBot + botW/2, 0);
+  if(down){
+    bl.addColorStop(0.00,'#ffe0a4'); bl.addColorStop(0.35,'#e2a53c');
+    bl.addColorStop(1.00,'#8a6416');
+  } else {
+    /* darker than the moulding it is bolted to, so the blade reads as a
+       separate casting standing off the rail rather than part of it */
+    bl.addColorStop(0.00,'#454c55'); bl.addColorStop(0.34,'#252a30');
+    bl.addColorStop(1.00,'#101317');
   }
+  g.fillStyle = bl; g.fill();
+  g.save(); g.clip();
+  dashGrain(g, 0, 0, W, H, Math.round(W*H*0.06), 17);
+  g.restore();
+  /* machined catch down the outboard edge and a dark inboard shoulder */
+  g.lineWidth = Math.max(1, W*0.05);
+  g.beginPath();
+  g.moveTo(cxTop - sgn*topW/2, H*0.03);
+  g.lineTo(cxBot - sgn*botW/2, H*0.97);
+  g.strokeStyle = down ? 'rgba(255,240,200,.95)' : 'rgba(190,202,214,.80)'; g.stroke();
+  g.beginPath();
+  g.moveTo(cxTop + sgn*topW/2, H*0.03);
+  g.lineTo(cxBot + sgn*botW/2, H*0.97);
+  g.strokeStyle = 'rgba(4,6,9,.85)'; g.stroke();
 
-  /* stamped +/- at the foot of the blade */
-  var ink = down ? '#3a2a06' : (active ? '#2b323a' : '#3d4757');
-  var bx = (up ? 5 : 4) + Math.round((21 - 12) * 0.22) * (up ? 1 : -1);
-  px(bx+3, 19+drop, 5, 1, ink);
-  if(up) px(bx+5, 17+drop, 1, 5, ink);
+  /* stamped +/- on the face */
+  var gl = Math.max(4, W*0.30), gw = Math.max(1.4, W*0.09);
+  var gcx = (cxTop + cxBot)/2, gcy = H*0.56;
+  g.fillStyle = down ? '#3a2a06' : (active ? '#dde4ec' : '#767e88');
+  g.fillRect(gcx - gl/2, gcy - gw/2, gl, gw);
+  if(up) g.fillRect(gcx - gw/2, gcy - gl/2, gw, gl);
+  g.restore();
 }
 
 /* ------------------------------------------------------------- per frame */

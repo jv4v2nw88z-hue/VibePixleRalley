@@ -390,4 +390,90 @@ and I would rather tune them against the final framing than tune them twice.
 Scored gap reports are appended below as each phase completes. No phase is
 committed until every element in it scores 9 or higher against the target.
 
-_(Phase 0 complete — awaiting approval of the phase order and decisions A and B.)_
+### Phase 0 — complete
+
+Audit written against Playwright captures from `HEAD`. Phase order and both
+decisions approved as recommended: dash grows to roughly 26-28% of height on a
+phone scaled by aspect, and the pedal bay survives as a narrow strip.
+
+---
+
+### Phase 1 — dashboard chassis and materials
+
+**What changed.** The binnacle is gone. The dash is now one full-width canvas
+moulding reaching the bottom edge of the screen, and every touch control is
+mounted into a well cut in it rather than floating at a screen edge with a
+housing of its own.
+
+- `clusterLayout` rewritten from a strip of five columns into a grid across the
+  whole viewport: a centre island (pedal strip, gear strip, tacho, centre
+  stack, speedo, boost), a left wing (LED pips over the two steering pads), a
+  right wing (lever gate, throttle, status bay), a bottom band carrying the
+  indicator strip, and two paddle mounts on the rail.
+- Dash height is now `clamp(0.62/aspect, 0.25, 0.42)` of the viewport: 28% on a
+  phone, 41% at 3:2. Replaces the flat `min(vh*0.185, 88px)` cap.
+- New material vocabulary, all painted once into the cached base bitmap:
+  `facetPath`, `dashPlate`, `dashWell`, `dashBezel`, `dashSeam`, `dashVent`,
+  `dashScrew`, `dashGrain`, `dashShellPath`.
+- The rail gets its depth from a second copy of the shell profile dropped by
+  the rail thickness, so the band follows every step and chamfer of the crown,
+  with a scored foot, a lit lip and a soft shadow cast onto the face below.
+- `#dash-rail` deleted. `applyDashLayout` publishes the grid as CSS custom
+  properties and the stylesheet consumes them, so the chassis places the
+  controls instead of the other way round.
+- `drawSteer`, `drawHandbrake` and `drawPaddle` rewritten in smooth chassis
+  coordinates. They no longer draw a housing each; the chassis provides it.
+  The handbrake became a gated lever, the paddles gained mounting brackets.
+- The footwell became two slotted travel gauges (decision B).
+- Dead code removed: `hudPainter`, `pxInto`, `drawHousing`.
+
+**Bugs found and fixed during the phase.**
+
+1. `dashGrain` seeded `rnd2` with a running counter. `rnd2` hashes a 2D
+   coordinate and is only well mixed across a plane, so walking it with an
+   index put every sample on a lattice — a web of thin diagonals across every
+   panel instead of speckle. Visible in
+   `reference/shots/phase1-attempt-7-desktop.png`. Now uses `mulberry`.
+2. `.pad.paddle.auto{opacity:.45}` erased the blades once they were restyled
+   dark. The blade now keeps its material in automatic and only the stamped
+   glyph reports the mode.
+3. Paddles anchored at the canvas top buried most of the blade in the
+   instrument face and collided with the wings at 3:2. They now hang off the
+   rail like the reference, with only the foot dipping into the moulding.
+4. Louvres were placed in the middle of each plain panel, straight underneath
+   the paddle mounts. They now take the panel outboard of each blade.
+
+**Scored against `reference/target.png`** (capture:
+`reference/shots/phase1-desktop.png`, `phase1-phone.png`, plus the attempt
+series). Only the elements this phase owns are scored.
+
+| Element | Score | Remaining delta |
+| --- | --- | --- |
+| Sculpted top rail and crown profile | 9 | Reference crown has one more shoulder step at the extreme wings; ours steps twice, not three times |
+| Bevels: plates, wells, bezels | 9 | Bezel gradient is a touch cooler than the reference's |
+| Panel seams | 9 | — |
+| Moulded vents | 9 | Only appear on wide aspects, where the reference has no dead panel to fill. Correct behaviour, no reference to score against |
+| Fasteners | 9 | — |
+| Indicator strip integrated into the chassis | 9 | Housing only; its contents are Phase 4 |
+| Control mounting: pads, gate, throttle, paddles | 9 | Paddle blade taper is still coarser than the reference; Phase 3 refines the casting |
+| Cast grain / material read | 9 | — |
+
+**Regression guard:** 29/29 checks pass (`node scripts/regress.mjs`). Boots,
+starts a stage, clock runs, throttle moves the car, steering / handbrake /
+manual shift accepted, surface and progress bind to live state, damage
+registers, a run completes to the results screen, no page errors. Layout holds
+at 740x360, 844x390, 932x430, 1112x834 and 1536x1024 with every control on
+screen, no control overlapping another, and the dash spanning the full width.
+
+**Frame cost:** improved, well inside budget.
+
+| Preset | Phase 0 mean | Phase 1 mean | p95 | max |
+| --- | --- | --- | --- | --- |
+| phone | 1.40 | **0.98** | 1.40 | 2.10 |
+| desktop | 1.15 | **0.83** | 1.10 | 1.90 |
+
+The gain is the pedal bay: the old footwell repainted a checker-plate face
+cell by cell every frame, a few hundred `fillRect` calls. The travel gauges
+are eight. Everything Phase 1 added went into the cached bitmap.
+
+_(Phase 1 complete. Next: Phase 2, gauges.)_

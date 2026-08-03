@@ -163,30 +163,18 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 #hud-timer{top:calc(6px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);text-align:center;}
 #hud-timer .t{font-size:clamp(17px,4.2vh,30px);font-weight:700;letter-spacing:2px;color:var(--amber);text-shadow:0 0 10px rgba(255,180,50,.4);}
 #hud-timer .d{font-size:clamp(9px,1.7vh,12px);letter-spacing:1px;}
-/* bottom-centre instrument binnacle: pedal bay, tacho, gear + lamps, speedo.
-   One canvas — the panel shell, bezels and dial faces are all drawn there.
-   It is sized in JS to under a fifth of the screen height and pinned to the
-   bottom edge, because this is a chase cam and the car rides low on screen
-   at speed. Everything else in the dash band lines up on the same baseline.
-   Centred inside the SAFE area rather than the raw viewport, so that on a
-   notched phone it shares a frame with the side controls — which are inset
-   too — and cannot drift into them. */
-#hud-cluster{position:absolute;
-  left:env(safe-area-inset-left);right:env(safe-area-inset-right);
-  width:-moz-fit-content;width:fit-content;margin-left:auto;margin-right:auto;
-  bottom:calc(4px + env(safe-area-inset-bottom));line-height:0;
-  filter:drop-shadow(0 2px 5px rgba(0,0,0,.6));}
+/* The dash. One full-width canvas moulding pinned to the bottom edge,
+   carrying the chassis, both dials, the centre stack, the indicator strip
+   and the wells every touch control mounts into. Sized in JS: its share of
+   the screen height falls off as the viewport gets wider, because this is a
+   chase cam and every pixel the dash takes is a pixel of road lost.
+
+   It reaches the physical edges on purpose — the safe-area insets are held
+   inside the layout instead, so a notched phone gets moulding in the notch
+   rather than a gap under the panel. */
+#hud-cluster{position:absolute;left:0;right:0;bottom:0;line-height:0;
+  filter:drop-shadow(0 -2px 6px rgba(0,0,0,.55));}
 #hud-cluster canvas{display:block;}
-/* the rail ties the binnacle, pedals, paddles and lever into one dash
-   instead of separate boxes floating at the screen edges. Purely a
-   backdrop — it fades out upwards so the road still reads through it. */
-#dash-rail{position:absolute;left:0;right:0;pointer-events:none;
-  bottom:0;height:calc(var(--cluster-h, 76px) + 16px + env(safe-area-inset-bottom));
-  background:
-    linear-gradient(180deg, rgba(176,196,224,.16) 0 1px, rgba(176,196,224,0) 1px),
-    linear-gradient(180deg, rgba(6,9,13,.10) 0%, rgba(6,9,13,.36) 45%, rgba(4,6,9,.62) 100%);
-  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 9%,#000 91%,transparent 100%);
-  mask-image:linear-gradient(90deg,transparent 0,#000 9%,#000 91%,transparent 100%);}
 #hud-left{top:calc(6px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));min-width:118px;}
 #hud-left .nm{font-size:10px;color:var(--muted);letter-spacing:1px;}
 .meter{height:6px;background:#0d110c;border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-top:3px;}
@@ -221,35 +209,38 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 }
 .pad.act{background:linear-gradient(180deg,rgba(255,196,87,.55),rgba(224,146,26,.5));
   border-color:#ffd487;color:#1a1200;}
-/* left thumb: shifter blade outboard, then the two steering rockers.
-   The rockers carry their own chrome housing on canvas, so the pad itself
-   is just the tap target — no border, no fill of its own. */
-#p-shiftdn{left:calc(6px + env(safe-area-inset-left));}
-#p-left{left:calc(50px + env(safe-area-inset-left));width:72px;height:62px;}
-#p-right{left:calc(126px + env(safe-area-inset-left));width:72px;height:62px;}
-.pad.rocker{background:none;border:none;box-shadow:none;padding:0;}
-.pad.rocker canvas{image-rendering:pixelated;display:block;}
-.pad.rocker.act{background:none;border:none;}
-/* right thumb: lever, throttle at the corner, shifter blade outboard */
-#p-gas{right:calc(50px + env(safe-area-inset-right));width:88px;height:62px;}
-#p-hbrake{right:calc(142px + env(safe-area-inset-right));
-  width:46px;height:77px;flex-direction:column;gap:0;padding:0;overflow:hidden;}
-#p-shiftup{right:calc(6px + env(safe-area-inset-right));}
-#p-left,#p-right,#p-gas,#p-hbrake,.pad.paddle{bottom:calc(4px + env(safe-area-inset-bottom));}
-#p-hbrake canvas{image-rendering:pixelated;display:block;}
-#p-hbrake small{font-size:7px;letter-spacing:.5px;opacity:.75;margin-top:-1px;}
-#p-hbrake.act{background:linear-gradient(180deg,rgba(255,196,87,.26),rgba(4,6,9,.72));
-  border-color:#ffd487;}
+/* Every control is mounted INTO the chassis: the dash canvas paints the
+   bezel and the well, and the pad is only the tap target plus the moving
+   face drawn on its own canvas. So the stylesheet does not place them —
+   the chassis layout does, through the custom properties applyDashLayout
+   publishes. No control carries a border or a fill of its own any more. */
+.pad.rocker,.pad.lever,.pad.paddle{background:none;border:none;box-shadow:none;padding:0;}
+.pad.rocker.act,.pad.lever.act,.pad.paddle.act{background:none;border:none;}
+.pad.rocker canvas,.pad.lever canvas,.pad.paddle canvas{display:block;}
+#p-left,#p-right{bottom:var(--pad-y,4px);width:var(--pad-w,72px);height:var(--pad-h,62px);}
+#p-left{left:var(--pad-l-x,50px);}
+#p-right{left:var(--pad-r-x,126px);}
+#p-hbrake{left:var(--gate-x,auto);bottom:var(--upper-y,4px);
+  width:var(--gate-w,46px);height:var(--upper-h,60px);overflow:hidden;}
+#p-hbrake small{display:none;}      /* the gate reads on its own */
+#p-gas{left:var(--gas-x,auto);bottom:var(--upper-y,4px);
+  width:var(--gas-w,88px);height:var(--upper-h,60px);
+  background:none;border:none;box-shadow:none;
+  color:rgba(210,222,238,.72);font-size:var(--dash-label,12px);letter-spacing:2px;}
+#p-gas.act{background:linear-gradient(180deg,rgba(255,196,87,.34),rgba(224,146,26,.16));
+  border:none;color:#ffe0a4;}
 #p-pause{right:calc(8px + env(safe-area-inset-right));top:calc(6px + env(safe-area-inset-top));width:44px;height:34px;font-size:12px;}
-/* paddle shifters — dark chrome blades on the outer ends of the dash band,
-   each sitting immediately outboard of the thumb that works it. */
-.pad.paddle{height:48px;width:40px;padding:0;background:none;border:none;box-shadow:none;}
-.pad.paddle canvas{image-rendering:pixelated;display:block;}
-.pad.paddle.act{background:none;}
-.pad.paddle.auto{opacity:.45;}
-/* the tilt strip parks above the cluster, whatever height the cluster took */
+/* paddle shifters — cast blades bolted to the top rail, flanking the dials */
+.pad.paddle{bottom:var(--padl-y,60px);width:var(--padl-w,40px);height:var(--padl-h,48px);}
+#p-shiftdn{left:var(--padl-l-x,6px);}
+#p-shiftup{left:var(--padl-r-x,auto);}
+/* in automatic the blades are still bolted to the rail, they just do
+   nothing — so the casting keeps its material and only the stamped
+   glyph goes dim. A heavy opacity knock here just erased them. */
+.pad.paddle.auto{opacity:.94;}
+/* the tilt strip parks above the dash, whatever height the dash took */
 #tilt-bar{position:absolute;left:50%;transform:translateX(-50%);
-  bottom:calc(var(--cluster-h, 76px) + 12px + env(safe-area-inset-bottom));
+  bottom:calc(var(--dash-h, 76px) + 8px);
   width:150px;height:8px;background:rgba(8,11,7,.6);border:2px solid rgba(140,160,130,.5);border-radius:4px;pointer-events:none;}
 #tilt-bar i{position:absolute;top:0;bottom:0;left:50%;width:6px;margin-left:-3px;background:var(--amber);border-radius:3px;}
 
