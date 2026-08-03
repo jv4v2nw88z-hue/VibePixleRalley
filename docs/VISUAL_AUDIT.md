@@ -564,4 +564,96 @@ reporting threshold and 6-8% of the 16.67ms budget.
 | phone | 0.98 | 1.28 | +0.30 | 1.90 | 3.30 |
 | desktop | 0.83 | 1.02 | +0.19 | 1.40 | 2.00 |
 
-_(Phase 2 complete. Next: Phase 3, secondary instruments.)_
+---
+
+### Phase 3 — secondary instruments
+
+**What changed.**
+
+- **Boost gauge.** Built on `drawDialFace` rather than as a separate
+  component: a new `small` option swaps the polished chrome bezel for the
+  dark moulded ring the reference uses on its auxiliary dial, drops the
+  hairline, and scales the lettering up for the smaller face. Scale 0-20,
+  labelled 0/10/20, minors every 2.5, `BOOST` over the hub and `PSI` under.
+- **Shift light module.** A faceted plate carrying three wells: a `SHIFT`
+  header, a two-cell bay for the paddle tell-tales, and a four-segment
+  shift-light bar with rounded lenses that fill progressively, green through
+  to red on the last.
+- **Digital readout.** Its own plate below the module: seven-segment digits
+  with the unlit segments left as ghosts, over a `KMH` caption. `SEG7` maps
+  glyphs to segments and `segBar` draws each as a mitred bar.
+- **Gear gate.** A framed stack of cells with the engaged position lit amber
+  and a detent knob riding alongside it, matching the reference's treatment.
+- **Paddle shifters.** Rebuilt as a bowed casting: both long edges are
+  quadratic curves, wider at the foot and leaning outboard at the tip, with a
+  machined chamfer running as an L across the top and down the left flank —
+  the key light is up and left for the whole dash, so both blades catch it on
+  the same side rather than mirroring. A faceted mounting post now stands
+  beside the blade's foot instead of behind it, and the stamped glyph is
+  larger with its own shadow.
+- **Handbrake gate.** Lever scaled to the bay rather than to its width alone,
+  and the pivot boot reduced from a black blob wider than the rod.
+
+**One deliberate deviation from the reference.** The reference's gate reads
+`P R N 1 2`. This gearbox has no park and no reverse, and it has six forward
+gears, so the gate carries `N 1 2 3 4 5 6` — the ratios the car actually has.
+A faceplate that cannot display fifth would be a prettier instrument and a
+lying one. The treatment (frame, cells, amber engaged position, detent knob)
+matches; only the legend differs.
+
+A smaller one: the reference's two tell-tales are both up-arrows, a plain
+shift-up light. Ours are the down and up paddle tell-tales, which is what the
+game actually has to report.
+
+**Bugs found and fixed during the phase.**
+
+1. **The readout rendered as a single dash.** Batching the seven-segment work
+   into two fills left `segBar` opening its own `beginPath`, so each segment
+   wiped the accumulated path and only the last subpath of each digit
+   survived. Caught in the visual loop, not by any test.
+2. **The right wing's bays started inside the rail band.** `upperY` was
+   measured from `faceY` rather than from the foot of the rail, so the lever
+   gate and throttle had their top corners cut by the crown and the right
+   paddle's foot landed on the gate. Both now sit below the rail as the
+   reference has them.
+3. **The centre island could overrun the right wing.** The dial-size budget
+   assumed the row needed 6.2D of width; the real demand is 0.93D of left
+   wing, 3.87D of island and 1.45D of right wing, so 6.25D before the gaps
+   between the three groups. At 3:2 the island ran 43px into the lever gate.
+   Budget corrected to 6.55D.
+
+**Scored against `reference/target.png`** (captures:
+`reference/shots/phase3-desktop.png`, `phase3-phone.png`, plus the attempt
+series).
+
+| Element | Score | Remaining delta |
+| --- | --- | --- |
+| Boost gauge | 9 | `PSI` is dropped below a face radius of 16px, where the minimum legible caption size would foul the rim |
+| Shift light module | 9 | Tell-tales are down/up rather than the reference's two up-arrows (deliberate) |
+| Digital readout, seven-segment | 9 | — |
+| Gear selector and detent knob | 9 | Legend is `N 1-6`, not `P R N 1 2` (deliberate) |
+| Paddle shifters and mounting hardware | 9 | Reference's cast texture is heavier than our grain |
+| Steering pads | 9 | — |
+| LED pip row | 9 | — |
+| Handbrake gate | 9 | Reference's lever is chromed; ours is darker to sit with the paddles |
+
+**Regression guard:** 29/29 pass.
+
+**Frame cost.** A note on method: absolute numbers drift with container load,
+so the earlier phase figures are not comparable across sessions. Measuring
+Phase 2's commit and Phase 3's back to back in the same session is the
+reliable comparison, and that is what is quoted here. A desktop throughput
+drop that looked like a 60-to-35fps regression turned out to be entirely
+environmental — the previous commit measured the same on the same machine.
+
+| Preset | Phase 2 (same session) | Phase 3 | delta |
+| --- | --- | --- | --- |
+| phone | 1.58 | 1.61 | +0.03 |
+| desktop | 1.53 | 1.55 | +0.02 |
+
+Three new instruments for 0.03ms, because the per-frame work was batched as
+it was written: the readout is two path fills rather than forty-two, the
+shift lenses fill without a clip, and the needle hubs and tell-tales use
+concentric solids instead of building a gradient object every frame.
+
+_(Phase 3 complete. Next: Phase 4, indicator strip and status boxes.)_
