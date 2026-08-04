@@ -638,15 +638,20 @@ function shade(hex, amt){
 function carPalette(paint, damageTier){
   return {
     body:   paint,
-    lite:   shade(paint, 0.13),
-    hi:     shade(paint, 0.26),
-    dark:   shade(paint,-0.15),
-    darker: shade(paint,-0.28),
+    lite:   shade(paint, 0.07),
+    hi:     shade(paint, 0.15),
+    /* the roof and bonnet crown take the same left-to-right rake the flanks
+       do, so a highlight panel reads as a surface turning into the light
+       rather than as a flat sticker laid on the shell */
+    hiLite: shade(paint, 0.21),
+    hiDark: shade(paint, 0.09),
+    dark:   shade(paint,-0.11),
+    darker: shade(paint,-0.22),
     deep:   shade(paint,-0.44),
     accent: ACCENTS[paint] || '#ffffff',
-    glass:      damageTier>=1 ? '#8ba0af' : '#4d6b86',
-    glassLite:  damageTier>=1 ? '#a9bcc9' : '#6d8ba6',
-    tyre:'#141516', tyreLite:'#26292c',
+    glass:      damageTier>=1 ? '#3d454c' : '#1b2026',
+    glassLite:  damageTier>=1 ? '#59636c' : '#2b343d',
+    tyre:'#141516', tyreLite:'#31353a',
     chrome:'#b9bec4', chromeDark:'#767b82',
     lamp:'#ffe9a8', tail:'#e8352a', black:'#171a1c', white:'#f2f2ea'
   };
@@ -671,61 +676,259 @@ function liveryColorAt(livery, px, py, w, h, accent){
   return null;
 }
 
-/* Returns {canvas, w, h, scale} — a top-down car pointing UP (-Y). */
+/* =========================================================================
+   TOP-DOWN CAR
+
+   Drawn as vector geometry rather than a character map. The reference car is
+   a continuous-tone render at the picture's own resolution — smooth curved
+   flanks, a specular streak down the bonnet, panel gaps a pixel wide — and
+   no character grid coarse enough to hand-author reaches that. The terrain
+   around it stays chunky, which is exactly how the reference reads: blocky
+   world, smooth car.
+
+   Everything is expressed in a 16 x 28 unit box, so the driving footprint is
+   the one the physics has always used. The bitmap is rasterised at four
+   times the requested scale and drawn down, and it is built once per
+   car/paint/livery/damage combination, so none of this costs a frame.
+   ========================================================================= */
+var CAR_UNIT_W = 16, CAR_UNIT_H = 28, CAR_OVERSAMPLE = 4;
+
+/* Body silhouette: nose at the top, waisted through the middle, drawn as one
+   closed path so it can be reused as a clip for everything laid over it. */
+function carBodyPath(g, o){
+  var W = CAR_UNIT_W, mid = W/2;
+  var n = o.noseHalf, f = o.frontHalf, wst = o.waistHalf, rr = o.rearHalf, t = o.tailHalf;
+  var r = 0.7;
+  g.beginPath();
+  /* blunt nose: the reference front is a squared-off bumper with rounded
+     corners, not the bullet a single curve to a point gives */
+  g.moveTo(mid - n + r, 0.55);
+  g.lineTo(mid + n - r, 0.55);
+  g.quadraticCurveTo(mid + n, 0.55, mid + n + 0.12, 1.15);
+  g.bezierCurveTo(mid + f*0.97, 2.8,  mid + f, 4.3,   mid + f,   6.4);
+  g.bezierCurveTo(mid + f,      9.8,  mid + wst, 12.4, mid + wst, 15.0);
+  g.bezierCurveTo(mid + wst,   17.8,  mid + rr, 19.8, mid + rr,  22.6);
+  g.bezierCurveTo(mid + rr,    25.2,  mid + t*1.04, 26.7, mid + t, 27.15);
+  g.quadraticCurveTo(mid + t, 27.45, mid + t - r, 27.45);
+  g.lineTo(mid - t + r, 27.45);
+  g.quadraticCurveTo(mid - t, 27.45, mid - t, 27.15);
+  g.bezierCurveTo(mid - t*1.04, 26.7, mid - rr, 25.2, mid - rr,  22.6);
+  g.bezierCurveTo(mid - rr,    19.8,  mid - wst, 17.8, mid - wst, 15.0);
+  g.bezierCurveTo(mid - wst,   12.4,  mid - f,  9.8,  mid - f,   6.4);
+  g.bezierCurveTo(mid - f,      4.3,  mid - f*0.97, 2.8, mid - n - 0.12, 1.15);
+  g.quadraticCurveTo(mid - n, 0.55, mid - n + r, 0.55);
+  g.closePath();
+}
+
+/* A glasshouse pane: narrower at the end furthest from the roof, with a
+   rounded corner treatment, so windscreen and backlight share one shape. */
+function carPane(g, y0, y1, hw0, hw1, r){
+  var mid = CAR_UNIT_W/2;
+  roundQuad(g, mid - hw0, y0, mid + hw0, y0, mid + hw1, y1, mid - hw1, y1, r);
+}
+function roundQuad(g, x1,y1, x2,y2, x3,y3, x4,y4, r){
+  g.beginPath();
+  g.moveTo(x1 + r, y1);
+  g.lineTo(x2 - r, y2); g.quadraticCurveTo(x2, y2, x2 + (x3-x2)*0.12, y2 + (y3-y2)*0.12);
+  g.lineTo(x3 - (x3-x2)*0.12, y3 - (y3-y2)*0.12); g.quadraticCurveTo(x3, y3, x3 - r, y3);
+  g.lineTo(x4 + r, y4); g.quadraticCurveTo(x4, y4, x4 - (x4-x1)*0.12, y4 - (y4-y1)*0.12);
+  g.lineTo(x1 + (x4-x1)*0.12, y1 + (y4-y1)*0.12); g.quadraticCurveTo(x1, y1, x1 + r, y1);
+  g.closePath();
+}
+
+/* Per-car proportions. Same footprint, different stance. */
+var CAR_SHAPES = {
+  hatch: { noseHalf:5.1, frontHalf:5.9, waistHalf:5.7, rearHalf:5.9, tailHalf:4.9,
+           screenY:8.6, screenH:3.4, roofH:5.0, backH:3.8, wing:0, arch:0.0 },
+  rally: { noseHalf:5.5, frontHalf:6.3, waistHalf:6.0, rearHalf:6.3, tailHalf:5.2,
+           screenY:8.9, screenH:3.3, roofH:5.2, backH:3.6, wing:1, arch:0.35 },
+  wrc:   { noseHalf:5.9, frontHalf:6.8, waistHalf:6.5, rearHalf:6.8, tailHalf:5.7,
+           screenY:9.1, screenH:3.2, roofH:5.4, backH:3.4, wing:2, arch:0.7 }
+};
+
 function renderCarSprite(carId, paint, livery, damageTier, scale){
-  var map = CAR_SPRITES[carDef(carId).sprite];
-  var h = map.length, w = map[0].length;
   scale = scale || 2;
+  var o = CAR_SHAPES[carDef(carId).sprite] || CAR_SHAPES.hatch;
+  var W = CAR_UNIT_W, H = CAR_UNIT_H, mid = W/2;
+  var S = scale*CAR_OVERSAMPLE;
   var cv = document.createElement('canvas');
-  cv.width = w*scale; cv.height = h*scale;
+  cv.width = Math.round(W*S); cv.height = Math.round(H*S);
   var g = cv.getContext('2d');
-  g.imageSmoothingEnabled = false;
+  g.setTransform(S,0,0,S,0,0);
   var c = carPalette(paint, damageTier);
+  var i;
 
-  for(var y=0;y<h;y++){
-    var row = map[y];
-    for(var x=0;x<w;x++){
-      var ch = row[x];
-      if(ch === '.') continue;
-      var col = null;
-      if(ch==='B' || ch==='H'){
-        col = liveryColorAt(livery,x,y,w,h,c.accent);
-        if(!col){
-          /* light source from the top-left, for a bit of 16-bit modelling */
-          col = ch==='H' ? c.hi : (x < 3 ? c.lite : (x > w-4 ? c.dark : c.body));
-        }
-      }
-      else if(ch==='S') col = c.darker;
-      else if(ch==='D') col = c.deep;
-      else if(ch==='G') col = c.glass;
-      else if(ch==='K') col = c.black;
-      else if(ch==='T') col = c.tyre;
-      else if(ch==='C') col = c.chromeDark;
-      else if(ch==='Y') col = c.lamp;
-      else if(ch==='R') col = c.tail;
-      else if(ch==='W') col = c.white;
-      g.fillStyle = col;
-      g.fillRect(x*scale, y*scale, scale, scale);
+  /* ---- wheels, laid under the body so only the tread shoulder shows ---- */
+  var aw = 1.55 + o.arch*0.6, ah = 4.0;
+  var wheelYs = [6.0, 19.4];
+  for(i=0;i<2;i++){
+    for(var sgn=-1; sgn<=1; sgn+=2){
+      var wx = mid + sgn*(o.frontHalf - 0.15) - (sgn < 0 ? aw : 0);
+      roundPath(g, wx, wheelYs[i], aw, ah, 0.55);
+      g.fillStyle = c.tyre; g.fill();
+      g.fillStyle = c.tyreLite;
+      g.fillRect(wx + (sgn < 0 ? 0.22 : aw - 0.5), wheelYs[i] + 0.35, 0.28, ah - 0.7);
     }
   }
 
-  /* damage: cracked screen, then dents & scorch */
-  if(damageTier>=1){
-    g.fillStyle = 'rgba(20,24,28,.85)';
-    var cx0 = Math.floor(w/2)*scale;
-    for(var i=0;i<7;i++){
-      g.fillRect(cx0 - Math.round((i-3)*0.9)*scale, (10 + Math.floor(i*0.3))*scale, scale, scale);
+  /* ---- body ---- */
+  carBodyPath(g, o);
+  var body = g.createLinearGradient(mid - o.frontHalf, 0, mid + o.frontHalf, 0);
+  body.addColorStop(0.00, c.hi);
+  body.addColorStop(0.07, c.lite);
+  body.addColorStop(0.30, c.body);
+  body.addColorStop(0.74, c.dark);
+  body.addColorStop(1.00, c.darker);
+  g.fillStyle = body; g.fill();
+
+  g.save();
+  carBodyPath(g, o); g.clip();
+
+  /* front and rear valances read as a darker plane than the panels */
+  var nose = g.createLinearGradient(0, 0, 0, 3.0);
+  nose.addColorStop(0, c.black); nose.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = nose; g.fillRect(0, 0, W, 3.0);
+  var tail = g.createLinearGradient(0, H - 3.2, 0, H);
+  tail.addColorStop(0, 'rgba(0,0,0,0)'); tail.addColorStop(1, c.black);
+  g.fillStyle = tail; g.fillRect(0, H - 3.2, W, 3.2);
+  /* bumper seams, the panel gap the reference shows front and rear */
+  g.fillStyle = 'rgba(0,0,0,.55)';
+  g.fillRect(0, 2.55, W, 0.22);
+  g.fillRect(0, H - 3.15, W, 0.22);
+
+  /* bonnet: a long specular streak just left of the crown, as on the
+     reference, plus a soft crown highlight down the middle */
+  var crown = g.createLinearGradient(mid - 2.6, 0, mid + 2.2, 0);
+  crown.addColorStop(0.00, 'rgba(255,255,255,0)');
+  crown.addColorStop(0.42, 'rgba(255,255,255,.16)');
+  crown.addColorStop(1.00, 'rgba(255,255,255,0)');
+  g.fillStyle = crown; g.fillRect(mid - 2.6, 2.2, 4.8, o.screenY - 2.2);
+  g.fillStyle = 'rgba(255,255,255,.30)';
+  g.fillRect(mid - 1.9, 2.8, 0.26, o.screenY - 3.8);
+
+  /* the rim light that runs the whole left flank */
+  g.save();
+  g.lineWidth = 0.34; g.strokeStyle = 'rgba(255,255,255,.22)';
+  carBodyPath(g, o); g.stroke();
+  g.restore();
+
+  /* ---- glasshouse ---- */
+  var sy = o.screenY, sh = o.screenH, ry = sy + sh + o.roofH;
+  g.fillStyle = c.black;                                 /* surround */
+  carPane(g, sy - 0.30, sy + sh + 0.30, o.waistHalf - 0.55, o.waistHalf - 0.30, 0.5);
+  g.fill();
+  carPane(g, ry - 0.30, ry + o.backH + 0.30, o.waistHalf - 0.35, o.waistHalf - 0.75, 0.5);
+  g.fill();
+  g.fillStyle = c.glass;
+  carPane(g, sy, sy + sh, o.waistHalf - 1.25, o.waistHalf - 0.95, 0.45);
+  g.fill();
+  carPane(g, ry, ry + o.backH, o.waistHalf - 1.05, o.waistHalf - 1.45, 0.45);
+  g.fill();
+  g.fillStyle = c.glassLite;                             /* reflection streak */
+  carPane(g, sy + 0.25, sy + sh - 0.25, o.waistHalf - 1.15, o.waistHalf - 2.55, 0.3);
+  g.fill();
+  carPane(g, ry + 0.25, ry + o.backH - 0.25, o.waistHalf - 0.95, o.waistHalf - 2.35, 0.3);
+  g.fill();
+
+  /* roof: brighter than the flanks, with the reference's two vent bars */
+  var roofG = g.createLinearGradient(mid - o.waistHalf, 0, mid + o.waistHalf, 0);
+  roofG.addColorStop(0.00, c.hiLite);
+  roofG.addColorStop(0.22, c.hi);
+  roofG.addColorStop(0.66, c.body);
+  roofG.addColorStop(1.00, c.dark);
+  roundPath(g, mid - o.waistHalf + 0.55, sy + sh, (o.waistHalf - 0.55)*2, o.roofH, 0.5);
+  g.fillStyle = roofG; g.fill();
+  g.fillStyle = 'rgba(10,12,15,.88)';
+  for(i=0;i<2;i++)
+    roundPath(g, mid - 1.55, sy + sh + 1.15 + i*2.0, 3.1, 0.72, 0.28), g.fill();
+
+  /* ---- lamps ---- */
+  for(i=-1;i<=1;i+=2){
+    roundPath(g, mid + i*3.55 - (i<0?1.9:0), 1.15, 1.9, 1.15, 0.34);
+    g.fillStyle = c.lamp; g.fill();
+    roundPath(g, mid + i*3.55 - (i<0?1.9:0), 1.15, 1.9, 0.42, 0.2);
+    g.fillStyle = 'rgba(255,255,255,.55)'; g.fill();
+    roundPath(g, mid + i*3.45 - (i<0?1.9:0), H - 2.45, 1.9, 1.05, 0.3);
+    g.fillStyle = c.tail; g.fill();
+    roundPath(g, mid + i*3.45 - (i<0?1.9:0), H - 2.45, 1.9, 0.36, 0.18);
+    g.fillStyle = 'rgba(255,190,180,.5)'; g.fill();
+  }
+  roundPath(g, mid - 1.5, H - 1.5, 3.0, 0.72, 0.16);     /* plate */
+  g.fillStyle = c.white; g.fill();
+
+  if(o.wing){                                            /* boot spoiler */
+    roundPath(g, mid - o.rearHalf + 0.4, H - 5.4, (o.rearHalf - 0.4)*2, 0.85, 0.3);
+    g.fillStyle = c.darker; g.fill();
+    g.fillStyle = 'rgba(255,255,255,.22)';
+    g.fillRect(mid - o.rearHalf + 0.6, H - 5.4, (o.rearHalf - 0.6)*2, 0.24);
+  }
+
+  drawTopLivery(g, livery, c, o);
+  g.restore();
+
+  /* ---- mirrors, outside the body clip ---- */
+  for(i=-1;i<=1;i+=2){
+    var mx = mid + i*(o.waistHalf + 0.05);
+    roundPath(g, i < 0 ? mx - 1.25 : mx, sy + 0.35, 1.25, 0.9, 0.28);
+    g.fillStyle = c.black; g.fill();
+    g.fillStyle = 'rgba(255,255,255,.28)';
+    g.fillRect(i < 0 ? mx - 1.25 : mx, sy + 0.35, 1.25, 0.26);
+  }
+
+  /* ---- damage ---- */
+  if(damageTier >= 1){
+    g.save(); carBodyPath(g, o); g.clip();
+    g.strokeStyle = 'rgba(226,236,246,.85)'; g.lineWidth = 0.16;
+    g.beginPath();
+    g.moveTo(mid - 2.2, sy + 0.4);
+    g.lineTo(mid + 0.3, sy + sh*0.55);
+    g.lineTo(mid - 0.9, sy + sh - 0.3);
+    g.moveTo(mid + 0.3, sy + sh*0.55);
+    g.lineTo(mid + 2.4, sy + sh*0.4);
+    g.stroke();
+    g.restore();
+  }
+  if(damageTier >= 2){
+    g.save(); carBodyPath(g, o); g.clip();
+    g.fillStyle = 'rgba(28,24,20,.62)';
+    roundPath(g, mid - o.frontHalf + 0.2, 3.4, 2.2, 3.0, 0.6); g.fill();
+    roundPath(g, mid + o.rearHalf - 2.6, 21.0, 2.4, 3.2, 0.6); g.fill();
+    g.fillStyle = 'rgba(0,0,0,.45)';
+    roundPath(g, mid - 2.0, 1.6, 3.4, 1.6, 0.4); g.fill();
+    g.restore();
+  }
+
+  return { canvas:cv, w:W*scale, h:H*scale, scale:scale, pw:W, ph:H };
+}
+
+/* Liveries in body units, clipped to the shell by the caller. */
+function drawTopLivery(g, livery, c, o){
+  var mid = CAR_UNIT_W/2, H = CAR_UNIT_H, i;
+  g.fillStyle = c.accent;
+  if(livery === 1){                                      /* twin stripes */
+    g.fillRect(mid - 1.5, 0, 1.05, H);
+    g.fillRect(mid + 0.45, 0, 1.05, H);
+  } else if(livery === 2){                               /* rally panels */
+    g.fillRect(mid - o.frontHalf - 0.5, 6.0, 1.5, 16.0);
+    g.fillRect(mid + o.frontHalf - 1.0, 6.0, 1.5, 16.0);
+    for(i=-1;i<=1;i+=2){
+      g.beginPath();
+      g.arc(mid + i*(o.waistHalf - 1.1), 15.0, 1.5, 0, TAU);
+      g.fill();
+    }
+  } else if(livery === 3){                               /* chevrons */
+    for(i=0;i<3;i++){
+      var yy = 3.0 + i*8.0;
+      g.beginPath();
+      g.moveTo(mid, yy);
+      g.lineTo(mid + o.frontHalf, yy + 2.6);
+      g.lineTo(mid + o.frontHalf, yy + 4.2);
+      g.lineTo(mid, yy + 1.6);
+      g.lineTo(mid - o.frontHalf, yy + 4.2);
+      g.lineTo(mid - o.frontHalf, yy + 2.6);
+      g.closePath(); g.fill();
     }
   }
-  if(damageTier>=2){
-    g.fillStyle = 'rgba(30,26,22,.72)';
-    g.fillRect(2*scale, 6*scale, scale*2, scale*3);
-    g.fillRect((w-4)*scale, 20*scale, scale*2, scale*3);
-    g.fillRect(4*scale, 23*scale, scale*3, scale);
-    g.fillStyle = 'rgba(0,0,0,.5)';
-    g.fillRect(5*scale, 3*scale, scale*3, scale*2);
-  }
-  return { canvas:cv, w:cv.width, h:cv.height, scale:scale, pw:w, ph:h };
 }
 
 var spriteCache = {};
@@ -4113,12 +4316,32 @@ function drawCar(g, r){
   /* the car occupies a fixed footprint in world units, so redrawing the
      sprite on a different pixel grid never changes how big it drives */
   var wh = CAR_WORLD_LEN, ww = wh * sp.pw / sp.ph;
+
+  /* Shadow. The silhouette rotates with the body, but the offset that throws
+     it must not: the sun is fixed in the world, not bolted to the roof. It
+     used to be filled inside the rotate, so the light source spun with the
+     car and was only ever right when the car pointed due north. Three
+     stacked passes give the soft edge the reference has. */
+  var sx = wh*0.085, sy = wh*0.115, k;
+  for(k=2;k>=0;k--){
+    g.save();
+    g.translate(c.x + sx, c.y + sy);
+    g.rotate(c.a);
+    var sp2 = 1 + k*0.055;
+    roundPath(g, -ww/2*sp2, -wh/2*sp2, ww*sp2, wh*sp2, wh*0.10);
+    g.fillStyle = 'rgba(0,0,0,' + (0.13 + (2-k)*0.055).toFixed(3) + ')';
+    g.fill();
+    g.restore();
+  }
+
   g.save();
   g.translate(c.x, c.y);
   g.rotate(c.a);
-  g.fillStyle = 'rgba(0,0,0,.30)';
-  g.fillRect(-ww/2+5, -wh/2+6, ww-7, wh-9);
+  /* the shell is vector art against chunky terrain, exactly as the reference
+     reads, so it is the one thing in the world drawn with smoothing on */
+  g.imageSmoothingEnabled = true;
   g.drawImage(sp.canvas, -ww/2, -wh/2, ww, wh);
+  g.imageSmoothingEnabled = false;
   g.restore();
 }
 
@@ -4560,9 +4783,9 @@ function renderMenu(){
   var sp = getCarSprite(save.current, cs.paint, cs.livery, 0, 4);
   var mc = document.getElementById('menu-car');
   var g = mc.getContext('2d');
-  g.imageSmoothingEnabled = false;
+  g.imageSmoothingEnabled = true;
   g.clearRect(0,0,mc.width,mc.height);
-  g.drawImage(sp.canvas, (mc.width-sp.w)/2, (mc.height-sp.h)/2);
+  g.drawImage(sp.canvas, (mc.width-sp.w)/2, (mc.height-sp.h)/2, sp.w, sp.h);
 }
 
 /* ------------------------------------------------------------- stages */
@@ -5089,9 +5312,9 @@ function renderCars(body){
       row.appendChild(btn);
       body.appendChild(row);
       var g = cvs.getContext('2d');
-      g.imageSmoothingEnabled = false;
+      g.imageSmoothingEnabled = true;
       var sp = getCarSprite(def.id, cs.paint, cs.livery, 0, 2);
-      g.drawImage(sp.canvas, (cvs.width-sp.w)/2, (cvs.height-sp.h)/2);
+      g.drawImage(sp.canvas, (cvs.width-sp.w)/2, (cvs.height-sp.h)/2, sp.w, sp.h);
     })(CARS[i], i);
   }
 }

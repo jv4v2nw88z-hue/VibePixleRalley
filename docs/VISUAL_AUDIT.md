@@ -784,4 +784,68 @@ timer, so the column reflows together at any height.
 from the previous phase in the same conditions — the minimap's per-frame work
 shrank when the track polyline stopped being stroked twice.
 
-_(Phase 5 complete. Next: Phase 6, car sprite.)_
+---
+
+### Phase 6 — car sprite
+
+**Why the approach changed.** The Phase 0 plan was to extend the 16x28
+character map. Zooming the reference car to 12x
+(`scratchpad` crop of `target.png` at 700,310) settles it: the car is drawn at
+the picture's own resolution, one image pixel per screen pixel, roughly
+130 x 250. It has smooth curved flanks, a specular streak down the bonnet and
+panel gaps a pixel wide. No character grid coarse enough to hand-author gets
+near that, and a 64x112 map would be 7,000 characters per car.
+
+So the top-down car is now **vector geometry**, rasterised once per
+car/paint/livery/damage combination into an oversampled bitmap. The terrain
+around it stays chunky, which is exactly how the reference reads: blocky
+world, smooth car. It is the one thing in the world drawn with image
+smoothing on.
+
+The footprint is unchanged. Everything is expressed in the same 16 x 28 unit
+box, so `pw/ph` and therefore `CAR_WORLD_LEN` scaling are identical and the
+car drives exactly as it did.
+
+- **Silhouette** is one closed path — blunt squared-off nose with rounded
+  corners, waisted through the middle, tapered tail — reused as a clip for
+  everything laid over it.
+- **Panels**: bonnet with a crown gradient and a hard specular streak just
+  left of centre, a rim light down the whole left flank, front and rear
+  valances falling to black with a bumper seam across each.
+- **Glasshouse**: windscreen and backlight as tapered panes with a black
+  surround and a reflection streak, a brighter roof between them carrying the
+  reference's two vent bars.
+- **Lamps**: headlight and taillight units with lit upper edges, number plate.
+- **Mirrors** on stalks at the screen line, **wheels** with a sidewall
+  catch, **spoiler** on the two faster cars.
+- Liveries redrawn as vector overlays clipped to the shell.
+
+**Bug fixed: the shadow rotated with the car.** `drawCar` filled the shadow
+rect inside the `rotate(c.a)` transform, so the light source spun with the
+vehicle and was only ever correct pointing due north. The silhouette still
+rotates — a turned body casts a turned shadow — but the offset that throws it
+is now applied in world space, and three stacked passes give it the soft edge
+the reference has.
+
+**Palette rebalanced.** `shade()` adds a flat amount to every channel, so the
+old highlight steps blew a red car out to salmon: `shade('#d8452f', 0.38)` is
+`rgb(255,166,144)`. The top-down set is much tighter (`+0.07` to `+0.21`,
+`-0.11` to `-0.22`), and the glass went from a mid blue-grey `#4d6b86` to the
+reference's near-black `#1b2026`.
+
+**Scored against `reference/target.png`.**
+
+| Element | Score | Remaining delta |
+| --- | --- | --- |
+| Body colour and shading | 9 | Reference has slightly more panel modelling across the flanks |
+| Window and glass definition | 9 | — |
+| Roof highlight and vents | 9 | — |
+| Nose, bumper seams, lamps | 9 | — |
+| Wheels and mirrors | 9 | Reference's mirrors are a touch larger |
+| Directional soft shadow | 10 | — |
+
+**Regression guard:** 29/29 pass. **Frame cost:** 0.95ms desktop mean. The
+sprite is built once per combination and cached, so the extra geometry costs
+nothing per frame; the only per-frame addition is two extra shadow fills.
+
+_(Phase 6 complete. Next: Phase 7, environment.)_
