@@ -449,7 +449,9 @@ function buildScenery(track){
                         6+rand()*6, i, false, rand()));
     }
 
-    /* the treeline / verge decoration */
+    /* The treeline that can actually be hit. Sizes and lateral band are
+       untouched: mkProp derives the collision radius from size, so growing
+       these would grow their hitboxes and change how a run plays. */
     var density = isMountain ? 0.55 : 1.0;
     if(rand() < density){
       var n2 = Math.floor(1 + rand()*2);
@@ -461,6 +463,23 @@ function buildScenery(track){
         var solid = lat2 < nd.hw + 96;   /* only the near ones can be clipped */
         props.push(mkProp(nd.x+nx*lat2*s2, nd.y+ny*lat2*s2, type, size, i, solid, rand()));
       }
+    }
+
+    /* The mass of the forest, well beyond anything reachable. The reference
+       reads as overlapping canopy filling the frame, not as scattered
+       individual bushes, and that needs both bigger crowns and far more of
+       them — so they live out here where nothing can be clipped and the
+       collision buckets never see them. */
+    var far = isMountain ? 4 : 8, fk;
+    for(fk=0; fk<far; fk++){
+      if(rand() > (isMountain ? 0.55 : 0.86)) continue;
+      var fs = rand()<0.5 ? -1 : 1;
+      var flat = nd.hw + 104 + rand()*260;
+      var ftype = isSnow ? (rand()<0.7?0:4) : (isMountain ? (rand()<0.5?1:0) : (rand()<0.74?0:4));
+      var fsize = ftype===0 ? 30+rand()*34 : 18+rand()*20;
+      props.push(mkProp(nd.x+nx*flat*fs + (rand()-0.5)*40,
+                        nd.y+ny*flat*fs + (rand()-0.5)*40,
+                        ftype, fsize, i, false, rand()));
     }
   }
 
@@ -4241,13 +4260,13 @@ function renderRace(){
 var GROUND_TONES = {
   forest:   { base:'#2c3d1e',
               broad:['#26351a','#334823','#1f2c16'],
-              fine: ['#3a5124','#213017','#425c28','#1a2612'] },
+              fine: ['#334722','#26361b','#3b5226','#202e17'] },
   mountain: { base:'#47473f',
               broad:['#3f3f38','#515149','#383830'],
-              fine: ['#585850','#3a3a33','#61615a','#33332d'] },
+              fine: ['#4f4f47','#3e3e37','#565650','#38382f'] },
   snowpass: { base:'#e6f0f8',
               broad:['#dae6f1','#f2f8fd','#cfdeeb'],
-              fine: ['#ffffff','#d3e1ee','#f7fbfe','#c6d7e6'] }
+              fine: ['#f4fafe','#dce7f1','#eef5fb','#d2e0ec'] }
 };
 var GROUND_TILE = 160, groundPatCache = {};
 
@@ -4340,17 +4359,15 @@ function drawRoad(g, r, viewR){
     ];
     var push = function(k, x, y, w, h){ lanes[k].p.push(x, y, w, h); };
 
-    g.fillStyle = cRut;                            /* ruts, one path */
-    g.beginPath();
+    g.fillStyle = cRut;                            /* ruts */
     for(t=i;t<end;t++){
       nd3 = nodes[t]; nxx = Math.cos(nd3.a); nyy = Math.sin(nd3.a);
       for(q=-1;q<=1;q+=2){
         lat = q*nd3.hw*(0.30 + rnd2(t,q,37)*0.10);
-        g.rect(nd3.x + nxx*lat - nd3.hw*0.09, nd3.y + nyy*lat - 2,
-               nd3.hw*0.18, NODE_STEP + 4);
+        g.fillRect(nd3.x + nxx*lat - nd3.hw*0.09, nd3.y + nyy*lat - 2,
+                   nd3.hw*0.18, NODE_STEP + 4);
       }
     }
-    g.fill();
 
     for(t=i;t<end;t++){
       nd3 = nodes[t]; nxx = Math.cos(nd3.a); nyy = Math.sin(nd3.a);
@@ -4380,14 +4397,7 @@ function drawRoad(g, r, viewR){
         }
       }
     }
-    for(q=0;q<lanes.length;q++){
-      var pts = lanes[q].p;
-      if(!pts.length) continue;
-      g.fillStyle = lanes[q].col;
-      g.beginPath();
-      for(m=0;m<pts.length;m+=4) g.rect(pts[m], pts[m+1], pts[m+2], pts[m+3]);
-      g.fill();
-    }
+    for(q=0;q<lanes.length;q++) flushRects(g, lanes[q].col, lanes[q].p);
 
     i = end;
   }
@@ -4439,17 +4449,80 @@ function drawParticles(g, r, above){
   g.globalAlpha = 1;
 }
 
+/* Foliage is the densest thing on screen, so it is not drawn prop by prop.
+   Every visible canopy contributes its cubes to one of eight buckets — two
+   palettes, four faces each — and the whole frame's worth of each is laid
+   down as a single path. That keeps the fillStyle changes at a constant
+   eight however many bushes are in view, which is what makes the reference's
+   density affordable at all. */
+var propBuckets = null;
+function propBucketsFor(theme){
+  if(!propBuckets || propBuckets.theme !== theme){
+    var sets = FOLIAGE[theme] || FOLIAGE.forest;
+    propBuckets = { theme:theme, sets:sets, shadow:[], shadowSoft:[], trunk:[],
+                    faces:[[],[],[],[],[],[],[],[]] };
+  }
+  return propBuckets;
+}
+/* One fillStyle change, then plain fillRects. Accumulating thousands of
+   rects into a single path and filling once is slower here: the path has to
+   be tessellated as a whole, where each fillRect is a fast axis-aligned
+   blit. The win is grouping by colour, not batching into one path. */
+function flushRects(g, col, arr){
+  if(!arr.length) return;
+  g.fillStyle = col;
+  for(var i=0;i<arr.length;i+=4) g.fillRect(arr[i], arr[i+1], arr[i+2], arr[i+3]);
+  arr.length = 0;
+}
+
 function drawProps(g, r, viewR, theme){
   var byNode = r.track.byNode;
-  var lo = Math.max(0, r.car.node - 50);
+  var lo = Math.max(0, r.car.node - 40);
   var hi = Math.min(byNode.length-1, r.car.node + Math.ceil(viewR/NODE_STEP) + 20);
-  for(var i=lo;i<=hi;i++){
+  var B = propBucketsFor(theme), i, j;
+  for(i=lo;i<=hi;i++){
     var arr = byNode[i]; if(!arr) continue;
-    for(var j=0;j<arr.length;j++){
+    for(j=0;j<arr.length;j++){
       var p = arr[j];
-      if(Math.abs(p.x-r.camX) > viewR+40 || Math.abs(p.y-r.camY) > viewR+40) continue;
-      drawProp(g, p, theme);
+      if(Math.abs(p.x-r.camX) > viewR+60 || Math.abs(p.y-r.camY) > viewR+60) continue;
+      if(p.type === 0 || p.type === 4) collectCanopy(B, p);
+      else drawProp(g, p, theme);
     }
+  }
+  /* shadows first, then each palette's faces back to front */
+  flushRects(g, 'rgba(12,20,8,.22)', B.shadowSoft);
+  flushRects(g, 'rgba(12,20,8,.30)', B.shadow);
+  flushRects(g, theme === 'snowpass' ? '#4a3a2c' : '#3b2a1c', B.trunk);
+  for(i=0;i<2;i++){
+    var pal = B.sets[i];
+    flushRects(g, pal[1], B.faces[i*4]);
+    flushRects(g, pal[0], B.faces[i*4+1]);
+    flushRects(g, pal[2], B.faces[i*4+2]);
+    flushRects(g, pal[3], B.faces[i*4+3]);
+  }
+}
+
+function collectCanopy(B, p){
+  var s = p.size, v = p.seed, x = p.x, y = p.y;
+  var pi = v < 0.5 ? 0 : 1, so = s*0.20;
+  if(s <= 28) B.shadowSoft.push(x - s*0.52 + so, y - s*0.46 + so*1.2, s*1.08, s*0.98);
+  B.shadow.push(x - s*0.44 + so, y - s*0.38 + so*1.2, s*0.96, s*0.86);
+  if(p.type === 0) B.trunk.push(x - s*0.08, y + s*0.16, s*0.16, s*0.30);
+
+  /* Big crowns out in the mass read fine on three cubes; the fourth only
+     pays for itself on the smaller bushes near the verge. */
+  var n = s > 28 ? 3 : (p.type === 0 ? (v < 0.55 ? 4 : 3) : (v < 0.5 ? 3 : 2)), k;
+  for(k=0;k<n;k++){
+    var r1 = rnd2(p.node, k, 71), r2 = rnd2(p.node, k, 83), r3 = rnd2(p.node, k, 97);
+    var cw = s*(k === 0 ? 0.78 : 0.34 + r3*0.30), ch = cw*0.90;
+    var cx = x + (k === 0 ? -cw/2 : (r1 - 0.5)*s*0.86 - cw/2);
+    var cy = y + (k === 0 ? -cw*0.62 : (r2 - 0.5)*s*0.74 - cw*0.5);
+    var side = Math.max(1, ch*0.26);
+    B.faces[pi*4  ].push(cx, cy + ch - side, cw, side);
+    B.faces[pi*4+1].push(cx + cw - side*0.7, cy, side*0.7, ch);
+    B.faces[pi*4+2].push(cx, cy, cw - side*0.7, ch - side);
+    if(k === 0 || (s <= 28 && r3 > 0.45))
+      B.faces[pi*4+3].push(cx + cw*0.13, cy + ch*0.12, cw*0.32, ch*0.26);
   }
 }
 

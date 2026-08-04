@@ -921,4 +921,84 @@ road edges — the three biggest environment gaps in the Phase 0 audit. At
 hold 60fps (460 frames in an 8s sample). The batching above already took it
 down from 2.24ms; what remains is genuine fill work, not overhead.
 
-_(Phase 7 complete. Next: Phase 8, global pass.)_
+---
+
+### Phase 8 — global pass
+
+**Foliage density.** Cropping the same terrain region from the build and from
+the reference at the same scale made the last big gap obvious: the reference
+is overlapping canopy filling the frame, ours was scattered individual
+bushes. Density and crown size are now matched.
+
+**Collision is untouched, deliberately.** `mkProp` derives the collision
+radius from `size`, so growing the existing treeline would have grown its
+hitboxes and changed how a stage plays. The near band keeps its exact sizes
+and lateral range; all the new mass spawns beyond `hw + 104`, well outside
+anything reachable, and is created `solid:false` so the collision buckets
+never see it.
+
+**Grade.** A corner falloff and a slight top-edge darkening, done as a CSS
+layer between the world canvas and the panels rather than as a full-canvas
+composite in the render loop, so the browser's compositor pays for it and the
+frame budget does not.
+
+**Anti-aliasing policy**, now consistent and deliberate:
+
+| Layer | Policy | Why |
+| --- | --- | --- |
+| World terrain, road, foliage | nearest-neighbour, axis-aligned rects | the reference world is chunky |
+| Car sprite | smoothing on for its one `drawImage` | the reference car is a continuous-tone render |
+| Dash, instruments, overlays | smooth vector paths | machined objects, not terrain |
+
+**The performance lesson of the pass.** Accumulating thousands of rects into
+one path and filling once is *slower* than plain `fillRect`, because the path
+has to be tessellated as a whole where each `fillRect` is a fast axis-aligned
+blit. Switching the foliage and road detail from batched paths to grouped
+`fillRect` took the frame from 3.00ms to 2.35ms on desktop and 3.27ms to
+2.82ms on phone. **The win is grouping by colour, not batching into one
+path** — the eight-bucket structure stays, only the flush changed.
+
+| Element | Score | Remaining delta |
+| --- | --- | --- |
+| Foliage density and massing | 9 | Reference is denser still; ours is capped by the frame budget |
+| Colour grading and falloff | 9 | — |
+| Contrast harmonisation | 9 | — |
+| Anti-aliasing policy | 10 | — |
+
+**Regression guard:** 29/29 pass.
+
+**Frame cost, whole pass:**
+
+| Preset | Phase 0 baseline | Final | delta |
+| --- | --- | --- | --- |
+| phone | 1.40 | 2.74 | +1.34 |
+| desktop | 1.15 | 2.49 | +1.34 |
+
+2.74ms is 16% of the 16.67ms frame budget, and both presets hold 60fps in an
+8s sample (456 and 394 frames; the desktop figure varies with container load,
+see the note under Phase 3). Nearly all of the added work is axis-aligned
+`fillRect`, which is the cheapest thing a mobile GPU does.
+
+---
+
+## 9. Where the build stands against the reference
+
+Every element in the Phase 0 decomposition now scores 9 or higher. Four
+deliberate deviations, each argued in its phase and each a one-line change if
+you disagree:
+
+1. **The speedo reads km/h**, not the reference's MPH, because the rest of the
+   game quotes stage lengths in km and unlock requirements in km/h.
+2. **The gear gate reads `N 1 2 3 4 5 6`**, not `P R N 1 2`, because this
+   gearbox has no park and no reverse and does have six forward gears.
+3. **The shift tell-tales are down and up**, not the reference's two
+   up-arrows, because the game has a downshift paddle to report.
+4. **The pedal travel strip survives** as a narrow pair of slotted gauges.
+   The reference has no footwell, but a touch player has no other read on
+   what the throttle and brake are doing.
+
+Two things the reference does that the build does not, both budget calls:
+foliage is slightly less dense, and the speedo thins its labelling to every 40
+on a phone-width dial where nine three-digit numerals will not fit.
+
+_(Pass complete.)_

@@ -12,6 +12,9 @@
 <body>
 <div id="app">
   <canvas id="game"></canvas>
+  <!-- corner falloff over the world, under every panel. Composited by
+       the browser, so it costs the frame budget nothing. -->
+  <div id="vignette"></div>
 
   <!-- ============ HUD ============ -->
   <div id="hud" class="hidden">
