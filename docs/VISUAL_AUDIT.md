@@ -848,4 +848,77 @@ reference's near-black `#1b2026`.
 sprite is built once per combination and cached, so the extra geometry costs
 nothing per frame; the only per-frame addition is two extra shadow fills.
 
-_(Phase 6 complete. Next: Phase 7, environment.)_
+---
+
+### Phase 7 — environment
+
+**Ground.** The reference floor is a dense mottled carpet: fine grain a few
+units across, over broader patches, over a base. The old version could not
+draw that — it scattered one alpha-switched rect per 70-unit cell and gave up
+entirely past 1400 cells, so a wide viewport at low zoom went flat with no
+fallback. It is now baked once into a seamless 160-unit tile and laid down as
+a pattern: **one `fillRect` a frame** instead of up to 1400, and it can be as
+dense as the reference for free. Blobs near an edge are repeated at the eight
+neighbouring offsets so the tile joins invisibly.
+
+**Foliage.** Rebuilt as voxel massing rather than four concentric squares: each
+bush is three or four cubes at different sizes and offsets, each with a lit
+top face, a shaded flank, a darker front face and a bright catch on the
+sunward corner. Shadows are softer, two-layer, and scale with the canopy
+instead of being a fixed fraction of it. Rocks and guardrail posts use the
+same cube so the whole world is lit from one direction.
+
+**New ground decoration.** Grass tufts and small stones scattered well out
+into the field, as the reference has. Both are created with `solid:false`, so
+they never reach the collision buckets and cannot change a run.
+
+**Road.** The single 3.5px edge stroke is gone. There is now an outer and an
+inner shoulder band, both darker than the racing line — `S.edge` is *lighter*
+than the surface, which is why using it drew a pale border rather than a
+verge. Over the top, grain straddles the whole transition and the side a
+fleck lands on chooses whether it is gravel or grass, so neither edge of the
+shoulder resolves into a clean arc. Longitudinal ruts run either side of the
+racing line, and the surface grain gained darker specks as well as lighter.
+
+**Bugs found and fixed during the phase.**
+
+1. **`shade()` was being called per fleck inside the node loop** — a string
+   parse and a concatenation for every one of roughly two thousand rects a
+   frame. All surface colours are now hoisted out of the run.
+2. **Every fleck set its own `fillStyle`.** The detail passes now sort into
+   eleven colour lanes and lay each down as one batched path, and a canopy is
+   drawn face by face across the whole cluster: four `fillStyle` changes per
+   bush instead of four per cube.
+3. The detail passes ran 60 nodes behind the car. The chase camera aims
+   ahead, so most of that was drawn off screen; trimmed to 22.
+
+**Scored against `reference/target.png`** (captures:
+`reference/shots/phase7-desktop.png`, plus the attempt series).
+
+| Element | Score | Remaining delta |
+| --- | --- | --- |
+| Ground: base, patches, fine grain | 9 | — |
+| Foliage size and value variation | 9 | Reference clusters more densely along the treeline; ours is more evenly spread |
+| Foliage massing and lighting | 9 | — |
+| Grass tufts and scattered rocks | 9 | — |
+| Road grain and ruts | 9 | — |
+| Road edge blending and shoulder | 9 | — |
+| Start line | 9 | — |
+
+**Regression guard:** 29/29 pass.
+
+**Frame cost: this phase costs 1.04ms and must be reported.** Measured back
+to back against Phase 6's commit in one session:
+
+| Preset | Phase 6 | Phase 7 | delta |
+| --- | --- | --- | --- |
+| desktop | 0.98 | 2.02 | **+1.04** |
+
+That is the largest single-phase cost in the pass and the only one over the
+1ms threshold. It buys the dense ground, the voxel foliage and the blended
+road edges — the three biggest environment gaps in the Phase 0 audit. At
+2.02ms the frame callback is using 12% of the 16.67ms budget and both presets
+hold 60fps (460 frames in an 8s sample). The batching above already took it
+down from 2.24ms; what remains is genuine fill work, not overhead.
+
+_(Phase 7 complete. Next: Phase 8, global pass.)_

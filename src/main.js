@@ -433,6 +433,22 @@ function buildScenery(track){
                         9+rand()*7, i, true, rand()));
     }
 
+    /* Loose ground decoration: grass tufts and small stones scattered well
+       out into the field, as on the reference. Explicitly non-solid, so they
+       never reach the collision buckets and cannot change a run. */
+    if(rand() < 0.55){
+      var gs = rand()<0.5 ? -1 : 1;
+      var glat = nd.hw + 6 + rand()*210;
+      props.push(mkProp(nd.x+nx*glat*gs, nd.y+ny*glat*gs, 5,
+                        7+rand()*7, i, false, rand()));
+    }
+    if(rand() < 0.10){
+      var rs = rand()<0.5 ? -1 : 1;
+      var rlat = nd.hw + 40 + rand()*180;
+      props.push(mkProp(nd.x+nx*rlat*rs, nd.y+ny*rlat*rs, 1,
+                        6+rand()*6, i, false, rand()));
+    }
+
     /* the treeline / verge decoration */
     var density = isMountain ? 0.55 : 1.0;
     if(rand() < density){
@@ -1682,63 +1698,106 @@ function getCarSide(carId, opts){
 }
 
 /* --------------------------------------------------------- scenery draw */
+/* Foliage on the reference is voxel massing, not a flat stack of concentric
+   squares: each bush is a handful of cubes at different sizes and offsets,
+   each with a lit top face, a shaded front face and a bright catch on the
+   sunward corner, over a soft shadow that scales with the canopy. */
+var FOLIAGE = {
+  forest:   [['#2b5418','#3f7a24','#58a032','#79c94a'],
+             ['#244914','#376c1f','#4d8f2b','#6bb840']],
+  mountain: [['#27431c','#3a6128','#4e7d34','#6a9c48'],
+             ['#213a17','#325423','#446e2e','#5d8a3f']],
+  snowpass: [['#1d3a26','#2f5c3e','#6f9c86','#dceaf4'],
+             ['#183120','#284f35','#628d78','#cfe2ef']]
+};
+function drawCube(g, x, y, w, h, pal, lit){
+  var side = Math.max(1, h*0.26);
+  g.fillStyle = pal[1]; g.fillRect(x, y + h - side, w, side);      /* front face */
+  g.fillStyle = pal[0]; g.fillRect(x + w - side*0.7, y, side*0.7, h); /* shaded flank */
+  g.fillStyle = pal[2]; g.fillRect(x, y, w - side*0.7, h - side);  /* top face */
+  if(lit){
+    g.fillStyle = pal[3];
+    g.fillRect(x + w*0.13, y + h*0.12, w*0.32, h*0.26);
+  }
+}
+
+/* A canopy is several cubes sharing one palette, so it is drawn face by face
+   across the whole cluster rather than cube by cube: four fillStyle changes
+   per bush instead of four per cube. */
+function drawCubeCluster(g, cubes, pal){
+  var i, c, side, face;
+  for(face=0; face<4; face++){
+    g.fillStyle = pal[face === 0 ? 1 : face === 1 ? 0 : face === 2 ? 2 : 3];
+    g.beginPath();
+    for(i=0;i<cubes.length;i++){
+      c = cubes[i]; side = Math.max(1, c[3]*0.26);
+      if(face === 0)      g.rect(c[0], c[1] + c[3] - side, c[2], side);
+      else if(face === 1) g.rect(c[0] + c[2] - side*0.7, c[1], side*0.7, c[3]);
+      else if(face === 2) g.rect(c[0], c[1], c[2] - side*0.7, c[3] - side);
+      else if(c[4])       g.rect(c[0] + c[2]*0.13, c[1] + c[3]*0.12,
+                                 c[2]*0.32, c[3]*0.26);
+    }
+    g.fill();
+  }
+}
+
 function drawProp(g, p, theme){
-  var s = p.size;
+  var s = p.size, v = p.seed;
   g.save();
   g.translate(p.x, p.y);
-  if(p.type===0){                                   /* conifer, seen from above */
-    var v = p.seed;
-    var greens = theme==='snowpass'
-      ? [['#16301f','#2c5741','#4a7f63','#dceaf4'],['#132a1c','#26503b','#417559','#cfe2ef']]
-      : theme==='mountain'
-      ? [['#162c18','#2b4a2e','#436c44','#5b8a58'],['#132714','#264226','#3c633c','#527d4e']]
-      : [['#14300f','#254d24','#3d7a39','#569b47'],['#102a10','#1f451f','#356b33','#4c8c41']];
-    var pal = greens[v < 0.5 ? 0 : 1];
-    /* drop shadow, offset toward bottom-right for a 3/4 feel */
-    g.fillStyle = 'rgba(0,0,0,.33)';
-    g.fillRect(-s*0.42+s*0.20, -s*0.42+s*0.26, s*0.84, s*0.84);
-    /* trunk peeking out */
-    g.fillStyle = theme==='snowpass' ? '#4a3a2c' : '#3f2d1e';
-    g.fillRect(-s*0.09, s*0.20, s*0.18, s*0.30);
-    /* canopy: stepped square rings read as a chunky pixel conifer */
-    g.fillStyle = pal[0];
-    g.fillRect(-s*0.50, -s*0.50, s, s);
-    g.fillStyle = pal[1];
-    g.fillRect(-s*0.42, -s*0.46, s*0.80, s*0.80);
-    g.fillStyle = pal[2];
-    g.fillRect(-s*0.30, -s*0.38, s*0.56, s*0.56);
-    g.fillStyle = pal[3];
-    g.fillRect(-s*0.16, -s*0.30, s*0.26, s*0.26);
-  } else if(p.type===1){                            /* rock */
-    g.fillStyle = 'rgba(0,0,0,.30)';
-    g.fillRect(-s*0.45+2, -s*0.4+3, s*0.95, s*0.85);
-    g.fillStyle = '#6b6b66';
-    g.fillRect(-s*0.5, -s*0.45, s, s*0.9);
-    g.fillStyle = '#87877f';
-    g.fillRect(-s*0.4, -s*0.38, s*0.55, s*0.5);
-    g.fillStyle = '#4d4d49';
-    g.fillRect(-s*0.1, 0, s*0.55, s*0.42);
-  } else if(p.type===2){                            /* guardrail post */
-    g.fillStyle = 'rgba(0,0,0,.3)';
-    g.fillRect(-s*0.5+2, -s*0.3+2, s, s*0.6);
-    g.fillStyle = '#b9bcc0';
-    g.fillRect(-s*0.5, -s*0.3, s, s*0.6);
-    g.fillStyle = '#75797d';
-    g.fillRect(-s*0.5, s*0.1, s, s*0.2);
-  } else if(p.type===3){                            /* snow bank marker pole */
-    g.fillStyle = 'rgba(0,0,0,.18)';
-    g.fillRect(-s*0.3+2, -s*0.3+2, s*0.6, s*0.7);
-    g.fillStyle = '#f4f8fb';
-    g.fillRect(-s*0.3, -s*0.4, s*0.6, s*0.8);
-    g.fillStyle = '#e0483a';
-    g.fillRect(-s*0.3, -s*0.4, s*0.6, s*0.26);
-  } else {                                          /* bush / stump */
-    g.fillStyle = 'rgba(0,0,0,.22)';
-    g.fillRect(-s*0.45+2, -s*0.35+2, s*0.9, s*0.7);
-    g.fillStyle = theme==='snowpass' ? '#dfe9f2' : (theme==='mountain' ? '#4e5a3d' : '#3c5a2a');
-    g.fillRect(-s*0.5, -s*0.4, s, s*0.8);
-    g.fillStyle = theme==='snowpass' ? '#ffffff' : '#4d7135';
-    g.fillRect(-s*0.3, -s*0.3, s*0.5, s*0.45);
+
+  if(p.type === 0 || p.type === 4){                 /* canopy / bush */
+    var sets = FOLIAGE[theme] || FOLIAGE.forest;
+    var pal = sets[v < 0.5 ? 0 : 1];
+    /* shadow: softer and shorter than the old hard square, and it grows
+       with the canopy instead of being a fixed fraction of it */
+    var so = s*0.20;
+    g.fillStyle = 'rgba(12,20,8,.30)';
+    g.fillRect(-s*0.44 + so, -s*0.38 + so*1.2, s*0.92, s*0.82);
+    g.fillStyle = 'rgba(12,20,8,.22)';
+    g.fillRect(-s*0.52 + so, -s*0.46 + so*1.2, s*1.08, s*0.98);
+
+    if(p.type === 0){
+      g.fillStyle = theme === 'snowpass' ? '#4a3a2c' : '#3b2a1c';
+      g.fillRect(-s*0.08, s*0.16, s*0.16, s*0.30);  /* trunk */
+    }
+    /* three or four cubes, biggest first so the smaller ones read as growth */
+    var n = p.type === 0 ? (v < 0.55 ? 4 : 3) : (v < 0.5 ? 3 : 2);
+    var k, r1, r2, r3, cw, cx, cy, cubes = [];
+    for(k=0;k<n;k++){
+      r1 = rnd2(p.node, k, 71); r2 = rnd2(p.node, k, 83); r3 = rnd2(p.node, k, 97);
+      cw = s*(k === 0 ? 0.78 : 0.34 + r3*0.30);
+      cx = k === 0 ? -cw/2 : (r1 - 0.5)*s*0.86 - cw/2;
+      cy = k === 0 ? -cw*0.62 : (r2 - 0.5)*s*0.74 - cw*0.5;
+      cubes.push([cx, cy, cw, cw*0.90, k === 0 || r3 > 0.45]);
+    }
+    drawCubeCluster(g, cubes, pal);
+  } else if(p.type === 1){                          /* rock */
+    g.fillStyle = 'rgba(12,16,10,.30)';
+    g.fillRect(-s*0.42 + s*0.18, -s*0.34 + s*0.22, s*0.90, s*0.76);
+    drawCube(g, -s*0.46, -s*0.42, s*0.92, s*0.84,
+             ['#4e5158','#5d6169','#7f858d','#9aa1a9'], v > 0.4);
+  } else if(p.type === 2){                          /* guardrail post */
+    g.fillStyle = 'rgba(0,0,0,.28)';
+    g.fillRect(-s*0.5 + s*0.16, -s*0.28 + s*0.18, s, s*0.6);
+    drawCube(g, -s*0.5, -s*0.3, s, s*0.6, ['#5f646a','#767c83','#aeb5bc','#d6dce2'], true);
+  } else if(p.type === 3){                          /* snow pole */
+    g.fillStyle = 'rgba(20,32,44,.20)';
+    g.fillRect(-s*0.28 + s*0.16, -s*0.28 + s*0.2, s*0.6, s*0.7);
+    g.fillStyle = '#c9d6e2'; g.fillRect(-s*0.3, -s*0.4, s*0.6, s*0.8);
+    g.fillStyle = '#f6fbff'; g.fillRect(-s*0.3, -s*0.4, s*0.38, s*0.8);
+    g.fillStyle = '#e0483a'; g.fillRect(-s*0.3, -s*0.4, s*0.6, s*0.26);
+  } else {                                          /* grass tuft */
+    var tg = theme === 'snowpass' ? ['#cfe0ee','#eef6fc']
+           : theme === 'mountain' ? ['#4a6030','#6a8442'] : ['#4d7a2a','#76b23e'];
+    var b, bx, by, bh;
+    for(b=0;b<5;b++){
+      bx = (rnd2(p.node, b, 41) - 0.5)*s*0.9;
+      by = (rnd2(p.node, b, 53) - 0.5)*s*0.5;
+      bh = s*(0.28 + rnd2(p.node, b, 67)*0.34);
+      g.fillStyle = b & 1 ? tg[0] : tg[1];
+      g.fillRect(bx, by - bh, Math.max(1, s*0.13), bh);
+    }
   }
   g.restore();
 }
@@ -4165,38 +4224,93 @@ function renderRace(){
   drawMinimap(g, r, W, H);
 }
 
-function drawGroundDetail(g, r, viewR, theme){
-  var cell = 70;
-  var x0 = Math.floor((r.camX-viewR)/cell), x1 = Math.ceil((r.camX+viewR)/cell);
-  var y0 = Math.floor((r.camY-viewR)/cell), y1 = Math.ceil((r.camY+viewR)/cell);
-  if((x1-x0)*(y1-y0) > 1400) return;
-  var palettes = {
-    forest:['#26361b','#37492a','#1f2d16'],
-    mountain:['#41413c','#4c4c46','#383833'],
-    snowpass:['#f3f8fc','#dde8f2','#ffffff']
+/* =========================================================================
+   GROUND
+
+   The reference floor is a dense mottled carpet, not a sparse scatter: fine
+   grain at a few units across, over broader patches, over a base. Drawing
+   that per frame is impossible — the old version already gave up and drew
+   nothing at all once the visible cell count passed 1400, so a wide viewport
+   at low zoom went flat with no fallback.
+
+   So it is baked once into a seamless tile and laid down as a pattern: one
+   fillRect a frame instead of up to 1400 alpha-switched rects, and it can be
+   as dense as the reference without costing anything. Blobs near an edge are
+   repeated at the eight neighbouring offsets so the tile joins invisibly.
+   ========================================================================= */
+var GROUND_TONES = {
+  forest:   { base:'#2c3d1e',
+              broad:['#26351a','#334823','#1f2c16'],
+              fine: ['#3a5124','#213017','#425c28','#1a2612'] },
+  mountain: { base:'#47473f',
+              broad:['#3f3f38','#515149','#383830'],
+              fine: ['#585850','#3a3a33','#61615a','#33332d'] },
+  snowpass: { base:'#e6f0f8',
+              broad:['#dae6f1','#f2f8fd','#cfdeeb'],
+              fine: ['#ffffff','#d3e1ee','#f7fbfe','#c6d7e6'] }
+};
+var GROUND_TILE = 160, groundPatCache = {};
+
+function groundPattern(g, theme){
+  if(groundPatCache[theme]) return groundPatCache[theme];
+  var t = GROUND_TONES[theme] || GROUND_TONES.forest;
+  var T = GROUND_TILE;
+  var c = document.createElement('canvas');
+  c.width = T; c.height = T;
+  var q = c.getContext('2d');
+  q.fillStyle = t.base; q.fillRect(0,0,T,T);
+
+  var rand = mulberry(theme.charCodeAt(0)*7919 + 31);
+  var put = function(x, y, w, h, col){
+    q.fillStyle = col;
+    for(var dx=-1; dx<=1; dx++) for(var dy=-1; dy<=1; dy++)
+      q.fillRect(x + dx*T, y + dy*T, w, h);
   };
-  var pal = palettes[theme] || palettes.forest;
-  g.save();
-  for(var gx=x0;gx<=x1;gx++){
-    for(var gy=y0;gy<=y1;gy++){
-      var n = rnd2(gx,gy,7);
-      var px = gx*cell + rnd2(gx,gy,11)*cell;
-      var py = gy*cell + rnd2(gx,gy,13)*cell;
-      var s = 16 + rnd2(gx,gy,17)*34;
-      g.globalAlpha = 0.45 + rnd2(gx,gy,19)*0.3;
-      g.fillStyle = pal[Math.floor(n*3)%3];
-      g.fillRect(px, py, s, s*0.75);
-    }
+  var i, w, h;
+  for(i=0;i<70;i++){                       /* broad patches */
+    w = 16 + rand()*40; h = 12 + rand()*32;
+    put(rand()*T, rand()*T, w, h, t.broad[(rand()*t.broad.length)|0]);
   }
-  g.restore();
+  for(i=0;i<900;i++){                      /* fine grain */
+    w = 2 + rand()*5; h = 2 + rand()*4;
+    put(rand()*T, rand()*T, w, h, t.fine[(rand()*t.fine.length)|0]);
+  }
+  groundPatCache[theme] = g.createPattern(c, 'repeat');
+  return groundPatCache[theme];
+}
+
+function drawGroundDetail(g, r, viewR, theme){
+  g.fillStyle = groundPattern(g, theme);
+  g.fillRect(r.camX - viewR, r.camY - viewR, viewR*2, viewR*2);
 }
 
 function drawRoad(g, r, viewR){
   var nodes = r.track.nodes;
-  var lo = Math.max(0, r.car.node - 60);
+  /* The camera aims ahead of the car, so very little road is ever visible
+     behind it. Detailing sixty nodes back was work thrown away. */
+  var lo = Math.max(0, r.car.node - 22);
   var hi = Math.min(nodes.length-1, r.car.node + Math.ceil(viewR/NODE_STEP) + 24);
 
-  /* group consecutive nodes sharing a surface into one polygon */
+  /* Edge treatment. The reference has no hard line where the road stops: a
+     darker gravel shoulder runs outside the driving surface, and grass
+     breaks over the boundary in clumps. The old single 3.5px stroke read as
+     a drawn outline rather than as ground meeting ground. */
+  var band = function(i, end, out, col){
+    var k, nd, nx, ny;
+    g.beginPath();
+    for(k=i;k<=end;k++){
+      nd = nodes[k]; nx = Math.cos(nd.a); ny = Math.sin(nd.a);
+      if(k===i) g.moveTo(nd.x - nx*(nd.hw+out), nd.y - ny*(nd.hw+out));
+      else      g.lineTo(nd.x - nx*(nd.hw+out), nd.y - ny*(nd.hw+out));
+    }
+    for(k=end;k>=i;k--){
+      nd = nodes[k]; nx = Math.cos(nd.a); ny = Math.sin(nd.a);
+      g.lineTo(nd.x + nx*(nd.hw+out), nd.y + ny*(nd.hw+out));
+    }
+    g.closePath();
+    g.fillStyle = col; g.fill();
+  };
+
   var i = lo;
   while(i < hi){
     var surfId = nodes[i].s;
@@ -4204,47 +4318,77 @@ function drawRoad(g, r, viewR){
     while(j < hi && nodes[j+1] && nodes[j+1].s === surfId) j++;
     var end = Math.min(hi, j+1);
     var S = SURFACES[surfId];
-    g.beginPath();
-    for(var k=i;k<=end;k++){
-      var nd = nodes[k], nx = Math.cos(nd.a), ny = Math.sin(nd.a);
-      var x = nd.x - nx*nd.hw, y = nd.y - ny*nd.hw;
-      if(k===i) g.moveTo(x,y); else g.lineTo(x,y);
-    }
-    for(var m=end;m>=i;m--){
-      var nd2 = nodes[m], nx2 = Math.cos(nd2.a), ny2 = Math.sin(nd2.a);
-      g.lineTo(nd2.x + nx2*nd2.hw, nd2.y + ny2*nd2.hw);
-    }
-    g.closePath();
-    g.fillStyle = S.color;
-    g.fill();
 
-    /* surface speckle for texture */
-    g.fillStyle = S.color2;
-    for(var t=i;t<end;t+=2){
-      var nd3 = nodes[t];
-      var nxx = Math.cos(nd3.a), nyy = Math.sin(nd3.a);
-      for(var q=0;q<3;q++){
-        var lat = (rnd2(t,q,3)*2-1)*nd3.hw*0.94;
-        var sz = 3 + rnd2(t,q,5)*7;
-        g.fillRect(nd3.x + nxx*lat, nd3.y + nyy*lat, sz, sz);
+    band(i, end, 15, shade(S.color, -0.10));      /* outer shoulder */
+    band(i, end, 6,  shade(S.color, -0.045));     /* inner shoulder */
+    band(i, end, 0,  S.color);                    /* driving surface */
+
+    /* Surface detail. Every fleck used to set fillStyle itself, and two of
+       those styles were built by shade() inside the loop — a string parse
+       and a concat per rect, thousands a frame. The colours are hoisted out
+       of the run and each is laid down as one batched path instead. */
+    var t, nd3, nxx, nyy, q, lat, sz, b, m, cnt, u;
+    var gt = GROUND_TONES[r.track.stage.theme] || GROUND_TONES.forest;
+    var cRut = shade(S.color, -0.035), cDeep = shade(S.color, -0.07);
+    var cShoul = shade(S.color, -0.085);
+    var lanes = [
+      { col:S.edge,    p:[] }, { col:S.color2, p:[] }, { col:cDeep,  p:[] },
+      { col:cShoul,    p:[] },
+      { col:gt.broad[0], p:[] }, { col:gt.broad[1], p:[] }, { col:gt.broad[2], p:[] },
+      { col:gt.fine[0],  p:[] }, { col:gt.fine[1],  p:[] },
+      { col:gt.fine[2],  p:[] }, { col:gt.fine[3],  p:[] }
+    ];
+    var push = function(k, x, y, w, h){ lanes[k].p.push(x, y, w, h); };
+
+    g.fillStyle = cRut;                            /* ruts, one path */
+    g.beginPath();
+    for(t=i;t<end;t++){
+      nd3 = nodes[t]; nxx = Math.cos(nd3.a); nyy = Math.sin(nd3.a);
+      for(q=-1;q<=1;q+=2){
+        lat = q*nd3.hw*(0.30 + rnd2(t,q,37)*0.10);
+        g.rect(nd3.x + nxx*lat - nd3.hw*0.09, nd3.y + nyy*lat - 2,
+               nd3.hw*0.18, NODE_STEP + 4);
       }
     }
-    /* edges */
-    g.lineWidth = 3.5; g.strokeStyle = S.edge;
-    g.beginPath();
-    for(var e=i;e<=end;e++){
-      var n4 = nodes[e], ax = Math.cos(n4.a), ay = Math.sin(n4.a);
-      var ex = n4.x - ax*n4.hw, ey = n4.y - ay*n4.hw;
-      if(e===i) g.moveTo(ex,ey); else g.lineTo(ex,ey);
+    g.fill();
+
+    for(t=i;t<end;t++){
+      nd3 = nodes[t]; nxx = Math.cos(nd3.a); nyy = Math.sin(nd3.a);
+      for(q=0;q<5;q++){                            /* surface grain */
+        lat = (rnd2(t,q,3)*2-1)*nd3.hw*0.97;
+        sz = 2 + rnd2(t,q,5)*9;
+        push(rnd2(t,q,11) < 0.38 ? 0 : (rnd2(t,q,13) < 0.5 ? 1 : 2),
+             nd3.x + nxx*lat, nd3.y + nyy*lat, sz, sz);
+      }
+      for(q=-1;q<=1;q+=2){
+        for(b=0;b<6;b++){                          /* boundary interleave */
+          u = rnd2(t,q*11+b,59);
+          lat = q*(nd3.hw - 8 + u*46);
+          sz = 3 + rnd2(t,q*11+b,61)*8;
+          push(u < 0.42 ? 3
+             : (u < 0.58 ? 4 + ((rnd2(t,b,71)*3)|0)
+                         : 7 + ((rnd2(t,b,73)*4)|0)),
+               nd3.x + nxx*lat, nd3.y + nyy*lat, sz, sz*0.9);
+        }
+        cnt = (rnd2(t,q,17)*4.2)|0;                /* grass clumps over the edge */
+        for(m=0;m<cnt;m++){
+          lat = q*(nd3.hw - 9 + rnd2(t,q*7+m,19)*30);
+          sz = 3 + rnd2(t,q*7+m,23)*10;
+          push(7 + ((rnd2(t,q*7+m,29)*4)|0),
+               nd3.x + nxx*lat + (rnd2(t,m,31)-0.5)*10,
+               nd3.y + nyy*lat + (rnd2(t,m,43)-0.5)*10, sz, sz*0.85);
+        }
+      }
     }
-    g.stroke();
-    g.beginPath();
-    for(var e2=i;e2<=end;e2++){
-      var n5 = nodes[e2], bx = Math.cos(n5.a), by = Math.sin(n5.a);
-      var fx = n5.x + bx*n5.hw, fy = n5.y + by*n5.hw;
-      if(e2===i) g.moveTo(fx,fy); else g.lineTo(fx,fy);
+    for(q=0;q<lanes.length;q++){
+      var pts = lanes[q].p;
+      if(!pts.length) continue;
+      g.fillStyle = lanes[q].col;
+      g.beginPath();
+      for(m=0;m<pts.length;m+=4) g.rect(pts[m], pts[m+1], pts[m+2], pts[m+3]);
+      g.fill();
     }
-    g.stroke();
+
     i = end;
   }
 
