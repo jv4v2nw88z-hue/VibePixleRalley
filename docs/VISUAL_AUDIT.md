@@ -1002,3 +1002,79 @@ foliage is slightly less dense, and the speedo thins its labelling to every 40
 on a phone-width dial where nine three-digit numerals will not fit.
 
 _(Pass complete.)_
+
+---
+
+## 10. Refinement pass — measured against the reference frame
+
+The eight phases were each scored against crops. This pass compared the whole
+frame at 1:1 instead: both images are 1536x1024, so the same rectangle lands
+on the same content in each. `scripts/compare.mjs` renders any region of the
+reference and the build side by side, and `POSE=start` holds the capture on
+the start line mid-countdown so the comparison is like-for-like rather than
+one image mid-stage and one at the line.
+
+That immediately exposed three things the crop-by-crop reviews had missed.
+
+### 1. The instruments were 15% too small
+
+Measured on the reference: the chassis takes 44% of the picture height and the
+dial is 0.581 of the chassis. The build was at 41% and 0.541 — dials about 80%
+of the reference's diameter, which is why the dash read as a scale model of it.
+
+Two causes. The dash-share curve topped out at 0.42 and never reached the
+reference's 0.44 at 3:2. And the width budget was 6.55D where the reference
+packs its row into 5.82D. Refitting the curve
+(`clamp(0.75/aspect - 0.06, 0.26, 0.45)`) lands 3:2 on 0.44 and leaves a phone
+on the 28-29% its framing can afford. Reclaiming the width — tighter gaps,
+narrower pedal strip, narrower throttle and lever bays, narrower status bay —
+took the divisor to 5.76. **The dial went from 229 to 260px, 0.541 to 0.578 of
+the chassis, against the reference's 0.581.**
+
+The remaining gap to 5.82D is the throttle pad. The reference has no
+equivalent and this game cannot do without one.
+
+### 2. The foliage was two to three times too large and a stop too bright
+
+Phase 8 raised density by growing the far crowns to 30-64 world units. Against
+the reference at the same scale that was plainly wrong: its bushes are about
+45px on a 1536 frame, roughly 20 world units at this camera, and it keeps
+plenty of floor visible between them. The build had merged into a bright slab.
+
+Far crowns are now 10-30 units, the canopy palette is darkened to sit only a
+little above the floor value, and the cubes inside a cluster are smaller and
+more numerous so a bush reads as massing rather than two flat squares.
+Placement is clumped — each attempt seeds a clump centre and drops two or
+three crowns around it — because the reference reads as stands of scrub, not
+a sprinkle. Trunks now only appear under crowns over 20 units; one under every
+crown had turned the floor into a bed of sticks.
+
+### 3. The left paddle was covering the GEAR caption
+
+The blades were anchored a third of the way across the island, which put the
+left one over the head of the gear gate. The caption was rendering as **"AR"**.
+They are now anchored outboard of the island's first column.
+
+### Also in this pass
+
+- **Prop culling was testing a square of the screen diagonal**, about two and
+  a half times the area actually visible. Props are now transformed into
+  camera space and tested against the real view rectangle. That is what paid
+  for the density: 3.68ms to 2.80ms.
+- Start line runs past both verges with a shadow under its leading edge, as
+  the reference draws it.
+- Ground tones pulled toward the reference's olive.
+- Status box captions and the gear caption both fit themselves to their
+  panels rather than overflowing.
+
+### Where it stands
+
+| Preset | frame cost | 60fps |
+| --- | --- | --- |
+| phone | 2.86ms | yes (471 frames / 8s) |
+| desktop | 2.80ms | yes |
+
+Regression guard 29/29. What still differs from the reference, all honest:
+the road is wider and flatter in tone than the reference's crowned surface;
+the gear gate is seven cells against five, so it reads taller; and the
+throttle pad has no counterpart on the reference at all.

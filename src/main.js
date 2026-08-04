@@ -470,16 +470,23 @@ function buildScenery(track){
        individual bushes, and that needs both bigger crowns and far more of
        them — so they live out here where nothing can be clipped and the
        collision buckets never see them. */
-    var far = isMountain ? 4 : 8, fk;
+    /* Clumped, not sprinkled. The reference reads as stands of scrub with
+       floor showing between them, so each attempt seeds a clump centre and
+       drops two or three crowns around it rather than one bush at a uniform
+       random lateral. */
+    var far = isMountain ? 2 : 4, fk, fm;
     for(fk=0; fk<far; fk++){
-      if(rand() > (isMountain ? 0.55 : 0.86)) continue;
+      if(rand() > (isMountain ? 0.55 : 0.80)) continue;
       var fs = rand()<0.5 ? -1 : 1;
-      var flat = nd.hw + 104 + rand()*260;
-      var ftype = isSnow ? (rand()<0.7?0:4) : (isMountain ? (rand()<0.5?1:0) : (rand()<0.74?0:4));
-      var fsize = ftype===0 ? 30+rand()*34 : 18+rand()*20;
-      props.push(mkProp(nd.x+nx*flat*fs + (rand()-0.5)*40,
-                        nd.y+ny*flat*fs + (rand()-0.5)*40,
-                        ftype, fsize, i, false, rand()));
+      var flat = nd.hw + 100 + rand()*270;
+      var ccx = nd.x + nx*flat*fs, ccy = nd.y + ny*flat*fs;
+      var clump = 1 + ((rand()*2.6)|0);
+      for(fm=0; fm<clump; fm++){
+        var ftype = isSnow ? (rand()<0.7?0:4) : (isMountain ? (rand()<0.5?1:0) : (rand()<0.62?0:4));
+        var fsize = ftype===0 ? 14+rand()*16 : 10+rand()*10;
+        props.push(mkProp(ccx + (rand()-0.5)*54, ccy + (rand()-0.5)*54,
+                          ftype, fsize, i, false, rand()));
+      }
     }
   }
 
@@ -1722,10 +1729,10 @@ function getCarSide(carId, opts){
    each with a lit top face, a shaded front face and a bright catch on the
    sunward corner, over a soft shadow that scales with the canopy. */
 var FOLIAGE = {
-  forest:   [['#2b5418','#3f7a24','#58a032','#79c94a'],
-             ['#244914','#376c1f','#4d8f2b','#6bb840']],
-  mountain: [['#27431c','#3a6128','#4e7d34','#6a9c48'],
-             ['#213a17','#325423','#446e2e','#5d8a3f']],
+  forest:   [['#22400f','#325c1a','#487d24','#5f9c31'],
+             ['#1d3a0d','#2b5116','#3f6f20','#548c2c']],
+  mountain: [['#1f3716','#31501f','#436a2a','#587f3a'],
+             ['#1a3012','#2a461b','#3a5d24','#4c7033']],
   snowpass: [['#1d3a26','#2f5c3e','#6f9c86','#dceaf4'],
              ['#183120','#284f35','#628d78','#cfe2ef']]
 };
@@ -2202,14 +2209,14 @@ function clusterLayout(){
   var vw = Math.round(view.w || window.innerWidth || 800);
   var vh = Math.round(view.h || window.innerHeight || 400);
   var si = safeInsets();
-  var frac = clamp(0.62/(vw/Math.max(1,vh)), 0.25, 0.42);
+  var frac = clamp(0.75/(vw/Math.max(1,vh)) - 0.06, 0.26, 0.45);
   var dashH = Math.round(vh*frac);
   var L = { W:vw, H:dashH + si.b, dashH:dashH, si:si };
 
   var pad  = Math.max(3, Math.round(dashH*0.045));
   L.pad = pad;
-  L.railH = Math.max(5, Math.round(dashH*0.105));    /* sculpted top rail */
-  L.botH  = Math.max(15, Math.round(dashH*0.255));   /* indicator / status band */
+  L.railH = Math.max(5, Math.round(dashH*0.100));    /* sculpted top rail */
+  L.botH  = Math.max(15, Math.round(dashH*0.265));   /* indicator / status band */
   L.faceY = L.railH;
   L.botY  = dashH - L.botH;
   var midH = L.botY - L.faceY - pad;
@@ -2217,19 +2224,21 @@ function clusterLayout(){
   /* The dial diameter drives every other measurement. It wants the full
      depth of the instrument band, but on a narrow screen the row of groups
      binds first: pedals + gear + tacho + stack + boost + speedo across the
-     middle is 3.87D, the left wing 0.93D and the right wing 1.45D. That is
-     6.25D before the gaps between the three groups, so 6.55D with them. */
+     middle is 3.70D, the left wing 0.89D and the right wing 1.07D. That is
+     5.66D before the gaps between the three groups, so 5.90D with them.
+     The reference packs into 5.82D; the extra is the throttle pad, which
+     it has no equivalent of and this game cannot do without. */
   var usable = vw - si.x - 2*pad;
-  var D = Math.max(30, Math.min(Math.floor(midH*0.98), Math.floor(usable/6.55)));
+  var D = Math.max(30, Math.min(Math.floor(midH*0.98), Math.floor(usable/5.76)));
   L.D = D; L.R = D/2;
   L.dialY = L.faceY + pad + midH/2;
-  var gap = Math.max(2, Math.round(D*0.10));
+  var gap = Math.max(2, Math.round(D*0.075));
   L.gap = gap;
 
   /* ---- centre island, left to right ---- */
-  L.pedW   = Math.max(7,  Math.round(D*0.16));       /* narrowed pedal telltale */
-  L.gearW  = Math.max(10, Math.round(D*0.21));       /* P R N 1 2 strip */
-  L.stackW = Math.max(16, Math.round(D*0.50));       /* SHIFT + digital readout */
+  L.pedW   = Math.max(5,  Math.round(D*0.075));       /* narrowed pedal telltale */
+  L.gearW  = Math.max(10, Math.round(D*0.25));       /* the gear gate */
+  L.stackW = Math.max(16, Math.round(D*0.46));       /* SHIFT + digital readout */
   L.boostD = Math.max(14, Math.round(D*0.50));
   var islandW = L.pedW + L.gearW + 2*D + L.stackW + L.boostD + 5*gap;
   var x = Math.round(si.l + (vw - si.x - islandW)/2);
@@ -2264,7 +2273,7 @@ function clusterLayout(){
   /* ---- left wing: LED pip row over the two steering pads ---- */
   L.pipH = Math.max(5, Math.round(D*0.13));
   L.pipY = L.faceY + Math.max(2, Math.round(pad*0.6));
-  L.padW = Math.max(20, Math.round(D*0.43));
+  L.padW = Math.max(20, Math.round(D*0.42));
   L.padH2 = Math.max(22, dashH - (L.pipY + L.pipH + pad) - pad);
   L.padY = L.pipY + L.pipH + pad;
   L.padLX = si.l + pad;
@@ -2276,11 +2285,11 @@ function clusterLayout(){
   var rx = vw - si.r - pad;
   L.statY = L.botY - Math.round(D*0.12);
   L.statH = Math.max(13, dashH - pad - L.statY);
-  L.statW = Math.min(Math.round(D*1.62), Math.round((vw - si.x)*0.34));
+  L.statW = Math.min(Math.round(D*1.42), Math.round((vw - si.x)*0.32));
   L.statX = rx - L.statW;
   var upperH = Math.max(18, L.statY - L.faceY - L.railH - pad - Math.max(2, Math.round(pad*0.6)));
-  L.gasW  = Math.max(30, Math.round(D*0.62));
-  L.gateW = Math.max(26, Math.round(D*0.66));
+  L.gasW  = Math.max(26, Math.round(D*0.44));
+  L.gateW = Math.max(24, Math.round(D*0.48));
   L.upperY = L.faceY + L.railH + Math.max(2, Math.round(pad*0.6));
   L.upperH = upperH;
   L.gasX  = rx - L.gasW;
@@ -2301,8 +2310,8 @@ function clusterLayout(){
   L.padlH = Math.max(28, Math.round(D*0.78));
   L.padlY = L.faceY + Math.round(L.railH*1.1) - L.padlH;
   var reach = Math.round((vw - si.x)*0.30);
-  L.padlLX = Math.min(Math.round(L.islandX - L.padlW*0.35), si.l + reach);
-  L.padlRX = Math.max(Math.round(L.islandX + islandW - L.padlW*0.65),
+  L.padlLX = Math.min(Math.round(L.islandX - L.padlW*0.90), si.l + reach);
+  L.padlRX = Math.max(Math.round(L.islandX + islandW - L.padlW*0.10),
                       vw - si.r - reach - L.padlW);
   return L;
 }
@@ -2753,9 +2762,14 @@ function gearCellRect(L, i){
 }
 function drawGearStripBase(g, L){
   var i, r, fc = Math.max(1.5, L.gearW*0.20);
-  dialFont(g, Math.max(4, L.gearW*0.40));
+  /* fit the caption to the strip: at 0.40 of a narrow gate it ran out
+     over the pedal gauges and lost its first letter against them */
+  var cap = Math.max(4, L.gearW*0.38);
+  dialFont(g, cap);
+  var capW = g.measureText('GEAR').width, room = L.gearW*1.18;
+  if(capW > room) dialFont(g, Math.max(3.5, cap*room/capW));
   g.fillStyle = '#e6ebf1'; g.textAlign = 'center'; g.textBaseline = 'bottom';
-  g.fillText('GEAR', L.gearX + L.gearW/2, L.gearFrameY - Math.max(1, L.gearW*0.10));
+  g.fillText('GEAR', L.gearX + L.gearW/2, L.gearFrameY - Math.max(1, L.gearW*0.08));
 
   dashWell(g, L.gearX, L.gearFrameY, L.gearW, L.gearFrameH, fc, 1);
   for(i=0;i<L.gearCells;i++){
@@ -3017,7 +3031,7 @@ function drawStatusBase(g, L){
 
     /* the caption sets the box: shrink it until it fits rather than let it
        run over the border, since TRACTION and THROTTLE are long words */
-    var capH = Math.max(3.2, b.h*0.21);
+    var capH = Math.max(3.6, b.h*0.235);
     dialFont(g, capH);
     var capW = g.measureText(names[i]).width, room = b.w*0.84;
     if(capW > room){ capH *= room/capW; dialFont(g, Math.max(3, capH)); }
@@ -4229,12 +4243,17 @@ function renderRace(){
   g.translate(-r.camX, -r.camY);
 
   var viewR = Math.sqrt(W*W + H*H)/2/scale + 90;
+  /* The real visible rectangle in camera space, for culling anything dense
+     enough that the diagonal-square test costs real frames. */
+  var cull = { c: Math.cos(r.camA), s: Math.sin(r.camA),
+               hw: W/(2*scale) + 70,
+               top: -focal/scale - 70, bot: (H - focal)/scale + 70 };
 
   drawGroundDetail(g, r, viewR, theme);
   drawRoad(g, r, viewR);
   drawSkids(g, r, viewR);
   drawParticles(g, r, false);
-  drawProps(g, r, viewR, theme);
+  drawProps(g, r, viewR, theme, cull);
   drawCar(g, r);
   drawParticles(g, r, true);
 
@@ -4258,9 +4277,9 @@ function renderRace(){
    repeated at the eight neighbouring offsets so the tile joins invisibly.
    ========================================================================= */
 var GROUND_TONES = {
-  forest:   { base:'#2c3d1e',
-              broad:['#26351a','#334823','#1f2c16'],
-              fine: ['#334722','#26361b','#3b5226','#202e17'] },
+  forest:   { base:'#2a3a1c',
+              broad:['#233118','#2f4320','#1c2814'],
+              fine: ['#2e4020','#233219','#354a23','#1e2a15'] },
   mountain: { base:'#47473f',
               broad:['#3f3f38','#515149','#383830'],
               fine: ['#4f4f47','#3e3e37','#565650','#38382f'] },
@@ -4409,9 +4428,16 @@ function drawRoad(g, r, viewR){
 function drawBanner(g, nd, ca, cb){
   var nx = Math.cos(nd.a), ny = Math.sin(nd.a);
   var dx = Math.sin(nd.a), dy = -Math.cos(nd.a);
-  var n = 10, w = nd.hw*2/n, depth = 16;
+  var over = nd.hw*1.16;                          /* runs past both verges */
+  var n = 12, w = over*2/n, depth = 20;
+  g.save();                                       /* shadow under the leading edge */
+  g.fillStyle = 'rgba(0,0,0,.28)';
+  g.translate(nd.x + dx*depth*0.55, nd.y + dy*depth*0.55);
+  g.rotate(nd.a);
+  g.fillRect(-over, -depth/2, over*2, depth + 2);
+  g.restore();
   for(var i=0;i<n;i++){
-    var lat = -nd.hw + i*w;
+    var lat = -over + i*w;
     for(var k=0;k<2;k++){
       g.fillStyle = ((i+k)%2===0) ? ca : cb;
       var bx = nd.x + nx*lat + dx*(k*depth/2);
@@ -4475,7 +4501,7 @@ function flushRects(g, col, arr){
   arr.length = 0;
 }
 
-function drawProps(g, r, viewR, theme){
+function drawProps(g, r, viewR, theme, cull){
   var byNode = r.track.byNode;
   var lo = Math.max(0, r.car.node - 40);
   var hi = Math.min(byNode.length-1, r.car.node + Math.ceil(viewR/NODE_STEP) + 20);
@@ -4484,7 +4510,9 @@ function drawProps(g, r, viewR, theme){
     var arr = byNode[i]; if(!arr) continue;
     for(j=0;j<arr.length;j++){
       var p = arr[j];
-      if(Math.abs(p.x-r.camX) > viewR+60 || Math.abs(p.y-r.camY) > viewR+60) continue;
+      var dx = p.x - r.camX, dy = p.y - r.camY;
+      var sx = dx*cull.c + dy*cull.s, sy = dy*cull.c - dx*cull.s;
+      if(sx < -cull.hw || sx > cull.hw || sy < cull.top || sy > cull.bot) continue;
       if(p.type === 0 || p.type === 4) collectCanopy(B, p);
       else drawProp(g, p, theme);
     }
@@ -4505,24 +4533,25 @@ function drawProps(g, r, viewR, theme){
 function collectCanopy(B, p){
   var s = p.size, v = p.seed, x = p.x, y = p.y;
   var pi = v < 0.5 ? 0 : 1, so = s*0.20;
-  if(s <= 28) B.shadowSoft.push(x - s*0.52 + so, y - s*0.46 + so*1.2, s*1.08, s*0.98);
+  B.shadowSoft.push(x - s*0.52 + so, y - s*0.46 + so*1.2, s*1.08, s*0.98);
   B.shadow.push(x - s*0.44 + so, y - s*0.38 + so*1.2, s*0.96, s*0.86);
-  if(p.type === 0) B.trunk.push(x - s*0.08, y + s*0.16, s*0.16, s*0.30);
+  if(p.type === 0 && s > 20)
+    B.trunk.push(x - s*0.07, y + s*0.18, s*0.14, s*0.26);
 
   /* Big crowns out in the mass read fine on three cubes; the fourth only
      pays for itself on the smaller bushes near the verge. */
-  var n = s > 28 ? 3 : (p.type === 0 ? (v < 0.55 ? 4 : 3) : (v < 0.5 ? 3 : 2)), k;
+  var n = p.type === 0 ? 4 : 3, k;
   for(k=0;k<n;k++){
     var r1 = rnd2(p.node, k, 71), r2 = rnd2(p.node, k, 83), r3 = rnd2(p.node, k, 97);
-    var cw = s*(k === 0 ? 0.78 : 0.34 + r3*0.30), ch = cw*0.90;
-    var cx = x + (k === 0 ? -cw/2 : (r1 - 0.5)*s*0.86 - cw/2);
-    var cy = y + (k === 0 ? -cw*0.62 : (r2 - 0.5)*s*0.74 - cw*0.5);
+    var cw = s*(k === 0 ? 0.56 : 0.26 + r3*0.22), ch = cw*0.90;
+    var cx = x + (k === 0 ? -cw/2 : (r1 - 0.5)*s*0.96 - cw/2);
+    var cy = y + (k === 0 ? -cw*0.60 : (r2 - 0.5)*s*0.84 - cw*0.5);
     var side = Math.max(1, ch*0.26);
     B.faces[pi*4  ].push(cx, cy + ch - side, cw, side);
     B.faces[pi*4+1].push(cx + cw - side*0.7, cy, side*0.7, ch);
     B.faces[pi*4+2].push(cx, cy, cw - side*0.7, ch - side);
-    if(k === 0 || (s <= 28 && r3 > 0.45))
-      B.faces[pi*4+3].push(cx + cw*0.13, cy + ch*0.12, cw*0.32, ch*0.26);
+    if(k === 0 || r3 > 0.52)
+      B.faces[pi*4+3].push(cx + cw*0.15, cy + ch*0.13, cw*0.34, ch*0.28);
   }
 }
 

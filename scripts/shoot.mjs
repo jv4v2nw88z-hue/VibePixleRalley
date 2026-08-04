@@ -64,16 +64,22 @@ await page.click('#stage-list .stage-card button.primary');
 
 /* Run the countdown out and get the car rolling under a fixed throttle so the
    needles, gear and speed readout land on the same values every time. */
-await page.evaluate(() => window.__pump(200));   /* countdown out, GO! message gone */
-await page.keyboard.down('ArrowUp');
-await page.evaluate((n) => window.__pump(n), POSE_FRAMES);
-await page.keyboard.up('ArrowUp');
-await page.evaluate(() => window.__pump(2));
+if (process.env.POSE === 'start') {
+  /* The reference frame is the car on the start line mid-countdown. Holding
+     the capture there makes every region comparison like-for-like. */
+  await page.evaluate(() => window.__pump(90));
+} else {
+  await page.evaluate(() => window.__pump(200));  /* countdown out, GO! gone */
+  await page.keyboard.down('ArrowUp');
+  await page.evaluate((n) => window.__pump(n), POSE_FRAMES);
+  await page.keyboard.up('ArrowUp');
+  await page.evaluate(() => window.__pump(2));
+}
 
 /* the countdown banner is a transition, not part of the art being judged */
 await page.evaluate(() => {
   const m = document.getElementById('big-msg');
-  if (m) { m.classList.remove('show'); m.style.display = 'none'; }
+  if (m && !window.__keepMsg) { m.classList.remove('show'); m.style.display = 'none'; }
 });
 
 await page.screenshot({ path: out });
