@@ -656,4 +656,88 @@ it was written: the readout is two path fills rather than forty-two, the
 shift lenses fill without a clip, and the needle hubs and tell-tales use
 concentric solids instead of building a gradient object every frame.
 
-_(Phase 3 complete. Next: Phase 4, indicator strip and status boxes.)_
+---
+
+### Phase 4 — indicator strip and status boxes
+
+**What changed.** The two bays Phase 1 cut into the bottom band are now
+filled, and the band was reproportioned to carry them: the status bay reaches
+up out of the band as the reference has it (`statY = botY - 0.12D`), the
+indicator strip stays inside it, and the boost dial lifts slightly to clear
+the taller bay.
+
+- **Indicator strip.** Left turn arrow, low-beam headlight, a two-cell
+  housing carrying the seatbelt and parking-brake lamps over a warm backlit
+  ground, then the right turn arrow. All seven glyphs are vector paths in a
+  unit box, so they scale with the chassis.
+- **Status boxes.** Three faceted plates with fitted captions, a divider, a
+  square icon area and a four-cell meter along the foot. `TRACTION` carries a
+  car over two skid tracks, `DIFF` a four-wheel schematic, `THROTTLE` a level
+  meter beside a raked pedal.
+
+**Bindings.** Everything is read-only against state that already exists.
+
+| Element | Bound to |
+| --- | --- |
+| Turn arrows | `input.left` / `input.right`, lit amber |
+| Headlight | lit constantly, as the reference shows it |
+| Seatbelt | lit constantly, as the reference shows it |
+| Parking brake | `hudCtl.hb` — brightens when the lever is pulled |
+| TRACTION meter | `up.susp` upgrade level |
+| DIFF meter | `up.trans` upgrade level |
+| THROTTLE meter | `hudCtl.gas`, live |
+
+`TRACTION` and `DIFF` report how the car is built rather than what it is
+doing, which is why the reference draws them full and static. They are
+painted into the cached bitmap; the base rebuilds at every race start, so an
+upgrade bought between runs shows up.
+
+**One deliberate removal.** The strip replaced the three placeholder
+telltales Phase 1 parked there (coolant, check-engine, brake). The reference's
+set has no room for them, and the code's own comment already described them as
+"cosmetic dash atmosphere ... nothing reads them back". No information is
+lost: damage is on the stage panel's meter, and the brake lamp survives as the
+parking-brake telltale.
+
+**Bugs found and fixed during the phase.**
+
+1. **Captions ran over their borders.** `TRACTION` and `THROTTLE` are long
+   words and the caption was sized as a fixed fraction of box height. It now
+   measures itself and shrinks to fit `0.84` of the box width.
+2. **The icon area was landscape** (`0.64w x 0.39h`), which squashed the car
+   glyph into a dome — it read as a mushroom, not a vehicle. The reference
+   draws its glyphs in a square, so the icon area is now
+   `min(0.62w, 0.41h)` on a side and centred.
+3. **The plates were too dark to separate from the moulding.** Lifted the
+   plate top to `#333941` and added a `rgba(150,164,180,.34)` border stroke,
+   so the boxes read as fitted panels rather than as shading.
+
+**Scored against `reference/target.png`** (captures:
+`reference/shots/phase4-desktop.png`, `phase4-phone.png`, plus the attempt
+series).
+
+| Element | Score | Remaining delta |
+| --- | --- | --- |
+| Turn arrows | 9 | — |
+| Headlight telltale | 9 | — |
+| Seatbelt / parking-brake housing and backlight | 9 | Reference's seatbelt figure is slightly crisper at small sizes |
+| Strip integrated into the chassis | 9 | Reference's strip is wider, spreading the arrows further apart |
+| TRACTION box | 9 | — |
+| DIFF box | 9 | Reference's wheel blocks are marginally larger |
+| THROTTLE box | 9 | — |
+| Boxes read as one set with the dash | 9 | — |
+
+**Regression guard:** 29/29 pass.
+
+**Frame cost.** Flat. Everything new except the arrows, the brake lamp and
+the throttle meter is in the cached bitmap. Measured back to back in one
+session against Phase 3's commit; run-to-run variance on this container is
+about ±0.2ms, so the phone figure moving down is noise rather than a gain.
+
+| Preset | Phase 3 (same session) | Phase 4 | delta |
+| --- | --- | --- | --- |
+| phone | 2.01 | 1.79 | -0.22 (within noise) |
+| desktop | 1.52 | 1.55 | +0.03 |
+
+_(Phase 4 complete. The dash now carries every element on the reference.
+Next: Phase 5, overlay HUD.)_

@@ -1971,7 +1971,7 @@ function clusterLayout(){
   L.readY  = L.colY + Math.round(L.colH*0.66);
   L.readH  = L.colH - Math.round(L.colH*0.66);
   L.boostR = L.boostD/2;
-  L.boostY = L.dialY + Math.round(D*0.20);
+  L.boostY = L.dialY + Math.round(D*0.16);
 
   /* gear gate: the game's own ratios, N through top, one cell each */
   L.gearCells = TOP_GEAR + 1;
@@ -1993,9 +1993,9 @@ function clusterLayout(){
 
   /* ---- right wing: lever gate and throttle over the status boxes ---- */
   var rx = vw - si.r - pad;
-  L.statH = Math.max(13, L.botH - pad);
-  L.statY = dashH - pad - L.statH;
-  L.statW = Math.min(Math.round(D*1.45), Math.round((vw - si.x)*0.30));
+  L.statY = L.botY - Math.round(D*0.12);
+  L.statH = Math.max(13, dashH - pad - L.statY);
+  L.statW = Math.min(Math.round(D*1.62), Math.round((vw - si.x)*0.34));
   L.statX = rx - L.statW;
   var upperH = Math.max(18, L.statY - L.faceY - L.railH - pad - Math.max(2, Math.round(pad*0.6)));
   L.gasW  = Math.max(30, Math.round(D*0.62));
@@ -2010,8 +2010,8 @@ function clusterLayout(){
   var lo = L.padRX + L.padW + gap, hi = L.gateX - gap;
   L.indW = clamp(Math.round(D*2.3), 40, Math.max(40, hi - lo));
   L.indX = clamp(Math.round(L.islandX + islandW/2 - L.indW/2), lo, hi - L.indW);
-  L.indY = L.statY;
-  L.indH = L.statH;
+  L.indY = L.botY;
+  L.indH = Math.max(10, dashH - pad - L.botY);
 
   /* ---- paddles: mounted on the top rail, flanking the dials.
      Never further inboard than a thumb's reach from the edge, so a wide
@@ -2424,7 +2424,6 @@ function buildClusterBase(L, S){
   var fc = Math.max(2, Math.round(L.D*0.09));
   dashWell(g, L.pedX - 1, L.colY - 1, L.pedW + 2, L.colH + 2, Math.max(1, fc*0.5));
   dashWell(g, L.indX, L.indY, L.indW, L.indH, fc);
-  dashWell(g, L.statX, L.statY, L.statW, L.statH, fc);
   dashBezel(g, L.gateX, L.upperY, L.gateW, L.upperH, fc);
   dashBezel(g, L.gasX,  L.upperY, L.gasW,  L.upperH, fc);
   dashBezel(g, L.padLX, L.padY, L.padW, L.padH2, fc);
@@ -2453,6 +2452,8 @@ function buildClusterBase(L, S){
   drawGearStripBase(g, L);
   drawShiftModuleBase(g, L);
   drawReadoutBase(g, L);
+  drawIndicatorBase(g, L);
+  drawStatusBase(g, L);
 
   return c;
 }
@@ -2516,6 +2517,260 @@ function drawShiftModuleBase(g, L){
   g.fillRect(L.stackX + L.stackW/2 - 0.35, p.triY + 1, 0.7, p.triH - 2);
 
   dashWell(g, p.x, p.barY, p.w, p.barH, Math.max(1, fc*0.4), 1);
+}
+
+/* =========================================================================
+   INDICATOR STRIP AND STATUS BOXES
+
+   Glyphs are drawn as vector paths in a unit box so they scale with the
+   chassis. Everything static lives in the cached bitmap; only the turn
+   arrows, the parking-brake lamp and the throttle meter change per frame.
+   ========================================================================= */
+
+function glyphArrow(g, x, y, w, h, right){
+  var m = h*0.30, sx = right ? x : x + w, dx = right ? 1 : -1;
+  g.beginPath();
+  g.moveTo(sx + dx*w,        y + h*0.50);
+  g.lineTo(sx + dx*w*0.52,   y);
+  g.lineTo(sx + dx*w*0.52,   y + h*0.50 - m/2);
+  g.lineTo(sx,               y + h*0.50 - m/2);
+  g.lineTo(sx,               y + h*0.50 + m/2);
+  g.lineTo(sx + dx*w*0.52,   y + h*0.50 + m/2);
+  g.lineTo(sx + dx*w*0.52,   y + h);
+  g.closePath(); g.fill();
+}
+
+/* low beam: a lamp body with the beam raked away to the left */
+function glyphHeadlight(g, x, y, w, h){
+  var bx = x + w*0.42, bw = w*0.58, i;
+  g.beginPath();
+  g.moveTo(bx, y);
+  g.lineTo(bx + bw*0.42, y);
+  g.quadraticCurveTo(bx + bw, y + h*0.14, bx + bw, y + h*0.50);
+  g.quadraticCurveTo(bx + bw, y + h*0.86, bx + bw*0.42, y + h);
+  g.lineTo(bx, y + h);
+  g.closePath();
+  g.lineWidth = Math.max(0.8, h*0.13); g.lineJoin = 'round';
+  g.stroke();
+  for(i=0;i<4;i++){
+    var ly = y + h*0.17 + i*h*0.22;
+    g.beginPath();
+    g.moveTo(x, ly); g.lineTo(x + w*0.30 - i*w*0.045, ly);
+    g.lineWidth = Math.max(0.7, h*0.11); g.lineCap = 'butt';
+    g.stroke();
+  }
+}
+
+/* belted occupant: seat, torso, head, and the sash across it */
+function glyphBelt(g, x, y, w, h){
+  g.beginPath();                                        /* head */
+  g.arc(x + w*0.44, y + h*0.14, Math.max(0.8, h*0.13), 0, TAU);
+  g.fill();
+  g.beginPath();                                        /* torso */
+  g.moveTo(x + w*0.30, y + h*0.66);
+  g.lineTo(x + w*0.30, y + h*0.36);
+  g.quadraticCurveTo(x + w*0.44, y + h*0.26, x + w*0.58, y + h*0.36);
+  g.lineTo(x + w*0.58, y + h*0.66);
+  g.closePath(); g.fill();
+  g.beginPath();                                        /* thighs */
+  g.moveTo(x + w*0.26, y + h*0.70);
+  g.lineTo(x + w*0.72, y + h*0.70);
+  g.lineTo(x + w*0.72, y + h*0.84);
+  g.lineTo(x + w*0.26, y + h*0.84);
+  g.closePath(); g.fill();
+  g.beginPath();                                        /* seat back */
+  g.moveTo(x + w*0.16, y + h*0.86);
+  g.lineTo(x + w*0.30, y + h*0.86);
+  g.lineTo(x + w*0.30, y + h*1.00);
+  g.lineTo(x + w*0.16, y + h*1.00);
+  g.closePath(); g.fill();
+  g.beginPath();                                        /* sash */
+  g.moveTo(x + w*0.18, y + h*0.86);
+  g.lineTo(x + w*0.86, y + h*0.24);
+  g.lineWidth = Math.max(0.9, h*0.11); g.lineCap = 'butt'; g.stroke();
+}
+
+/* parking brake: a P in a disc, flanked by the pad brackets */
+function glyphBrake(g, x, y, w, h){
+  var cx = x + w/2, cy = y + h/2, r = Math.min(w,h)*0.34;
+  g.lineWidth = Math.max(0.8, h*0.10);
+  g.beginPath(); g.arc(cx, cy, r, 0, TAU); g.stroke();
+  g.beginPath(); g.arc(cx, cy, r*1.52, Math.PI*0.72, Math.PI*1.28); g.stroke();
+  g.beginPath(); g.arc(cx, cy, r*1.52, Math.PI*-0.28, Math.PI*0.28); g.stroke();
+  g.beginPath(); g.arc(cx, cy, r*1.92, Math.PI*0.80, Math.PI*1.20); g.stroke();
+  g.beginPath(); g.arc(cx, cy, r*1.92, Math.PI*-0.20, Math.PI*0.20); g.stroke();
+  dialFont(g, Math.max(3, r*1.35));
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('P', cx, cy + r*0.06);
+}
+
+/* traction: a car seen head on, over two skid tracks */
+function glyphTraction(g, x, y, w, h){
+  var bg = g.fillStyle;
+  var cw = w*0.76, ch = h*0.58, cx = x + (w - cw)/2, cy = y;
+  g.beginPath();                                        /* roof flaring into the body */
+  g.moveTo(cx + cw*0.24, cy + ch*0.04);
+  g.quadraticCurveTo(cx + cw*0.50, cy - ch*0.04, cx + cw*0.76, cy + ch*0.04);
+  g.lineTo(cx + cw*0.88, cy + ch*0.38);
+  g.quadraticCurveTo(cx + cw, cy + ch*0.42, cx + cw, cy + ch*0.54);
+  g.lineTo(cx + cw, cy + ch*0.88);
+  g.quadraticCurveTo(cx + cw, cy + ch, cx + cw*0.86, cy + ch);
+  g.lineTo(cx + cw*0.14, cy + ch);
+  g.quadraticCurveTo(cx, cy + ch, cx, cy + ch*0.88);
+  g.lineTo(cx, cy + ch*0.54);
+  g.quadraticCurveTo(cx, cy + ch*0.42, cx + cw*0.12, cy + ch*0.38);
+  g.closePath(); g.fill();
+  roundPath(g, cx - cw*0.12, cy + ch*0.44, cw*0.14, ch*0.13, ch*0.05);
+  g.fill();                                             /* mirrors */
+  roundPath(g, cx + cw*0.98, cy + ch*0.44, cw*0.14, ch*0.13, ch*0.05);
+  g.fill();
+  g.save();                                             /* lights and grille */
+  g.globalCompositeOperation = 'destination-out';
+  roundPath(g, cx + cw*0.09, cy + ch*0.55, cw*0.24, ch*0.15, ch*0.05); g.fill();
+  roundPath(g, cx + cw*0.67, cy + ch*0.55, cw*0.24, ch*0.15, ch*0.05); g.fill();
+  roundPath(g, cx + cw*0.36, cy + ch*0.78, cw*0.28, ch*0.12, ch*0.04); g.fill();
+  g.restore();
+  g.fillStyle = bg; g.strokeStyle = bg;
+
+  var i, k, sx, sy, step = h*0.13, amp = w*0.15;        /* skid tracks */
+  g.lineWidth = Math.max(1, h*0.080); g.lineJoin = 'miter'; g.lineCap = 'butt';
+  for(i=0;i<2;i++){
+    sx = x + w*(i ? 0.56 : 0.14);
+    sy = y + h*0.62;
+    g.beginPath();
+    g.moveTo(sx + amp, sy);
+    for(k=1;k<=3;k++) g.lineTo(sx + (k % 2 ? 0 : amp), sy + k*step);
+    g.stroke();
+  }
+}
+
+/* differential: four wheels on axles into a centre spine */
+function glyphDiff(g, x, y, w, h, col, dark){
+  var i, j, wx, wy, ww = w*0.17, wh = h*0.30;
+  var cxm = x + w/2;
+  g.strokeStyle = col; g.lineWidth = Math.max(0.9, w*0.05);
+  g.beginPath();                                        /* spine and axles */
+  g.moveTo(cxm, y + h*0.18); g.lineTo(cxm, y + h*0.82);
+  g.moveTo(x + w*0.22, y + h*0.18); g.lineTo(x + w*0.78, y + h*0.18);
+  g.moveTo(x + w*0.22, y + h*0.82); g.lineTo(x + w*0.78, y + h*0.82);
+  g.stroke();
+  for(i=0;i<2;i++) for(j=0;j<2;j++){                    /* wheels */
+    wx = x + (j ? w - ww : 0);
+    wy = y + (i ? h - wh : 0);
+    roundPath(g, wx, wy, ww, wh, ww*0.35);
+    g.fillStyle = col; g.fill();
+    g.fillStyle = dark;
+    g.fillRect(wx + ww*0.30, wy + wh*0.22, ww*0.40, wh*0.56);
+  }
+  roundPath(g, cxm - w*0.09, y + h*0.12, w*0.18, h*0.12, w*0.04);
+  g.fillStyle = col; g.fill();
+  roundPath(g, cxm - w*0.09, y + h*0.76, w*0.18, h*0.12, w*0.04);
+  g.fillStyle = col; g.fill();
+}
+
+/* throttle: a raked pedal beside a level meter */
+function glyphPedal(g, x, y, w, h, col, dark){
+  g.save();
+  g.translate(x, y);
+  g.transform(1, 0, -0.26, 1, w*0.24, 0);
+  roundPath(g, 0, 0, w*0.84, h, w*0.16);
+  g.fillStyle = col; g.fill();
+  roundPath(g, w*0.11, h*0.07, w*0.62, h*0.86, w*0.11);
+  g.fillStyle = dark; g.fill();
+  var i, n = 4;
+  g.fillStyle = col;
+  for(i=0;i<n;i++)
+    g.fillRect(w*0.20, h*(0.16 + i*0.20), w*0.44, Math.max(0.6, h*0.045));
+  g.restore();
+}
+
+/* --------------------------------------------------- indicator strip */
+function indParts(L){
+  var h = L.indH, iy = L.indY;
+  var aw = Math.max(5, h*0.66), ah = h*0.52;
+  var hw = Math.max(6, h*0.80), hh = h*0.50;
+  var pw = Math.max(14, L.indW*0.44), ph = h*0.80;
+  var px = L.indX + L.indW*0.50 - pw*0.42;
+  return {
+    ay: iy + (h - ah)/2, aw: aw, ah: ah,
+    lax: L.indX + L.indW*0.045,
+    rax: L.indX + L.indW*0.955 - aw,
+    hx: L.indX + L.indW*0.215, hy: iy + (h - hh)/2, hw: hw, hh: hh,
+    px: px, py: iy + (h - ph)/2, pw: pw, ph: ph,
+    cw: (pw - Math.max(1, pw*0.02))/2
+  };
+}
+function drawIndicatorBase(g, L){
+  var p = indParts(L), i;
+  /* the two lamps that sit in a housing of their own, backlit warm */
+  dashPlate(g, p.px, p.py, p.pw, p.ph, Math.max(1.5, p.ph*0.16), '#4a5058', '#22272c');
+  for(i=0;i<2;i++){
+    var cx = p.px + Math.max(1, p.pw*0.02)/2 + i*(p.cw + Math.max(1, p.pw*0.02));
+    var inset = Math.max(1, p.ph*0.09);
+    var lg = g.createLinearGradient(0, p.py, 0, p.py + p.ph);
+    lg.addColorStop(0, '#4a1a13'); lg.addColorStop(1, '#2a0f0b');
+    roundPath(g, cx + inset*0.4, p.py + inset, p.cw - inset*0.8, p.ph - inset*2, inset*0.5);
+    g.fillStyle = lg; g.fill();
+  }
+}
+
+/* ------------------------------------------------------- status boxes */
+function statBox(L, i){
+  var gap = Math.max(1.5, L.statW*0.022);
+  var w = (L.statW - gap*2)/3;
+  return { x: L.statX + i*(w + gap), y: L.statY, w: w, h: L.statH };
+}
+function drawStatusBase(g, L){
+  /* TRACTION and DIFF report how the car is built, so they are static for
+     the run; only THROTTLE moves, and that is drawn live. */
+  var cs = curCarSave(), i;
+  var names = ['TRACTION', 'DIFF', 'THROTTLE'];
+  var levels = [cs.up.susp, cs.up.trans, 0];
+  for(i=0;i<3;i++){
+    var b = statBox(L, i), fc = Math.max(1.5, b.w*0.10);
+    dashPlate(g, b.x, b.y, b.w, b.h, fc, '#333941', '#171b20');
+    facetPath(g, b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1, fc);
+    g.lineWidth = 1; g.strokeStyle = 'rgba(150,164,180,.34)'; g.stroke();
+    dashScrew(g, b.x + fc*0.75, b.y + fc*0.75, Math.max(0.7, b.w*0.030));
+    dashScrew(g, b.x + b.w - fc*0.75, b.y + fc*0.75, Math.max(0.7, b.w*0.030));
+
+    /* the caption sets the box: shrink it until it fits rather than let it
+       run over the border, since TRACTION and THROTTLE are long words */
+    var capH = Math.max(3.2, b.h*0.21);
+    dialFont(g, capH);
+    var capW = g.measureText(names[i]).width, room = b.w*0.84;
+    if(capW > room){ capH *= room/capW; dialFont(g, Math.max(3, capH)); }
+    g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(names[i], b.x + b.w/2, b.y + b.h*0.18);
+    g.fillStyle = 'rgba(150,166,182,.34)';
+    g.fillRect(b.x + b.w*0.07, b.y + b.h*0.31, b.w*0.86, 0.8);
+
+    var isz = Math.min(b.w*0.62, b.h*0.41);
+    var ix = b.x + (b.w - isz)/2, iy = b.y + b.h*0.36, iw = isz, ih = isz;
+    if(i === 0){
+      g.fillStyle = '#3fc41f'; g.strokeStyle = '#3fc41f';
+      glyphTraction(g, ix, iy, iw, ih);
+    } else if(i === 1){
+      glyphDiff(g, ix, iy, iw, ih, '#9aa2ab', '#3a4048');
+    }
+    if(i < 2) drawSegBar(g, b, clamp(levels[i] + 1, 1, 4)/4);
+  }
+}
+/* the four-cell meter along the foot of a status box */
+function drawSegBar(g, b, frac){
+  var n = 4, gap = Math.max(0.8, b.w*0.030);
+  var bx = b.x + b.w*0.10, bw = b.w*0.80;
+  var sw = (bw - gap*(n-1))/n, sh = Math.max(1.6, b.h*0.11);
+  var by = b.y + b.h - sh - Math.max(1.5, b.h*0.10), i;
+  for(i=0;i<n;i++){
+    var live = clamp(frac*n - i, 0, 1);
+    var sx = bx + i*(sw+gap);
+    roundPath(g, sx, by, sw, sh, sh*0.28);
+    g.fillStyle = '#16301a'; g.fill();
+    if(live <= 0.02) continue;
+    roundPath(g, sx, by, Math.max(sh*0.6, sw*live), sh, sh*0.28);
+    g.fillStyle = '#3fc41f'; g.fill();
+  }
 }
 
 /* ------------------------------------------------------ digital readout */
@@ -2867,17 +3122,39 @@ function drawCluster(r){
     g.fillStyle = 'rgba(226,255,210,.42)'; g.fill();
   }
 
-  /* ---- indicator strip, integrated into the bottom of the chassis ----
-     Phase 4 replaces these three with the reference's full set; for now the
-     existing telltales live here rather than floating between the dials. */
-  var lampSz = Math.max(6, Math.min(L.indH - 4, Math.round(L.D*0.42)));
-  var lampGap = Math.max(2, Math.round(lampSz*0.35));
-  var lx0 = L.indX + (L.indW - (lampSz*3 + lampGap*2))/2;
-  var ly0 = L.indY + (L.indH - lampSz)/2;
-  var dmg = r ? r.car.damage : 0;
-  drawLamp(g, lx0,                          ly0, lampSz, 'temp',   cluster.heat > 0.55, HUDC.red);
-  drawLamp(g, lx0 + lampSz + lampGap,       ly0, lampSz, 'engine', dmg > 45,            HUDC.amber);
-  drawLamp(g, lx0 + (lampSz + lampGap)*2,   ly0, lampSz, 'brake',  hudCtl.hb > 0.5,     HUDC.red);
+  /* ---- indicator strip ---- */
+  var ip = indParts(L);
+  g.fillStyle = input.left  ? '#ffb432' : '#8d949c';
+  glyphArrow(g, ip.lax, ip.ay, ip.aw, ip.ah, false);
+  g.fillStyle = input.right ? '#ffb432' : '#8d949c';
+  glyphArrow(g, ip.rax, ip.ay, ip.aw, ip.ah, true);
+  g.strokeStyle = '#2fd41a'; g.fillStyle = '#2fd41a';
+  glyphHeadlight(g, ip.hx, ip.hy, ip.hw, ip.hh);
+  var gi = Math.max(1, ip.pw*0.02)/2;
+  var gin = Math.max(1, ip.ph*0.20);
+  g.fillStyle = '#ee2a18'; g.strokeStyle = '#ee2a18';
+  glyphBelt(g, ip.px + gi + ip.cw*0.30, ip.py + gin, ip.cw*0.46, ip.ph - gin*2);
+  var brakeOn = hudCtl.hb > 0.4;
+  g.fillStyle = brakeOn ? '#ff5a48' : '#ee2a18';
+  g.strokeStyle = brakeOn ? '#ff5a48' : '#ee2a18';
+  glyphBrake(g, ip.px + gi + ip.cw*1.28, ip.py + gin, ip.cw*0.46, ip.ph - gin*2);
+
+  /* ---- throttle box: the only status meter that moves ---- */
+  var tb = statBox(L, 2);
+  var tsz = Math.min(tb.w*0.62, tb.h*0.41);
+  var tix = tb.x + (tb.w - tsz)/2, tiy = tb.y + tb.h*0.36;
+  var tiw = tsz, tih = tsz;
+  glyphPedal(g, tix + tiw*0.52, tiy, tiw*0.48, tih, '#aab2bb', '#31373e');
+  var bars = 3, bgap = Math.max(0.8, tiw*0.05);
+  var bw2 = (tiw*0.46 - bgap*(bars-1))/bars;
+  for(i=0;i<bars;i++){
+    var lv = clamp(hudCtl.gas*bars - i, 0, 1);
+    var bx2 = tix + i*(bw2+bgap);
+    g.fillStyle = '#16301a'; g.fillRect(bx2, tiy, bw2, tih*0.86);
+    if(lv <= 0.02) continue;
+    g.fillStyle = '#3fc41f';
+    g.fillRect(bx2, tiy + tih*0.86*(1-lv), bw2, tih*0.86*lv);
+  }
 
   /* ---- LED pip row over the steering pads ---- */
   var pipN = 5, pipInset = Math.max(2, Math.round(L.pipH*0.22));
