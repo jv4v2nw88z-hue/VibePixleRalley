@@ -739,5 +739,49 @@ about ±0.2ms, so the phone figure moving down is noise rather than a gain.
 | phone | 2.01 | 1.79 | -0.22 (within noise) |
 | desktop | 1.52 | 1.55 | +0.03 |
 
-_(Phase 4 complete. The dash now carries every element on the reference.
-Next: Phase 5, overlay HUD.)_
+---
+
+### Phase 5 — overlay HUD
+
+**What changed.** One panel treatment now runs across every overlay: near-black
+glass behind a cool grey bezel, the same family as the dash mouldings. The old
+warm green border (`rgba(60,74,56,.85)`) read as a different product from the
+instruments it sat above.
+
+- `.hud-box` — background to `rgba(8,10,9,.86)`, border to
+  `2px rgba(152,166,178,.60)`, radius 4px to 8px, padding and drop shadow.
+- **Stage panel scaling bug fixed.** `#hud-left .nm` was a hard `10px` while
+  the timer beside it used `clamp()`, so the panel shrank to illegibility as
+  the viewport grew — clearly visible in `phase0-baseline-desktop.png`. Now
+  `clamp(9px, 2.3vh, 20px)`, with the panel's minimum width scaling too.
+- **Meters** rebuilt as bordered pills on near-black, flat fills rather than
+  gradients, height scaling with the viewport.
+- **Timer** to the reference's proportions: larger amber digits with wider
+  tracking, a brighter target line.
+- **Minimap** rewritten to the same treatment: rounded panel, cool grey
+  bezel, a thinner round-joined track line, larger overall and sized against
+  both viewport axes so it cannot crowd the pause button.
+- **Pause button** picks up the shared panel styling instead of the generic
+  `.pad` fill.
+
+**Bug found and fixed during the phase.** Growing the timer pushed it into the
+pace-note callout, which was pinned at a fixed `52px` from the top. Both the
+callout and the split readout are now placed in viewport units below the
+timer, so the column reflows together at any height.
+
+**Scored against `reference/target.png`** (captures:
+`reference/shots/phase5-desktop.png`, `phase5-narrow.png`).
+
+| Element | Score | Remaining delta |
+| --- | --- | --- |
+| Stage panel: frame, type, meters | 9 | — |
+| Timer | 9 | Reference's digits are a slightly heavier face |
+| Minimap | 9 | — |
+| Pace note callout | 9 | No reference to match — the target frame shows a countdown here instead |
+| Overlays read as one set with the dash | 9 | — |
+
+**Regression guard:** 29/29 pass. **Frame cost:** desktop 0.91ms mean, down
+from the previous phase in the same conditions — the minimap's per-frame work
+shrank when the track polyline stopped being stroked twice.
+
+_(Phase 5 complete. Next: Phase 6, car sprite.)_

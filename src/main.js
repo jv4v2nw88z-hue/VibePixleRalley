@@ -4124,9 +4124,10 @@ function drawCar(g, r){
 
 function drawMinimap(g, r, W, H){
   var nodes = r.track.nodes;
-  var mw = Math.min(120, W*0.19), mh = mw;
-  var x0 = W - mw - 10, y0 = 46;          /* top right, under the pause button */
-  /* fit whole track */
+  var mw = clamp(Math.round(Math.min(W*0.19, H*0.30)), 84, 190), mh = mw;
+  var pad = Math.max(6, Math.round(mw*0.07));
+  var top = Math.round(H*0.055) + 34;
+  var x0 = W - mw - pad - 8, y0 = top;
   if(!r.mapBox){
     var minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
     for(var i=0;i<nodes.length;i+=4){
@@ -4137,25 +4138,29 @@ function drawMinimap(g, r, W, H){
   }
   var bb = r.mapBox;
   var sx = mw/Math.max(1,(bb.maxx-bb.minx)), sy = mh/Math.max(1,(bb.maxy-bb.miny));
-  var s = Math.min(sx,sy)*0.88;
+  var s = Math.min(sx,sy)*0.84;
   var ox = x0 + mw/2 - ((bb.minx+bb.maxx)/2)*s;
   var oy = y0 + mh/2 - ((bb.miny+bb.maxy)/2)*s;
+
   g.save();
-  g.fillStyle = 'rgba(8,11,7,.55)';
-  g.fillRect(x0-6, y0-6, mw+12, mh+12);
-  g.strokeStyle = 'rgba(60,74,56,.85)'; g.lineWidth = 2;
-  g.strokeRect(x0-6, y0-6, mw+12, mh+12);
-  g.globalAlpha = 0.85;
-  g.strokeStyle = '#c9d3c2'; g.lineWidth = 2;
+  /* same glass-behind-a-cool-grey-bezel treatment as the DOM overlays */
+  var rr = Math.max(5, mw*0.055);
+  roundPath(g, x0 - pad, y0 - pad, mw + pad*2, mh + pad*2, rr);
+  g.fillStyle = 'rgba(8,10,9,.86)'; g.fill();
+  g.lineWidth = 2; g.strokeStyle = 'rgba(152,166,178,.60)'; g.stroke();
+
+  g.strokeStyle = 'rgba(226,234,240,.88)';
+  g.lineWidth = Math.max(1, mw*0.014);
+  g.lineJoin = 'round'; g.lineCap = 'round';
   g.beginPath();
   for(var k=0;k<nodes.length;k+=6){
     var px = ox+nodes[k].x*s, py = oy+nodes[k].y*s;
     if(k===0) g.moveTo(px,py); else g.lineTo(px,py);
   }
   g.stroke();
-  g.globalAlpha = 1;
-  g.fillStyle = '#ffb432';
-  g.fillRect(ox+r.car.x*s-3, oy+r.car.y*s-3, 6, 6);
+  var cr = Math.max(2.5, mw*0.035);
+  g.fillStyle = '#f0a41c';
+  g.fillRect(ox+r.car.x*s-cr, oy+r.car.y*s-cr, cr*2, cr*2);
   g.restore();
 }
 

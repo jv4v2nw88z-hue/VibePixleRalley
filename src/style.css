@@ -159,10 +159,16 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 /* ---------- HUD ---------- */
 #hud{position:absolute;inset:0;z-index:20;pointer-events:none;
   padding:calc(6px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));}
-.hud-box{position:absolute;background:rgba(8,11,7,.62);border:2px solid rgba(60,74,56,.85);border-radius:4px;padding:4px 8px;}
+/* One panel treatment for every overlay: near-black glass behind a cool
+   grey bezel, the same family as the dash mouldings. The old warm green
+   border read as a different product from the instruments. */
+.hud-box{position:absolute;background:rgba(8,10,9,.86);
+  border:2px solid rgba(152,166,178,.60);border-radius:8px;
+  padding:clamp(4px,1.1vh,9px) clamp(7px,1.7vh,13px);
+  box-shadow:0 2px 8px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06);}
 #hud-timer{top:calc(6px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);text-align:center;}
-#hud-timer .t{font-size:clamp(17px,4.2vh,30px);font-weight:700;letter-spacing:2px;color:var(--amber);text-shadow:0 0 10px rgba(255,180,50,.4);}
-#hud-timer .d{font-size:clamp(9px,1.7vh,12px);letter-spacing:1px;}
+#hud-timer .t{font-size:clamp(17px,4.6vh,34px);font-weight:700;letter-spacing:3px;color:#f0a41c;text-shadow:0 0 12px rgba(240,164,28,.35);}
+#hud-timer .d{font-size:clamp(9px,2.0vh,15px);letter-spacing:2px;color:#e8edf2;}
 /* The dash. One full-width canvas moulding pinned to the bottom edge,
    carrying the chassis, both dials, the centre stack, the indicator strip
    and the wells every touch control mounts into. Sized in JS: its share of
@@ -175,22 +181,28 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
 #hud-cluster{position:absolute;left:0;right:0;bottom:0;line-height:0;
   filter:drop-shadow(0 -2px 6px rgba(0,0,0,.55));}
 #hud-cluster canvas{display:block;}
-#hud-left{top:calc(6px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));min-width:118px;}
-#hud-left .nm{font-size:10px;color:var(--muted);letter-spacing:1px;}
-.meter{height:6px;background:#0d110c;border:1px solid var(--line);border-radius:2px;overflow:hidden;margin-top:3px;}
-.meter i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#2f7a3c,var(--green));}
-.meter i.dmg{background:linear-gradient(90deg,#c8820f,var(--red));}
-#hud-note{position:absolute;top:calc(52px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
+#hud-left{top:calc(6px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));
+  min-width:clamp(118px,25vh,235px);}
+#hud-left .nm{font-size:clamp(9px,2.3vh,20px);color:#c2c8ce;letter-spacing:1.8px;line-height:1.5;}
+#hud-left b{color:#ffffff;}
+.meter{height:clamp(6px,1.3vh,11px);background:#05070a;
+  border:1.5px solid rgba(152,166,178,.55);border-radius:99px;overflow:hidden;
+  margin-top:clamp(3px,0.7vh,6px);}
+.meter i{display:block;height:100%;width:0%;background:#3fc41f;}
+.meter i.dmg{background:#e2402c;}
+#hud-note{position:absolute;top:calc(14px + 9.2vh + env(safe-area-inset-top));left:50%;transform:translateX(-50%);
   display:flex;align-items:center;gap:8px;opacity:0;transition:opacity .18s;}
 #hud-note.show{opacity:1;}
-#hud-note .arrow{font-size:clamp(20px,5vh,34px);line-height:1;color:var(--amber);}
-#hud-note .txt{font-size:clamp(12px,2.6vh,19px);font-weight:700;letter-spacing:2px;color:#fff;text-shadow:0 2px 0 #000;}
+#hud-note .arrow{font-size:clamp(20px,5.4vh,38px);line-height:1;color:#f0a41c;
+  text-shadow:0 2px 0 #000,0 0 14px rgba(0,0,0,.8);}
+#hud-note .txt{font-size:clamp(12px,2.9vh,22px);font-weight:700;letter-spacing:3px;color:#fff;
+  text-shadow:0 2px 0 #000,0 0 14px rgba(0,0,0,.8);}
 #hud-note.warn .txt{color:var(--red);}
 #hud-note.warn .arrow{color:var(--red);}
 #big-msg{position:absolute;left:0;right:0;top:38%;text-align:center;font-size:clamp(30px,10vh,74px);
   font-weight:700;letter-spacing:6px;color:#fff;text-shadow:0 4px 0 #000,0 0 26px rgba(255,180,50,.55);opacity:0;transition:opacity .2s;}
 #big-msg.show{opacity:1;}
-#hud-split{position:absolute;left:50%;top:calc(96px + env(safe-area-inset-top));transform:translateX(-50%);font-size:clamp(11px,2.3vh,16px);font-weight:700;letter-spacing:2px;opacity:0;transition:opacity .25s;}
+#hud-split{position:absolute;left:50%;top:calc(22px + 14vh + env(safe-area-inset-top));transform:translateX(-50%);font-size:clamp(11px,2.3vh,16px);font-weight:700;letter-spacing:2px;opacity:0;transition:opacity .25s;}
 #hud-split.show{opacity:1;}
 
 /* ---------- touch controls ---------- */
@@ -229,7 +241,9 @@ canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image
   color:rgba(210,222,238,.72);font-size:var(--dash-label,12px);letter-spacing:2px;}
 #p-gas.act{background:linear-gradient(180deg,rgba(255,196,87,.34),rgba(224,146,26,.16));
   border:none;color:#ffe0a4;}
-#p-pause{right:calc(8px + env(safe-area-inset-right));top:calc(6px + env(safe-area-inset-top));width:44px;height:34px;font-size:12px;}
+#p-pause{right:calc(8px + env(safe-area-inset-right));top:calc(6px + env(safe-area-inset-top));
+  width:clamp(44px,7.4vh,58px);height:clamp(34px,5.6vh,44px);font-size:clamp(12px,2.2vh,17px);
+  background:rgba(8,10,9,.86);border:2px solid rgba(152,166,178,.60);border-radius:8px;}
 /* paddle shifters — cast blades bolted to the top rail, flanking the dials */
 .pad.paddle{bottom:var(--padl-y,60px);width:var(--padl-w,40px);height:var(--padl-h,48px);}
 #p-shiftdn{left:var(--padl-l-x,6px);}
