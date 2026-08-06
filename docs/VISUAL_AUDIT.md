@@ -1078,3 +1078,65 @@ Regression guard 29/29. What still differs from the reference, all honest:
 the road is wider and flatter in tone than the reference's crowned surface;
 the gear gate is seven cells against five, so it reads taller; and the
 throttle pad has no counterpart on the reference at all.
+
+
+---
+
+## 11. Detail pass — grain scale, edge break-up, car silhouette
+
+Region comparisons at 2-3x against the same coordinates in the reference.
+
+### Grain was an order of magnitude too coarse
+
+The reference's gravel is a fine dense speckle at two to six screen pixels.
+Ours was ten to twenty and read as confetti thrown on a flat plane. Same story
+on the floor mottle: four to fifteen pixels against the reference's two to six.
+
+- Road grain: 5 flecks per node at `2 + rnd*9` becomes 14 at `1.4 + rnd*3.4`.
+- Floor tile: 900 marks at `2-7` becomes 3,400 at `1-3.4`.
+
+Counter-intuitively this made the frame **cheaper** — 2.61ms against 2.80ms —
+because fill cost scales with area and the area collapsed faster than the call
+count rose.
+
+### The shoulder edge was mathematically smooth
+
+No amount of fleck scattered over a smooth curve hides it; the eye finds the
+curve. Two fixes:
+
+1. **The interleave was backwards.** Gravel flecks were landing on gravel and
+   grass flecks on grass, where neither shows — only about a sixth of them
+   were doing anything. Now grass reaches inward over the shoulder and gravel
+   washes outward into the verge.
+2. **The band edges now wander per node.** `band()` takes a jitter amplitude
+   and offsets each node's half-width by a hash of its index, so the outer
+   shoulder is ragged before any fleck is drawn over it.
+
+### The floor sat a stop under the reference
+
+Base `#2a3a1c` to `#37501f`, with the fine tones lifted to match. The reference
+reads as a lit meadow with darker scrub over it; ours read as shadow
+throughout, which flattened everything on top of it.
+
+### The car was slab-sided
+
+Against the reference at 3.2x the shell was two near-straight flanks with
+rounded ends. Waist and tail are now pinched hard against the arches so it
+curves, the across-body gradient carries a sixth stop down to `deep` so the
+far flank turns away from the key light, the glasshouse fills more of the
+roofline (panes were 1.25 units in from the waist, now 0.85) with a reading
+reflection, and the lamp units are set into the corners rather than sitting on
+the nose as blobs.
+
+The paint highlight steps were also cut back. `shade()` adds a flat amount to
+every channel, which walks a red toward orange as it lightens; at `+0.21` the
+crown was reading salmon.
+
+### Where it stands
+
+| Preset | frame cost | 60fps |
+| --- | --- | --- |
+| phone | 3.02ms | yes (477 frames / 8s) |
+| desktop | 2.67ms | yes |
+
+Regression guard 29/29.

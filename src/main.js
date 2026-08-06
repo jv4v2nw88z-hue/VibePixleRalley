@@ -32,7 +32,7 @@ function mulberry(seed){
 /* ---------------------------------------------------------------- surfaces */
 var SURFACES = {
   tarmac:{ name:'TARMAC', grip:1.34, roll:0.34, color:'#3b3d40', color2:'#45484b', dust:'#7d7f82', edge:'#d8d8d2' },
-  gravel:{ name:'GRAVEL', grip:1.00, roll:0.60, color:'#7d6647', color2:'#8d7451', dust:'#c2a97e', edge:'#a08a63' },
+  gravel:{ name:'GRAVEL', grip:1.00, roll:0.60, color:'#836a44', color2:'#9b8055', dust:'#c2a97e', edge:'#af9269' },
   snow:  { name:'SNOW',   grip:0.74, roll:0.72, color:'#d5e2ee', color2:'#c3d4e4', dust:'#ffffff', edge:'#9fb4c8' },
   ice:   { name:'ICE',    grip:0.46, roll:0.26, color:'#a9cbe0', color2:'#bcd9ea', dust:'#e6f4ff', edge:'#87aec6' },
   mud:   { name:'MUD',    grip:0.80, roll:0.95, color:'#54452f', color2:'#5f4f36', dust:'#8a7350', edge:'#6b5940' }
@@ -680,19 +680,19 @@ function shade(hex, amt){
 function carPalette(paint, damageTier){
   return {
     body:   paint,
-    lite:   shade(paint, 0.07),
-    hi:     shade(paint, 0.15),
+    lite:   shade(paint, 0.05),
+    hi:     shade(paint, 0.11),
     /* the roof and bonnet crown take the same left-to-right rake the flanks
        do, so a highlight panel reads as a surface turning into the light
        rather than as a flat sticker laid on the shell */
-    hiLite: shade(paint, 0.21),
-    hiDark: shade(paint, 0.09),
+    hiLite: shade(paint, 0.16),
+    hiDark: shade(paint, 0.07),
     dark:   shade(paint,-0.11),
     darker: shade(paint,-0.22),
     deep:   shade(paint,-0.44),
     accent: ACCENTS[paint] || '#ffffff',
-    glass:      damageTier>=1 ? '#3d454c' : '#1b2026',
-    glassLite:  damageTier>=1 ? '#59636c' : '#2b343d',
+    glass:      damageTier>=1 ? '#414a52' : '#20262d',
+    glassLite:  damageTier>=1 ? '#616b75' : '#38434e',
     tyre:'#141516', tyreLite:'#31353a',
     chrome:'#b9bec4', chromeDark:'#767b82',
     lamp:'#ffe9a8', tail:'#e8352a', black:'#171a1c', white:'#f2f2ea'
@@ -780,11 +780,11 @@ function roundQuad(g, x1,y1, x2,y2, x3,y3, x4,y4, r){
 
 /* Per-car proportions. Same footprint, different stance. */
 var CAR_SHAPES = {
-  hatch: { noseHalf:5.1, frontHalf:5.9, waistHalf:5.7, rearHalf:5.9, tailHalf:4.9,
+  hatch: { noseHalf:4.5, frontHalf:5.85, waistHalf:5.10, rearHalf:5.75, tailHalf:4.25,
            screenY:8.6, screenH:3.4, roofH:5.0, backH:3.8, wing:0, arch:0.0 },
-  rally: { noseHalf:5.5, frontHalf:6.3, waistHalf:6.0, rearHalf:6.3, tailHalf:5.2,
+  rally: { noseHalf:4.8, frontHalf:6.2, waistHalf:5.40, rearHalf:6.1, tailHalf:4.55,
            screenY:8.9, screenH:3.3, roofH:5.2, backH:3.6, wing:1, arch:0.35 },
-  wrc:   { noseHalf:5.9, frontHalf:6.8, waistHalf:6.5, rearHalf:6.8, tailHalf:5.7,
+  wrc:   { noseHalf:5.2, frontHalf:6.7, waistHalf:5.90, rearHalf:6.6, tailHalf:5.05,
            screenY:9.1, screenH:3.2, roofH:5.4, backH:3.4, wing:2, arch:0.7 }
 };
 
@@ -817,10 +817,11 @@ function renderCarSprite(carId, paint, livery, damageTier, scale){
   carBodyPath(g, o);
   var body = g.createLinearGradient(mid - o.frontHalf, 0, mid + o.frontHalf, 0);
   body.addColorStop(0.00, c.hi);
-  body.addColorStop(0.07, c.lite);
-  body.addColorStop(0.30, c.body);
-  body.addColorStop(0.74, c.dark);
-  body.addColorStop(1.00, c.darker);
+  body.addColorStop(0.09, c.lite);
+  body.addColorStop(0.36, c.body);
+  body.addColorStop(0.70, c.dark);
+  body.addColorStop(0.90, c.darker);
+  body.addColorStop(1.00, c.deep);
   g.fillStyle = body; g.fill();
 
   g.save();
@@ -862,14 +863,14 @@ function renderCarSprite(carId, paint, livery, damageTier, scale){
   carPane(g, ry - 0.30, ry + o.backH + 0.30, o.waistHalf - 0.35, o.waistHalf - 0.75, 0.5);
   g.fill();
   g.fillStyle = c.glass;
-  carPane(g, sy, sy + sh, o.waistHalf - 1.25, o.waistHalf - 0.95, 0.45);
+  carPane(g, sy, sy + sh, o.waistHalf - 0.85, o.waistHalf - 0.55, 0.45);
   g.fill();
-  carPane(g, ry, ry + o.backH, o.waistHalf - 1.05, o.waistHalf - 1.45, 0.45);
+  carPane(g, ry, ry + o.backH, o.waistHalf - 0.65, o.waistHalf - 1.05, 0.45);
   g.fill();
   g.fillStyle = c.glassLite;                             /* reflection streak */
-  carPane(g, sy + 0.25, sy + sh - 0.25, o.waistHalf - 1.15, o.waistHalf - 2.55, 0.3);
+  carPane(g, sy + 0.22, sy + sh*0.52, o.waistHalf - 0.95, o.waistHalf - 1.75, 0.3);
   g.fill();
-  carPane(g, ry + 0.25, ry + o.backH - 0.25, o.waistHalf - 0.95, o.waistHalf - 2.35, 0.3);
+  carPane(g, ry + 0.22, ry + o.backH*0.52, o.waistHalf - 0.75, o.waistHalf - 1.45, 0.3);
   g.fill();
 
   /* roof: brighter than the flanks, with the reference's two vent bars */
@@ -882,18 +883,18 @@ function renderCarSprite(carId, paint, livery, damageTier, scale){
   g.fillStyle = roofG; g.fill();
   g.fillStyle = 'rgba(10,12,15,.88)';
   for(i=0;i<2;i++)
-    roundPath(g, mid - 1.55, sy + sh + 1.15 + i*2.0, 3.1, 0.72, 0.28), g.fill();
+    roundPath(g, mid - 1.45, sy + sh + 1.25 + i*1.9, 2.9, 0.52, 0.22), g.fill();
 
   /* ---- lamps ---- */
   for(i=-1;i<=1;i+=2){
-    roundPath(g, mid + i*3.55 - (i<0?1.9:0), 1.15, 1.9, 1.15, 0.34);
+    roundPath(g, mid + i*3.75 - (i<0?1.55:0), 1.28, 1.55, 0.78, 0.24);
     g.fillStyle = c.lamp; g.fill();
-    roundPath(g, mid + i*3.55 - (i<0?1.9:0), 1.15, 1.9, 0.42, 0.2);
-    g.fillStyle = 'rgba(255,255,255,.55)'; g.fill();
-    roundPath(g, mid + i*3.45 - (i<0?1.9:0), H - 2.45, 1.9, 1.05, 0.3);
+    roundPath(g, mid + i*3.75 - (i<0?1.55:0), 1.28, 1.55, 0.30, 0.14);
+    g.fillStyle = 'rgba(255,255,255,.60)'; g.fill();
+    roundPath(g, mid + i*3.60 - (i<0?2.05:0), H - 2.30, 2.05, 0.80, 0.22);
     g.fillStyle = c.tail; g.fill();
-    roundPath(g, mid + i*3.45 - (i<0?1.9:0), H - 2.45, 1.9, 0.36, 0.18);
-    g.fillStyle = 'rgba(255,190,180,.5)'; g.fill();
+    roundPath(g, mid + i*3.60 - (i<0?2.05:0), H - 2.30, 2.05, 0.28, 0.13);
+    g.fillStyle = 'rgba(255,196,186,.55)'; g.fill();
   }
   roundPath(g, mid - 1.5, H - 1.5, 3.0, 0.72, 0.16);     /* plate */
   g.fillStyle = c.white; g.fill();
@@ -1729,8 +1730,8 @@ function getCarSide(carId, opts){
    each with a lit top face, a shaded front face and a bright catch on the
    sunward corner, over a soft shadow that scales with the canopy. */
 var FOLIAGE = {
-  forest:   [['#22400f','#325c1a','#487d24','#5f9c31'],
-             ['#1d3a0d','#2b5116','#3f6f20','#548c2c']],
+  forest:   [['#1e3a0e','#33601a','#57952a','#77bf3c'],
+             ['#1a330c','#2c5416','#4c8524','#69ac35']],
   mountain: [['#1f3716','#31501f','#436a2a','#587f3a'],
              ['#1a3012','#2a461b','#3a5d24','#4c7033']],
   snowpass: [['#1d3a26','#2f5c3e','#6f9c86','#dceaf4'],
@@ -4277,9 +4278,9 @@ function renderRace(){
    repeated at the eight neighbouring offsets so the tile joins invisibly.
    ========================================================================= */
 var GROUND_TONES = {
-  forest:   { base:'#2a3a1c',
-              broad:['#233118','#2f4320','#1c2814'],
-              fine: ['#2e4020','#233219','#354a23','#1e2a15'] },
+  forest:   { base:'#37501f',
+              broad:['#2c4019','#405c26','#243414'],
+              fine: ['#3d5723','#2d4119','#46642a','#26361a'] },
   mountain: { base:'#47473f',
               broad:['#3f3f38','#515149','#383830'],
               fine: ['#4f4f47','#3e3e37','#565650','#38382f'] },
@@ -4305,12 +4306,12 @@ function groundPattern(g, theme){
       q.fillRect(x + dx*T, y + dy*T, w, h);
   };
   var i, w, h;
-  for(i=0;i<70;i++){                       /* broad patches */
-    w = 16 + rand()*40; h = 12 + rand()*32;
+  for(i=0;i<80;i++){                       /* broad patches */
+    w = 14 + rand()*34; h = 10 + rand()*28;
     put(rand()*T, rand()*T, w, h, t.broad[(rand()*t.broad.length)|0]);
   }
-  for(i=0;i<900;i++){                      /* fine grain */
-    w = 2 + rand()*5; h = 2 + rand()*4;
+  for(i=0;i<3400;i++){                     /* fine grain */
+    w = 1 + rand()*2.4; h = 1 + rand()*2.2;
     put(rand()*T, rand()*T, w, h, t.fine[(rand()*t.fine.length)|0]);
   }
   groundPatCache[theme] = g.createPattern(c, 'repeat');
@@ -4333,17 +4334,22 @@ function drawRoad(g, r, viewR){
      darker gravel shoulder runs outside the driving surface, and grass
      breaks over the boundary in clumps. The old single 3.5px stroke read as
      a drawn outline rather than as ground meeting ground. */
-  var band = function(i, end, out, col){
-    var k, nd, nx, ny;
+  /* `jit` wanders the band's outer edge from node to node. A shoulder drawn
+     at a constant offset gives a mathematically smooth curve, and no amount
+     of fleck scattered over it hides a smooth curve — the eye finds it. */
+  var band = function(i, end, out, col, jit){
+    var k, nd, nx, ny, o;
     g.beginPath();
     for(k=i;k<=end;k++){
       nd = nodes[k]; nx = Math.cos(nd.a); ny = Math.sin(nd.a);
-      if(k===i) g.moveTo(nd.x - nx*(nd.hw+out), nd.y - ny*(nd.hw+out));
-      else      g.lineTo(nd.x - nx*(nd.hw+out), nd.y - ny*(nd.hw+out));
+      o = nd.hw + out + (jit ? rnd2(k,0,101)*jit : 0);
+      if(k===i) g.moveTo(nd.x - nx*o, nd.y - ny*o);
+      else      g.lineTo(nd.x - nx*o, nd.y - ny*o);
     }
     for(k=end;k>=i;k--){
       nd = nodes[k]; nx = Math.cos(nd.a); ny = Math.sin(nd.a);
-      g.lineTo(nd.x + nx*(nd.hw+out), nd.y + ny*(nd.hw+out));
+      o = nd.hw + out + (jit ? rnd2(k,1,101)*jit : 0);
+      g.lineTo(nd.x + nx*o, nd.y + ny*o);
     }
     g.closePath();
     g.fillStyle = col; g.fill();
@@ -4357,9 +4363,9 @@ function drawRoad(g, r, viewR){
     var end = Math.min(hi, j+1);
     var S = SURFACES[surfId];
 
-    band(i, end, 15, shade(S.color, -0.10));      /* outer shoulder */
-    band(i, end, 6,  shade(S.color, -0.045));     /* inner shoulder */
-    band(i, end, 0,  S.color);                    /* driving surface */
+    band(i, end, 9,  shade(S.color, -0.10), 16);  /* outer shoulder, ragged */
+    band(i, end, 3,  shade(S.color, -0.045), 7);  /* inner shoulder */
+    band(i, end, 0,  S.color, 2.5);               /* driving surface */
 
     /* Surface detail. Every fleck used to set fillStyle itself, and two of
        those styles were built by shade() inside the loop — a string parse
@@ -4390,26 +4396,29 @@ function drawRoad(g, r, viewR){
 
     for(t=i;t<end;t++){
       nd3 = nodes[t]; nxx = Math.cos(nd3.a); nyy = Math.sin(nd3.a);
-      for(q=0;q<5;q++){                            /* surface grain */
-        lat = (rnd2(t,q,3)*2-1)*nd3.hw*0.97;
-        sz = 2 + rnd2(t,q,5)*9;
-        push(rnd2(t,q,11) < 0.38 ? 0 : (rnd2(t,q,13) < 0.5 ? 1 : 2),
-             nd3.x + nxx*lat, nd3.y + nyy*lat, sz, sz);
+      for(q=0;q<14;q++){                           /* surface grain */
+        lat = (rnd2(t,q,3)*2-1)*nd3.hw*0.99;
+        sz = 1.4 + rnd2(t,q,5)*3.4;
+        push(rnd2(t,q,11) < 0.34 ? 0 : (rnd2(t,q,13) < 0.5 ? 1 : 2),
+             nd3.x + nxx*lat + rnd2(t,q,79)*4, nd3.y + nyy*lat + rnd2(t,q,89)*4,
+             sz, sz);
       }
       for(q=-1;q<=1;q+=2){
-        for(b=0;b<6;b++){                          /* boundary interleave */
+        for(b=0;b<16;b++){                          /* boundary interleave */
           u = rnd2(t,q*11+b,59);
-          lat = q*(nd3.hw - 8 + u*46);
-          sz = 3 + rnd2(t,q*11+b,61)*8;
-          push(u < 0.42 ? 3
-             : (u < 0.58 ? 4 + ((rnd2(t,b,71)*3)|0)
-                         : 7 + ((rnd2(t,b,73)*4)|0)),
-               nd3.x + nxx*lat, nd3.y + nyy*lat, sz, sz*0.9);
+          sz = 1.6 + rnd2(t,q*11+b,61)*3.8;
+          if(u < 0.5){                             /* grass reaching inward */
+            lat = q*(nd3.hw - 13 + u*44);
+            push(4 + ((rnd2(t,b,71)*3)|0), nd3.x + nxx*lat, nd3.y + nyy*lat, sz, sz*0.9);
+          } else {                                 /* gravel washing outward */
+            lat = q*(nd3.hw + 4 + (u-0.5)*70);
+            push(rnd2(t,b,73) < 0.5 ? 3 : 0, nd3.x + nxx*lat, nd3.y + nyy*lat, sz, sz*0.9);
+          }
         }
         cnt = (rnd2(t,q,17)*4.2)|0;                /* grass clumps over the edge */
         for(m=0;m<cnt;m++){
           lat = q*(nd3.hw - 9 + rnd2(t,q*7+m,19)*30);
-          sz = 3 + rnd2(t,q*7+m,23)*10;
+          sz = 2 + rnd2(t,q*7+m,23)*5;
           push(7 + ((rnd2(t,q*7+m,29)*4)|0),
                nd3.x + nxx*lat + (rnd2(t,m,31)-0.5)*10,
                nd3.y + nyy*lat + (rnd2(t,m,43)-0.5)*10, sz, sz*0.85);
