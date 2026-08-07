@@ -1140,3 +1140,67 @@ crown was reading salmon.
 | desktop | 2.67ms | yes |
 
 Regression guard 29/29.
+
+
+---
+
+## 12. Shading pass — why the art style still did not match
+
+Zooming a patch of open ground to 6x made the real gap obvious, and it was
+not scale or colour. **The build's ground was a visible lattice of
+axis-aligned squares**; the reference is irregular organic blobs with soft
+edges. Everything in the world was flat-colour rectangles on an implicit
+grid, and no amount of retuning sizes or palettes fixes that — a lattice
+reads as a lattice.
+
+### Ground: organic marks, not a grid
+
+The tile is baked once, so it can afford proper drawing. Now:
+
+- Broad tonal variation is drawn as ellipses into a 3x3 field and blurred as
+  one image, then cropped back to the centre tile — blurring per blob would
+  soften each blob's own edge and leave the seam hard.
+- 5,200 fine marks, each **rotated off the axis** with its own aspect. An
+  axis-aligned rect on a shared grid is precisely what read as a lattice.
+- Only marks that actually straddle a seam are repeated across it.
+
+### Foliage: baked sprites, not rectangles
+
+The reference's scrub has graded faces, cubes shading each other where they
+meet, and a soft cast shadow under the clump. That is not reachable with
+per-frame `fillRect`s, and trying made the frame expensive and still flat.
+
+Each clump shape is now baked once into a 64px sprite — three or four cubes
+with a lit rim along the sunward edges, a bright inset plateau, a dark flank,
+blurred contact shading where cubes meet, and one soft ground shadow under
+the whole stand. The world draws **one image per bush** instead of fourteen
+rectangles.
+
+Two calibration mistakes on the way, both caught in the loop:
+
+1. First sprites were 112px drawn at ~45 — a 2.5x downscale that softened
+   every facet into a blob. Sprite size now matches draw size.
+2. The top face used a full diagonal gradient, which rounded every cube off.
+   The reference's tops are flat plateaus with a lit edge, not domes.
+
+### It is also faster
+
+| | phone | desktop |
+| --- | --- | --- |
+| before this pass | 2.86ms | 2.80ms |
+| after | **2.05ms** | **2.02ms** |
+
+Richer art for less work: one `drawImage` beats fourteen `fillRect`s, and all
+the gradient, blur and contact shading happens once at build time rather than
+sixty times a second.
+
+### A harness defect this pass exposed
+
+`scripts/shoot.mjs` wrapped each frame callback in a bare `try/catch` to keep
+pumping. When a refactor removed a function the road still called, the
+exception was swallowed and the capture came back with the ground and part of
+the road drawn and everything after it missing — which looks like an art
+problem, not a crash. The harness now records the first frame exception and
+prints it.
+
+**Regression guard:** 29/29.

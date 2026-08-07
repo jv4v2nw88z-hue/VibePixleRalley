@@ -474,16 +474,16 @@ function buildScenery(track){
        floor showing between them, so each attempt seeds a clump centre and
        drops two or three crowns around it rather than one bush at a uniform
        random lateral. */
-    var far = isMountain ? 2 : 4, fk, fm;
+    var far = isMountain ? 2 : 3, fk, fm;
     for(fk=0; fk<far; fk++){
       if(rand() > (isMountain ? 0.55 : 0.80)) continue;
       var fs = rand()<0.5 ? -1 : 1;
       var flat = nd.hw + 100 + rand()*270;
       var ccx = nd.x + nx*flat*fs, ccy = nd.y + ny*flat*fs;
-      var clump = 1 + ((rand()*2.6)|0);
+      var clump = 1 + ((rand()*1.9)|0);
       for(fm=0; fm<clump; fm++){
         var ftype = isSnow ? (rand()<0.7?0:4) : (isMountain ? (rand()<0.5?1:0) : (rand()<0.62?0:4));
-        var fsize = ftype===0 ? 14+rand()*16 : 10+rand()*10;
+        var fsize = ftype===0 ? 10+rand()*16 : 8+rand()*9;
         props.push(mkProp(ccx + (rand()-0.5)*54, ccy + (rand()-0.5)*54,
                           ftype, fsize, i, false, rand()));
       }
@@ -1730,8 +1730,8 @@ function getCarSide(carId, opts){
    each with a lit top face, a shaded front face and a bright catch on the
    sunward corner, over a soft shadow that scales with the canopy. */
 var FOLIAGE = {
-  forest:   [['#1e3a0e','#33601a','#57952a','#77bf3c'],
-             ['#1a330c','#2c5416','#4c8524','#69ac35']],
+  forest:   [['#1b330d','#2c5216','#487d23','#63a430'],
+             ['#172c0b','#254615','#3e6d1e','#56912a']],
   mountain: [['#1f3716','#31501f','#436a2a','#587f3a'],
              ['#1a3012','#2a461b','#3a5d24','#4c7033']],
   snowpass: [['#1d3a26','#2f5c3e','#6f9c86','#dceaf4'],
@@ -1748,24 +1748,94 @@ function drawCube(g, x, y, w, h, pal, lit){
   }
 }
 
-/* A canopy is several cubes sharing one palette, so it is drawn face by face
-   across the whole cluster rather than cube by cube: four fillStyle changes
-   per bush instead of four per cube. */
-function drawCubeCluster(g, cubes, pal){
-  var i, c, side, face;
-  for(face=0; face<4; face++){
-    g.fillStyle = pal[face === 0 ? 1 : face === 1 ? 0 : face === 2 ? 2 : 3];
-    g.beginPath();
-    for(i=0;i<cubes.length;i++){
-      c = cubes[i]; side = Math.max(1, c[3]*0.26);
-      if(face === 0)      g.rect(c[0], c[1] + c[3] - side, c[2], side);
-      else if(face === 1) g.rect(c[0] + c[2] - side*0.7, c[1], side*0.7, c[3]);
-      else if(face === 2) g.rect(c[0], c[1], c[2] - side*0.7, c[3] - side);
-      else if(c[4])       g.rect(c[0] + c[2]*0.13, c[1] + c[3]*0.12,
-                                 c[2]*0.32, c[3]*0.26);
-    }
-    g.fill();
+/* =========================================================================
+   CANOPY SPRITES
+
+   The reference's scrub is not flat colour: every face is graded, cubes
+   shade each other where they meet, and the whole clump sits on a soft
+   shadow. Drawing that per frame out of fillRects is both expensive and
+   still flat, so each clump shape is baked once into a small bitmap and the
+   world draws one image per bush instead of fourteen rectangles. Richer art
+   for less work — the density the reference has is only affordable this way.
+   ========================================================================= */
+var CANOPY_VARIANTS = 8, CANOPY_PX = 64, canopyCache = {};
+
+function buildCanopy(theme, palIdx, variant, tall){
+  var sets = FOLIAGE[theme] || FOLIAGE.forest;
+  var pal = sets[palIdx];
+  var S = CANOPY_PX;
+  var cv = document.createElement('canvas');
+  cv.width = S; cv.height = S;
+  var g = cv.getContext('2d');
+  var rand = mulberry((palIdx*17 + variant*101 + (tall?7:3)) * 2654435761);
+  var i, n = 3 + ((rand()*1.7)|0);
+  var cubes = [];
+  for(i=0;i<n;i++){
+    var cw = S*(i === 0 ? 0.50 + rand()*0.08 : 0.26 + rand()*0.20);
+    cubes.push({
+      w: cw, h: cw*(0.86 + rand()*0.12),
+      x: i === 0 ? S*0.50 - cw/2 : S*0.50 + (rand()-0.5)*S*0.52 - cw/2,
+      y: i === 0 ? S*0.48 - cw*0.5 : S*0.46 + (rand()-0.5)*S*0.50 - cw*0.5,
+      lit: i === 0 || rand() > 0.42
+    });
   }
+  cubes.sort(function(a,b){ return a.y - b.y; });
+
+  /* soft ground shadow, blurred as one shape so it reads as cast light */
+  g.save();
+  g.filter = 'blur(3px)';
+  g.fillStyle = 'rgba(10,18,7,.46)';
+  for(i=0;i<cubes.length;i++){
+    var c0 = cubes[i];
+    g.fillRect(c0.x + S*0.07, c0.y + c0.h*0.34 + S*0.07, c0.w, c0.h*0.78);
+  }
+  g.restore();
+
+  if(tall){                                       /* trunk under the crown */
+    g.fillStyle = theme === 'snowpass' ? '#3a2e24' : '#2b1f14';
+    g.fillRect(S*0.475, S*0.58, S*0.045, S*0.15);
+  }
+
+  for(i=0;i<cubes.length;i++){
+    var c = cubes[i], side = Math.max(2, c.h*0.24), fl = Math.max(2, c.w*0.16);
+
+    g.fillStyle = pal[1];                         /* front face */
+    g.fillRect(c.x, c.y + c.h - side, c.w, side);
+    g.fillStyle = pal[0];                         /* shaded flank */
+    g.fillRect(c.x + c.w - fl, c.y, fl, c.h);
+
+    /* Top face. Mostly flat, with a lit rim along the sunward edges and a
+       bright inset — a plateau, not a dome. A full diagonal gradient across
+       the face was rounding every cube off into a blob. */
+    var tw = c.w - fl, th = c.h - side;
+    var tg = g.createLinearGradient(c.x, c.y, c.x + tw*0.55, c.y + th*0.55);
+    tg.addColorStop(0.00, pal[2]);
+    tg.addColorStop(0.72, pal[2]);
+    tg.addColorStop(1.00, pal[1]);
+    g.fillStyle = tg;
+    g.fillRect(c.x, c.y, tw, th);
+    var rim = Math.max(1, Math.min(tw, th)*0.10);
+    g.fillStyle = pal[3];
+    g.fillRect(c.x, c.y, tw, rim);                /* lit top edge */
+    g.fillRect(c.x, c.y, rim, th);                /* lit left edge */
+    if(c.lit){                                    /* bright inset plateau */
+      g.fillStyle = pal[3];
+      g.fillRect(c.x + tw*0.22, c.y + th*0.20, tw*0.34, th*0.30);
+    }
+    /* contact shading where this cube meets whatever is behind it */
+    g.save();
+    g.filter = 'blur(1px)';
+    g.fillStyle = 'rgba(8,16,6,.34)';
+    g.fillRect(c.x - 1, c.y - 2, c.w + 2, 2.5);
+    g.restore();
+  }
+  return cv;
+}
+
+function canopySprite(theme, palIdx, variant, tall){
+  var key = theme + palIdx + variant + (tall ? 't' : 'b');
+  if(!canopyCache[key]) canopyCache[key] = buildCanopy(theme, palIdx, variant, tall);
+  return canopyCache[key];
 }
 
 function drawProp(g, p, theme){
@@ -1773,33 +1843,7 @@ function drawProp(g, p, theme){
   g.save();
   g.translate(p.x, p.y);
 
-  if(p.type === 0 || p.type === 4){                 /* canopy / bush */
-    var sets = FOLIAGE[theme] || FOLIAGE.forest;
-    var pal = sets[v < 0.5 ? 0 : 1];
-    /* shadow: softer and shorter than the old hard square, and it grows
-       with the canopy instead of being a fixed fraction of it */
-    var so = s*0.20;
-    g.fillStyle = 'rgba(12,20,8,.30)';
-    g.fillRect(-s*0.44 + so, -s*0.38 + so*1.2, s*0.92, s*0.82);
-    g.fillStyle = 'rgba(12,20,8,.22)';
-    g.fillRect(-s*0.52 + so, -s*0.46 + so*1.2, s*1.08, s*0.98);
-
-    if(p.type === 0){
-      g.fillStyle = theme === 'snowpass' ? '#4a3a2c' : '#3b2a1c';
-      g.fillRect(-s*0.08, s*0.16, s*0.16, s*0.30);  /* trunk */
-    }
-    /* three or four cubes, biggest first so the smaller ones read as growth */
-    var n = p.type === 0 ? (v < 0.55 ? 4 : 3) : (v < 0.5 ? 3 : 2);
-    var k, r1, r2, r3, cw, cx, cy, cubes = [];
-    for(k=0;k<n;k++){
-      r1 = rnd2(p.node, k, 71); r2 = rnd2(p.node, k, 83); r3 = rnd2(p.node, k, 97);
-      cw = s*(k === 0 ? 0.78 : 0.34 + r3*0.30);
-      cx = k === 0 ? -cw/2 : (r1 - 0.5)*s*0.86 - cw/2;
-      cy = k === 0 ? -cw*0.62 : (r2 - 0.5)*s*0.74 - cw*0.5;
-      cubes.push([cx, cy, cw, cw*0.90, k === 0 || r3 > 0.45]);
-    }
-    drawCubeCluster(g, cubes, pal);
-  } else if(p.type === 1){                          /* rock */
+  if(p.type === 1){                                 /* rock */
     g.fillStyle = 'rgba(12,16,10,.30)';
     g.fillRect(-s*0.42 + s*0.18, -s*0.34 + s*0.22, s*0.90, s*0.76);
     drawCube(g, -s*0.46, -s*0.42, s*0.92, s*0.84,
@@ -4294,26 +4338,61 @@ function groundPattern(g, theme){
   if(groundPatCache[theme]) return groundPatCache[theme];
   var t = GROUND_TONES[theme] || GROUND_TONES.forest;
   var T = GROUND_TILE;
+  var rand = mulberry(theme.charCodeAt(0)*7919 + 31);
+
+  /* Broad tonal variation, drawn into a 3x3 field and blurred as one image
+     so the softness carries across the tile seam, then cropped back to the
+     centre tile. Doing it per blob would blur each blob's own edge and leave
+     the seam hard. */
+  var big = document.createElement('canvas');
+  big.width = T*3; big.height = T*3;
+  var q = big.getContext('2d');
+  q.fillStyle = t.base; q.fillRect(0,0,T*3,T*3);
+  var i, k, a, w, h;
+  for(i=0;i<300;i++){
+    var bx = rand()*T*3, by = rand()*T*3;
+    q.fillStyle = t.broad[(rand()*t.broad.length)|0];
+    q.beginPath();
+    q.ellipse(bx, by, 10 + rand()*34, 8 + rand()*26, rand()*TAU, 0, TAU);
+    q.fill();
+  }
+
   var c = document.createElement('canvas');
   c.width = T; c.height = T;
-  var q = c.getContext('2d');
-  q.fillStyle = t.base; q.fillRect(0,0,T,T);
+  var p = c.getContext('2d');
+  p.filter = 'blur(7px)';
+  p.drawImage(big, -T, -T);
+  p.filter = 'none';
 
-  var rand = mulberry(theme.charCodeAt(0)*7919 + 31);
-  var put = function(x, y, w, h, col){
-    q.fillStyle = col;
-    for(var dx=-1; dx<=1; dx++) for(var dy=-1; dy<=1; dy++)
-      q.fillRect(x + dx*T, y + dy*T, w, h);
+  /* Fine grain. Every mark is rotated off the axis and given its own aspect,
+     because an axis-aligned rect on a shared grid is exactly what reads as a
+     lattice rather than as ground — and a lattice is the single thing that
+     stops this looking like the reference. Marks near an edge are repeated
+     across the seam. */
+  var mark = function(x, y, w2, h2, ang, col){
+    p.save();
+    p.translate(x, y); p.rotate(ang);
+    p.fillStyle = col;
+    p.fillRect(-w2/2, -h2/2, w2, h2);
+    p.restore();
   };
-  var i, w, h;
-  for(i=0;i<80;i++){                       /* broad patches */
-    w = 14 + rand()*34; h = 10 + rand()*28;
-    put(rand()*T, rand()*T, w, h, t.broad[(rand()*t.broad.length)|0]);
+  for(i=0;i<5200;i++){
+    var mx = rand()*T, my = rand()*T;
+    w = 1.2 + rand()*3.6; h = 1.0 + rand()*2.4;
+    a = rand()*TAU;
+    var col = t.fine[(rand()*t.fine.length)|0];
+    mark(mx, my, w, h, a, col);
+    /* wrap only what actually straddles a seam */
+    var m = 5;
+    if(mx < m || mx > T-m || my < m || my > T-m){
+      for(k=0;k<8;k++){
+        var dx = (k%3) - 1, dy = ((k/3)|0) - 1;
+        if(!dx && !dy) continue;
+        mark(mx + dx*T, my + dy*T, w, h, a, col);
+      }
+    }
   }
-  for(i=0;i<3400;i++){                     /* fine grain */
-    w = 1 + rand()*2.4; h = 1 + rand()*2.2;
-    put(rand()*T, rand()*T, w, h, t.fine[(rand()*t.fine.length)|0]);
-  }
+
   groundPatCache[theme] = g.createPattern(c, 'repeat');
   return groundPatCache[theme];
 }
@@ -4484,21 +4563,6 @@ function drawParticles(g, r, above){
   g.globalAlpha = 1;
 }
 
-/* Foliage is the densest thing on screen, so it is not drawn prop by prop.
-   Every visible canopy contributes its cubes to one of eight buckets — two
-   palettes, four faces each — and the whole frame's worth of each is laid
-   down as a single path. That keeps the fillStyle changes at a constant
-   eight however many bushes are in view, which is what makes the reference's
-   density affordable at all. */
-var propBuckets = null;
-function propBucketsFor(theme){
-  if(!propBuckets || propBuckets.theme !== theme){
-    var sets = FOLIAGE[theme] || FOLIAGE.forest;
-    propBuckets = { theme:theme, sets:sets, shadow:[], shadowSoft:[], trunk:[],
-                    faces:[[],[],[],[],[],[],[],[]] };
-  }
-  return propBuckets;
-}
 /* One fillStyle change, then plain fillRects. Accumulating thousands of
    rects into a single path and filling once is slower here: the path has to
    be tessellated as a whole, where each fillRect is a fast axis-aligned
@@ -4510,11 +4574,15 @@ function flushRects(g, col, arr){
   arr.length = 0;
 }
 
+/* Foliage is the densest thing on screen, so it is not drawn prop by prop
+   out of rectangles. Every clump shape is baked once into a sprite (see
+   buildCanopy) and the world lays down one image per bush. */
 function drawProps(g, r, viewR, theme, cull){
   var byNode = r.track.byNode;
   var lo = Math.max(0, r.car.node - 40);
   var hi = Math.min(byNode.length-1, r.car.node + Math.ceil(viewR/NODE_STEP) + 20);
-  var B = propBucketsFor(theme), i, j;
+  var i, j;
+  g.imageSmoothingEnabled = true;
   for(i=lo;i<=hi;i++){
     var arr = byNode[i]; if(!arr) continue;
     for(j=0;j<arr.length;j++){
@@ -4522,46 +4590,20 @@ function drawProps(g, r, viewR, theme, cull){
       var dx = p.x - r.camX, dy = p.y - r.camY;
       var sx = dx*cull.c + dy*cull.s, sy = dy*cull.c - dx*cull.s;
       if(sx < -cull.hw || sx > cull.hw || sy < cull.top || sy > cull.bot) continue;
-      if(p.type === 0 || p.type === 4) collectCanopy(B, p);
+      if(p.type === 0 || p.type === 4) drawCanopy(g, p, theme);
       else drawProp(g, p, theme);
     }
   }
-  /* shadows first, then each palette's faces back to front */
-  flushRects(g, 'rgba(12,20,8,.22)', B.shadowSoft);
-  flushRects(g, 'rgba(12,20,8,.30)', B.shadow);
-  flushRects(g, theme === 'snowpass' ? '#4a3a2c' : '#3b2a1c', B.trunk);
-  for(i=0;i<2;i++){
-    var pal = B.sets[i];
-    flushRects(g, pal[1], B.faces[i*4]);
-    flushRects(g, pal[0], B.faces[i*4+1]);
-    flushRects(g, pal[2], B.faces[i*4+2]);
-    flushRects(g, pal[3], B.faces[i*4+3]);
-  }
+  g.imageSmoothingEnabled = false;
 }
 
-function collectCanopy(B, p){
-  var s = p.size, v = p.seed, x = p.x, y = p.y;
-  var pi = v < 0.5 ? 0 : 1, so = s*0.20;
-  B.shadowSoft.push(x - s*0.52 + so, y - s*0.46 + so*1.2, s*1.08, s*0.98);
-  B.shadow.push(x - s*0.44 + so, y - s*0.38 + so*1.2, s*0.96, s*0.86);
-  if(p.type === 0 && s > 20)
-    B.trunk.push(x - s*0.07, y + s*0.18, s*0.14, s*0.26);
-
-  /* Big crowns out in the mass read fine on three cubes; the fourth only
-     pays for itself on the smaller bushes near the verge. */
-  var n = p.type === 0 ? 4 : 3, k;
-  for(k=0;k<n;k++){
-    var r1 = rnd2(p.node, k, 71), r2 = rnd2(p.node, k, 83), r3 = rnd2(p.node, k, 97);
-    var cw = s*(k === 0 ? 0.56 : 0.26 + r3*0.22), ch = cw*0.90;
-    var cx = x + (k === 0 ? -cw/2 : (r1 - 0.5)*s*0.96 - cw/2);
-    var cy = y + (k === 0 ? -cw*0.60 : (r2 - 0.5)*s*0.84 - cw*0.5);
-    var side = Math.max(1, ch*0.26);
-    B.faces[pi*4  ].push(cx, cy + ch - side, cw, side);
-    B.faces[pi*4+1].push(cx + cw - side*0.7, cy, side*0.7, ch);
-    B.faces[pi*4+2].push(cx, cy, cw - side*0.7, ch - side);
-    if(k === 0 || r3 > 0.52)
-      B.faces[pi*4+3].push(cx + cw*0.15, cy + ch*0.13, cw*0.34, ch*0.28);
-  }
+function drawCanopy(g, p, theme){
+  var v = p.seed;
+  var sp = canopySprite(theme, v < 0.5 ? 0 : 1,
+                        (rnd2(p.node, (p.x|0) & 15, 113)*CANOPY_VARIANTS)|0,
+                        p.type === 0 && p.size > 26);
+  var d = p.size*2.05;
+  g.drawImage(sp, p.x - d*0.5, p.y - d*0.5, d, d);
 }
 
 function drawCar(g, r){

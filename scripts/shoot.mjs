@@ -39,7 +39,9 @@ const FREEZE = () => {
     for (let i = 0; i < n; i++) {
       const batch = queue.splice(0, queue.length);
       window.__tick();
-      for (const cb of batch) { try { cb(t); } catch (e) { /* keep pumping */ } }
+      for (const cb of batch) {
+        try { cb(t); } catch (e) { window.__frameErr = String(e && e.stack || e); }
+      }
     }
   };
   window.__queued = () => queue.length;
@@ -104,6 +106,8 @@ if (process.env.CROPS) {
     console.log('  crop ' + name);
   }
 }
+const frameErr = await page.evaluate(() => window.__frameErr || null);
+if (frameErr) console.log('FRAME ERROR:\n' + frameErr);
 if (errors.length) console.log('PAGE ERRORS:\n' + errors.slice(0, 12).join('\n'));
 
 await browser.close();
