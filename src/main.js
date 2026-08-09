@@ -191,9 +191,9 @@ function stageDef(id){ for(var i=0;i<STAGES.length;i++){ if(STAGES[i].id===id) r
      detail     ground-clutter density multiplier
      drawAhead  scenery draw distance, in track nodes                    */
 var QUALITY = {
-  low:    { name:'LOW',    px:3.0, parts:70,  skids:240, lights:1, detail:0.45, drawAhead:60,  glow:0 },
-  medium: { name:'MEDIUM', px:2.2, parts:170, skids:520, lights:1, detail:0.80, drawAhead:90,  glow:1 },
-  high:   { name:'HIGH',   px:1.7, parts:320, skids:900, lights:2, detail:1.00, drawAhead:124, glow:1 }
+  low:    { name:'LOW',    px:2.7, parts:80,  skids:260, lights:1, detail:0.50, drawAhead:64,  glow:0, maxW:400 },
+  medium: { name:'MEDIUM', px:2.0, parts:200, skids:560, lights:2, detail:0.85, drawAhead:96,  glow:1, maxW:540 },
+  high:   { name:'HIGH',   px:1.5, parts:360, skids:950, lights:2, detail:1.00, drawAhead:130, glow:1, maxW:700 }
 };
 var IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints||0) > 0;
 function defaultQuality(){ return IS_TOUCH ? 'medium' : 'high'; }
@@ -506,18 +506,37 @@ function buildScenery(track){
                         9+rand()*7, i, true, rand()));
     }
 
-    /* the treeline / verge decoration */
-    var density = isMountain ? 0.55 : 1.0;
-    if(rand() < density){
-      var n2 = Math.floor(1 + rand()*2);
-      for(var t=0;t<n2;t++){
-        var s2 = rand()<0.5 ? -1 : 1;
-        var lat2 = nd.hw + 44 + rand()*160;
-        var type = isSnow ? (rand()<0.72?0:4) : (isMountain ? (rand()<0.45?1:0) : (rand()<0.78?0:4));
-        var size = type===0 ? 17+rand()*15 : 9+rand()*8;
-        var solid = lat2 < nd.hw + 96;   /* only the near ones can be clipped */
-        props.push(mkProp(nd.x+nx*lat2*s2, nd.y+ny*lat2*s2, type, size, i, solid, rand()));
-      }
+    /* The treeline. Two things matter here and both were wrong before: how
+       FAR out it goes, and how much the sizes vary.
+
+       The scatter used to stop 200 units from the centreline, which is inside
+       the frame at this zoom — so the outer thirds of the screen were bare
+       grass. It now reaches past the far edge of the view. And the depth is
+       biased towards the verge (u squared), so the near band packs into a
+       wall of trees the way a forest stage looks, thinning out behind it
+       instead of being an even sprinkle. Sizes run more than 3:1 so no two
+       neighbours read as the same stamp. */
+    var clumps = isMountain ? 2 : 3;
+    for(var t=0;t<clumps;t++){
+      if(rand() > (isMountain ? 0.55 : 0.92)) continue;
+      var s2 = rand() < 0.5 ? -1 : 1;
+      var u2 = rand(); u2 *= u2;
+      var lat2 = nd.hw + 38 + u2*430;
+      var roll = rand();
+      var type = isSnow ? (roll<0.66?0:4)
+               : (isMountain ? (roll<0.40?1:(roll<0.86?0:4))
+                             : (roll<0.70?0:(roll<0.94?4:1)));
+      var size = type===0 ? 12+rand()*30 : (type===1 ? 7+rand()*10 : 8+rand()*13);
+      var solid = lat2 < nd.hw + 96;   /* only the near ones can be clipped */
+      props.push(mkProp(nd.x+nx*lat2*s2, nd.y+ny*lat2*s2, type, size, i, solid, rand()));
+    }
+    /* loose ground litter — small stones and tufts, never solid. Cheap, and
+       it is what stops the grass reading as flat colour under the trees. */
+    if(rand() < 0.55){
+      var s3 = rand() < 0.5 ? -1 : 1;
+      var lat3 = nd.hw + 16 + rand()*300;
+      props.push(mkProp(nd.x+nx*lat3*s3, nd.y+ny*lat3*s3,
+                        rand() < 0.45 ? 1 : 4, 4+rand()*6, i, false, rand()));
     }
   }
 
@@ -629,9 +648,10 @@ function carPalette(paint, damageTier){
     darker: shade(paint,-0.28),
     deep:   shade(paint,-0.44),
     accent: ACCENTS[paint] || '#ffffff',
-    glass:      damageTier>=1 ? '#8ba0af' : '#33506b',
-    glassLite:  damageTier>=1 ? '#a9bcc9' : '#5f829f',
+    glass:      damageTier>=1 ? '#8ba0af' : '#3d5d7a',
+    glassLite:  damageTier>=1 ? '#a9bcc9' : '#6d90ad',
     glassDark:  damageTier>=1 ? '#68808f' : '#1d3247',
+    glassSheen: damageTier>=1 ? '#dfe9f0' : '#9fc4e0',
     tyre:'#171a1c', tyreLite:'#2b3034', tyreDark:'#0b0d0f',
     vent:'#2a2f34',
     chrome:'#b9bec4', chromeDark:'#767b82',
@@ -1436,9 +1456,22 @@ var TREE_PALS = {
             ['#0b1a14','#183226','#28503c','#7ea6b4','#dbeaf4']]
 };
 
-function drawProp(g, p, theme){
+function drawProp(g, p, theme, onScreen){
   var s = p.vis || p.size;
   var v = p.seed;
+  if(onScreen != null && onScreen < 6){
+    /* far or tiny: one shadow, one body, done */
+    var flat = p.type===0 ? ((TREE_PALS[theme] || TREE_PALS.forest)[v < 0.5 ? 0 : 1])[2]
+             : p.type===1 ? '#6f6f68'
+             : p.type===2 ? '#8d939a'
+             : p.type===3 ? '#e8eef4'
+             : (theme==='snowpass' ? '#dfe9f2' : '#33581f');
+    g.fillStyle = 'rgba(0,0,0,.30)';
+    g.fillRect(p.x - s*0.34, p.y - s*0.30, s*0.74, s*0.74);
+    g.fillStyle = flat;
+    g.fillRect(p.x - s*0.46, p.y - s*0.46, s*0.92, s*0.92);
+    return;
+  }
   g.save();
   g.translate(p.x, p.y);
 
@@ -1449,13 +1482,22 @@ function drawProp(g, p, theme){
     g.fillStyle = theme==='snowpass' ? '#4a3a2c' : '#3a2a1c';
     g.fillRect(-s*0.07, s*0.10, s*0.14, s*0.26);    /* trunk peeking out */
     /* the canopy: five stepped rings climbing up and to the left */
-    g.fillStyle = '#0a1a0b';                        /* hard outline */
-    g.fillRect(-s*0.54, -s*0.54, s*1.08, s*1.08);
+    /* Every tree is stamped from the same five rings, but each ring is
+       nudged and stretched by a value derived from the prop's own seed. Two
+       neighbours therefore never share a silhouette, which is the difference
+       between a forest and a tiled wallpaper. */
+    var j1 = (v*97) % 1, j2 = (v*173) % 1, j3 = (v*311) % 1;
+    g.fillStyle = '#0c1e0e';                        /* outline */
+    g.fillRect(-s*(0.54+j1*0.05), -s*(0.54+j2*0.05), s*(1.08+j1*0.07), s*(1.08+j2*0.07));
     var rings = [[0.50,0.00,0], [0.40,-0.05,1], [0.30,-0.10,2], [0.20,-0.15,3], [0.10,-0.19,4]];
     for(var i=0;i<rings.length;i++){
-      var rr = rings[i][0], off = rings[i][1]*s;
+      var k2 = i/(rings.length-1);
+      var rw = rings[i][0] * (1 + (j1-0.5)*0.22*k2);
+      var rh = rings[i][0] * (1 + (j2-0.5)*0.22*k2);
+      var ox = rings[i][1]*s + (j3-0.5)*s*0.06*k2;
+      var oy = rings[i][1]*s + (j1-0.5)*s*0.06*k2;
       g.fillStyle = pal[rings[i][2]];
-      g.fillRect(-s*rr + off, -s*rr + off, s*rr*2, s*rr*2);
+      g.fillRect(-s*rw + ox, -s*rh + oy, s*rw*2, s*rh*2);
     }
   } else if(p.type===1){                            /* boulder */
     g.fillStyle = 'rgba(0,0,0,.34)';
@@ -1521,8 +1563,15 @@ var view = { w:0, h:0, dpr:1 };
 var world = { cv:null, g:null, w:0, h:0, scale:1, key:'' };
 
 function ensureWorld(){
-  var ps = GFX().px;
+  var gfx = GFX();
+  var ps = gfx.px;
   var bw = Math.max(80, Math.round(view.w/ps));
+  /* An absolute ceiling on the internal resolution. Pixel art does not get
+     better by rendering a 1440-wide window at 720 internal pixels — it gets
+     smoother, which is the opposite of the point — and the fill cost grows
+     with the area of the window for no visual gain. Above the cap the blit
+     simply scales up further and the pixels get chunkier, which is correct. */
+  if(bw > gfx.maxW){ ps = view.w/gfx.maxW; bw = gfx.maxW; }
   var bh = Math.max(60, Math.round(view.h/ps));
   var key = bw+'x'+bh;
   if(key !== world.key){
@@ -1538,20 +1587,78 @@ function ensureWorld(){
   return world;
 }
 
+/* ------------------------------------------------------------- viewport
+   The game fills the screen, and it measures the screen from the element it
+   is actually painted into rather than from `window.innerWidth/Height`.
+
+   That distinction matters on a phone. In mobile Safari the layout viewport,
+   the visual viewport and `innerHeight` disagree with each other while the
+   URL bar is sliding, and they disagree again for a frame or two after a
+   rotation. Sizing a canvas from the wrong one is how a game ends up as a
+   strip in the middle of a black page: the backing store is one size, the
+   element another, and the two never reconcile because nothing measures
+   again afterwards.
+
+   So: one measurement of #app's real box, both canvases given an explicit
+   CSS size to match it, and a ResizeObserver plus the visualViewport events
+   to catch every later change — including the ones that fire no window
+   `resize` at all. */
+var appEl = document.getElementById('app');
+var pendingResize = false, resizeCheck = 0;
+
+function viewportBox(){
+  var r = appEl.getBoundingClientRect();
+  var w = Math.round(r.width), h = Math.round(r.height);
+  var vv = window.visualViewport;
+  /* a stale or collapsed layout box falls back to the visual viewport, then
+     to the window, so there is no state in which we size to nothing */
+  if(w < 2 || h < 2){
+    w = Math.round(vv ? vv.width : window.innerWidth);
+    h = Math.round(vv ? vv.height : window.innerHeight);
+  }
+  return { w: Math.max(200, w), h: Math.max(140, h) };
+}
+
 function resize(){
+  var box = viewportBox();
   var dpr = Math.min(window.devicePixelRatio || 1, 2);
-  var w = window.innerWidth, h = window.innerHeight;
-  view.w = w; view.h = h; view.dpr = dpr;
-  cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  view.w = box.w; view.h = box.h; view.dpr = dpr;
+  cv.width = Math.round(box.w*dpr); cv.height = Math.round(box.h*dpr);
+  /* an explicit CSS size, not 100%: the backing store and the element are
+     then the same box by construction and can never drift apart */
+  cv.style.width = box.w + 'px';
+  cv.style.height = box.h + 'px';
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.imageSmoothingEnabled = false;
   world.key = '';
   dash.key = '';
 }
-window.addEventListener('resize', function(){ resize(); if(race) resetHudControls(); });
+
+/* Coalesce every source of size change into one resize per frame. */
+function requestResize(){ pendingResize = true; }
+function applyPendingResize(){
+  if(!pendingResize) return;
+  pendingResize = false;
+  var box = viewportBox();
+  if(box.w === view.w && box.h === view.h &&
+     Math.min(window.devicePixelRatio || 1, 2) === view.dpr) return;
+  resize();
+  if(race) resetHudControls();
+}
+window.addEventListener('resize', requestResize);
 window.addEventListener('orientationchange', function(){
-  setTimeout(function(){ resize(); if(race) resetHudControls(); }, 250);
+  requestResize();
+  /* iOS reports the old box for a beat after the rotation completes */
+  setTimeout(requestResize, 120);
+  setTimeout(requestResize, 400);
 });
+if(window.visualViewport){
+  visualViewport.addEventListener('resize', requestResize);
+  visualViewport.addEventListener('scroll', requestResize);
+}
+if(window.ResizeObserver){
+  try{ new ResizeObserver(requestResize).observe(appEl); }catch(e){}
+}
 
 /* =========================================================================
    INPUT
@@ -1914,6 +2021,12 @@ function audioBlowoff(power){
 
 var DASH_GH = 128;                 /* panel height, in grid rows */
 var DASH_OVER = 46;                /* rows above the panel, for the paddles */
+/* Ceiling on device pixels per grid unit. The dash is pixel art on a 128-row
+   grid; painting it at six device pixels per row on a large display buys
+   nothing but a multi-megapixel repaint every frame. Above the cap the
+   canvas is smaller than its CSS box and the browser scales it up with
+   nearest-neighbour filtering, which is what the art wants anyway. */
+var DASH_U_MAX = 3.2;
 
 var DC = {
   shell:'#191d23', shellHi:'#3d4653', shellLo:'#0b0e13', seam:'#04060a',
@@ -2011,7 +2124,12 @@ function safeInsets(){
    against the width too, so an ultra-wide phone in landscape does not end
    up with a dash so deep there is no road left to look at. */
 function dashPanelH(){
-  return Math.round(clamp(Math.min(view.h*0.42, view.w*0.34), 92, 300));
+  /* Deep enough to sit in, capped against the width so an ultra-wide phone
+     does not end up with a cockpit and no road. The reference frames the
+     dash at a little over half the picture; on a 2:1 phone that would leave
+     almost nothing to look at, so this lands just under half and lets the
+     squarer the screen, the deeper the dash. */
+  return Math.round(clamp(Math.min(view.h*0.45, view.w*0.38), 96, 360));
 }
 /* what the chase camera has to keep the car clear of */
 function dashBandH(){ return dash.L ? dash.L.panelCss : dashPanelH(); }
@@ -2019,14 +2137,18 @@ function dashBandH(){ return dash.L ? dash.L.panelCss : dashPanelH(); }
 function dashLayout(){
   var dpr = view.dpr;
   var panelCss = dashPanelH();
-  var u = Math.max(1, (panelCss*dpr)/DASH_GH);
+  /* grid units per CSS pixel — the layout is defined in these and is
+     independent of how many device pixels each one is painted with */
+  var gpc = DASH_GH/panelCss;
+  var u = clamp((panelCss*dpr)/DASH_GH, 1, DASH_U_MAX);
   var si = safeInsets();
-  var GW = (view.w*dpr)/u;
-  var inL = (si.l*dpr)/u, inR = (si.r*dpr)/u, inB = (si.b*dpr)/u;
+  var GW = view.w*gpc;
+  var inL = si.l*gpc, inR = si.r*gpc, inB = si.b*gpc;
   var UH = DASH_GH - inB;                       /* rows clear of system UI */
   var x0 = inL + 4, x1 = GW - inR - 4;
 
-  var L = { u:u, GW:GW, UH:UH, over:DASH_OVER, panelCss:panelCss,
+  var L = { u:u, gpc:gpc, GW:GW, UH:UH, over:DASH_OVER, panelCss:panelCss,
+            cssW:view.w, cssH:panelCss*(DASH_GH + DASH_OVER)/DASH_GH,
             inL:inL, inR:inR, inB:inB, x0:x0, x1:x1, regions:[] };
 
   function reg(id, x, y, w, h, pad){
@@ -2038,7 +2160,7 @@ function dashLayout(){
   }
 
   /* ---- left thumb: the two steering rockers ---- */
-  var ah = clamp(UH*0.55, 32, 76), aw = clamp(ah*0.92, 28, 72);
+  var ah = clamp(UH*0.60, 34, 84), aw = clamp(ah*0.94, 30, 78);
   var ay = UH - 4 - ah;
   reg('steerL', x0, ay, aw, ah, 5);
   reg('steerR', x0 + aw + 4, ay, aw, ah, 5);
@@ -2061,7 +2183,7 @@ function dashLayout(){
      instruments rather than to inflating the tell-tale strip — the strip has
      a height of its own so its glyphs stay the same size everywhere. */
   var avail = Math.max(90, L.rightStart - L.leftEnd - 8);
-  var stripH = clamp(UH*0.15, 9, 22);
+  var stripH = clamp(UH*0.19, 11, 27);
   var instrH = UH - stripH - 7;
   var D = clamp(Math.min((avail - 24)/3.60, instrH), 40, 150);
   var gearW = D*0.42, shiftW = D*0.68, boostD = D*0.54;
@@ -2428,10 +2550,12 @@ function ensureDash(){
   if(key !== dash.key || !dash.base){
     var L = dashLayout();
     dash.cv = el; dash.L = L;
-    var W = Math.round(L.GW*L.u), H = Math.round((DASH_GH + L.over)*L.u);
-    el.width = W; el.height = H;
-    el.style.width = (W/view.dpr) + 'px';
-    el.style.height = (H/view.dpr) + 'px';
+    el.width = Math.round(L.GW*L.u);
+    el.height = Math.round((DASH_GH + L.over)*L.u);
+    /* the CSS box comes from the layout, not from the backing store, so the
+       two are free to differ once the resolution cap bites */
+    el.style.width = L.cssW + 'px';
+    el.style.height = L.cssH + 'px';
     dash.g = el.getContext('2d');
     dash.g.imageSmoothingEnabled = false;
     dash.base = buildDashBase(L);
@@ -2719,8 +2843,10 @@ function dashHit(cssX, cssY){
   var L = dash.L;
   if(!L) return null;
   var rect = dash.cv.getBoundingClientRect();
-  var gx = (cssX - rect.left) * view.dpr / L.u;
-  var gy = (cssY - rect.top)  * view.dpr / L.u - L.over;
+  /* map through the CSS box, which is the thing the finger actually touched */
+  var k = L.GW / Math.max(1, rect.width);
+  var gx = (cssX - rect.left) * k;
+  var gy = (cssY - rect.top)  * k - L.over;
   for(var i=0;i<L.regions.length;i++){
     var o = L.regions[i];
     if(gx >= o.hx && gx <= o.hx+o.hw && gy >= o.hy && gy <= o.hy+o.hh) return o.id;
@@ -3247,10 +3373,14 @@ function spawnEffects(r, dt, slip, surf, offtrack){
   var hard = slip > 0.24 || offtrack || (braking && spd > 60);
 
   r.dustAcc = (r.dustAcc||0) + dt;
-  var rate = (hard ? 0.020 : 0.075) * (gfx.parts >= 300 ? 0.8 : gfx.parts >= 150 ? 1 : 1.9);
+  /* A rally car on gravel is never clean: it trails dust simply from moving,
+     not only when it is sliding. The old rate only really opened up under
+     slip, which is why a fast straight looked sterile. */
+  var rate = (hard ? 0.016 : 0.042) * (gfx.parts >= 300 ? 0.8 : gfx.parts >= 150 ? 1 : 1.9);
   if(spd > 12 && r.dustAcc > rate && r.particles.length < cap){
     r.dustAcc = 0;
     var back = -30, side = 15;
+    var heft = 0.5 + clamp(spd/220, 0, 1)*0.9;
     for(var sg=-1;sg<=1;sg+=2){
       var px = c.x + dirX*back + rgtX*side*sg;
       var py = c.y + dirY*back + rgtY*side*sg;
@@ -3258,8 +3388,8 @@ function spawnEffects(r, dt, slip, surf, offtrack){
         x:px, y:py,
         vx:-dirX*spd*0.16 + (Math.random()-0.5)*45,
         vy:-dirY*spd*0.16 + (Math.random()-0.5)*45,
-        life:0.55+Math.random()*0.4, max:0.95,
-        size:4+Math.random()*6+slip*6, col:surf.dust, kind:'dust'
+        life:0.62+Math.random()*0.45, max:1.07,
+        size:(6+Math.random()*9+slip*9)*heft, col:surf.dust, kind:'dust'
       });
       /* stones kicked out of the surface when the tyres are really working */
       if(hard && spd > 70 && Math.random() < 0.55 && r.particles.length < cap){
@@ -3271,6 +3401,17 @@ function spawnEffects(r, dt, slip, surf, offtrack){
           size:2+Math.random()*2, col: surf.grit || surf.edge, kind:'debris'
         });
       }
+    }
+    /* one more puff off the tail, which is what turns two ribbons of dust
+       into a plume closing up behind the car */
+    if(r.particles.length < cap){
+      r.particles.push({
+        x:c.x + dirX*(back-8), y:c.y + dirY*(back-8),
+        vx:-dirX*spd*0.10 + (Math.random()-0.5)*30,
+        vy:-dirY*spd*0.10 + (Math.random()-0.5)*30,
+        life:0.75+Math.random()*0.5, max:1.25,
+        size:(9+Math.random()*11+slip*12)*heft, col:surf.dust, kind:'dust'
+      });
     }
     /* tyre marks: dark on a hard surface, a lighter scar on the loose */
     if(slip > 0.28 && !offtrack && r.skids.length < gfx.skids){
@@ -3359,7 +3500,7 @@ function renderRace(){
      as far as it takes to keep the car above the panel — at low speed the
      framing is untouched. */
   var playH = H - dashBandH();
-  var scaleCss = (playH*0.335/CAR_WORLD_LEN)/r.camZoom;
+  var scaleCss = (playH*0.36/CAR_WORLD_LEN)/r.camZoom;
   var scale = scaleCss/w.scale;                 /* buffer px per world unit */
   var focal = playH*0.62;
   var dxc = c.x - r.camX, dyc = c.y - r.camY;
@@ -3384,12 +3525,27 @@ function renderRace(){
 
   var viewR = Math.sqrt(w.w*w.w + w.h*w.h)/2/scale + 90;
 
+  /* Culling box, in camera space rather than as a radius.
+
+     A radius around the camera is the diagonal of the view, and the view is
+     wide and shallow — the dash eats the bottom of it — so a radius selects
+     roughly twice the objects that can actually be seen. These are the real
+     screen edges expressed in world units, which is four multiplies per
+     object and halves the number of trees the renderer touches. */
+  var ca = Math.cos(r.camA), sa = Math.sin(r.camA), m = 70;
+  var ox = (W/2 + shakeX)/w.scale, oy2 = (focal + shakeY + lean)/w.scale;
+  var cull = {
+    ca:ca, sa:sa, cx:r.camX, cy:r.camY,
+    x0:(-m - ox)/scale, x1:(w.w + m - ox)/scale,
+    y0:(-m - oy2)/scale, y1:(w.h + m - oy2)/scale
+  };
+
   drawGroundDetail(g, r, viewR, theme, gfx);
   drawRoad(g, r, viewR);
-  drawSkids(g, r, viewR);
+  drawSkids(g, r, cull);
   drawParticles(g, r, false);
   if(gfx.lights) drawHeadlights(g, r, gfx);
-  drawProps(g, r, viewR, theme, gfx);
+  drawProps(g, r, viewR, theme, gfx, scale, cull);
   drawCar(g, r, scale);
   drawParticles(g, r, true);
 
@@ -3536,14 +3692,19 @@ function drawRoad(g, r, viewR){
         g.fillRect(n3.x + ax*lat - 5, n3.y + ay*lat - 5, 11, 11);
       }
     }
-    /* loose surface speckle */
+    /* Loose surface. Three passes rather than one: dark pits, mid stones and
+       the odd bright chipping, all keyed off the node index so the pattern is
+       identical every run and never crawls under the camera. */
     for(var t2=i;t2<end;t2+=2){
       var n4 = nodes[t2];
       var bx = Math.cos(n4.a), by = Math.sin(n4.a);
-      for(var q=0;q<3;q++){
-        var l2 = (rnd2(t2,q,3)*2-1)*n4.hw*0.94;
-        var sz = 3 + rnd2(t2,q,5)*7;
-        g.fillStyle = rnd2(t2,q,9) < 0.35 ? S.edge : S.color2;
+      for(var q=0;q<5;q++){
+        var l2 = (rnd2(t2,q,3)*2-1)*n4.hw*0.96;
+        var pick = rnd2(t2,q,9);
+        var sz = 2 + rnd2(t2,q,5)*6;
+        if(pick < 0.30){ g.fillStyle = S.verge; sz *= 0.8; }        /* pit */
+        else if(pick < 0.80) g.fillStyle = S.color2;                /* stone */
+        else { g.fillStyle = S.grit || S.edge; sz *= 0.6; }         /* chipping */
         g.fillRect(n4.x + bx*l2, n4.y + by*l2, sz, sz);
       }
     }
@@ -3587,11 +3748,20 @@ function drawBanner(g, nd, ca, cb){
   }
 }
 
+/* is this world point inside the visible rectangle? */
+function inView(c, x, y, pad){
+  var dx = x - c.cx, dy = y - c.cy;
+  var rx = dx*c.ca + dy*c.sa;
+  if(rx < c.x0 - pad || rx > c.x1 + pad) return false;
+  var ry = dy*c.ca - dx*c.sa;
+  return ry >= c.y0 - pad && ry <= c.y1 + pad;
+}
+
 /* ------------------------------------------------------------ tyre marks */
-function drawSkids(g, r, viewR){
+function drawSkids(g, r, cull){
   for(var i=0;i<r.skids.length;i++){
     var s = r.skids[i];
-    if(Math.abs(s.x-r.camX) > viewR || Math.abs(s.y-r.camY) > viewR) continue;
+    if(!inView(cull, s.x, s.y, 12)) continue;
     g.save(); g.translate(s.x,s.y); g.rotate(s.a);
     g.globalAlpha = s.al;
     g.fillStyle = s.col || 'rgba(24,20,16,.34)';
@@ -3654,17 +3824,31 @@ function drawHeadlights(g, r, gfx){
   g.globalAlpha = 0.72;
   var px2 = nx + dirX*46, py2 = ny + dirY*46;
   var pool = g.createRadialGradient(px2, py2, 4, px2, py2, 72);
-  pool.addColorStop(0,'rgba(255,240,196,.40)');
-  pool.addColorStop(0.45,'rgba(220,188,120,.16)');
+  pool.addColorStop(0,'rgba(255,240,196,.42)');
+  pool.addColorStop(0.45,'rgba(220,188,120,.17)');
   pool.addColorStop(1,'rgba(120,100,60,0)');
   g.fillStyle = pool;
   g.fillRect(px2-76, py2-76, 152, 152);
+
+  /* A wide, soft warm bloom sitting on the car itself. The reference has a
+     distinct halo of lit dust around the car rather than a clean cut-out on
+     dark gravel, and it is most of what makes the lighting read. */
+  if(gfx.glow){
+    g.globalAlpha = 0.55;
+    var br = 130 + Math.min(70, Math.abs(c.fwd)*0.28);
+    var bloom = g.createRadialGradient(c.x, c.y, br*0.10, c.x, c.y, br);
+    bloom.addColorStop(0,'rgba(255,232,176,.20)');
+    bloom.addColorStop(0.40,'rgba(214,180,116,.09)');
+    bloom.addColorStop(1,'rgba(90,74,44,0)');
+    g.fillStyle = bloom;
+    g.fillRect(c.x-br, c.y-br, br*2, br*2);
+  }
   g.restore();
   g.globalAlpha = 1;
 }
 
 /* ---------------------------------------------------------------- props */
-function drawProps(g, r, viewR, theme, gfx){
+function drawProps(g, r, viewR, theme, gfx, scale, cull){
   var byNode = r.track.byNode;
   var lo = Math.max(0, r.car.node - 45);
   var hi = Math.min(byNode.length-1, r.car.node + Math.min(gfx.drawAhead, Math.ceil(viewR/NODE_STEP)) + 20);
@@ -3672,8 +3856,11 @@ function drawProps(g, r, viewR, theme, gfx){
     var arr = byNode[i]; if(!arr) continue;
     for(var j=0;j<arr.length;j++){
       var p = arr[j];
-      if(Math.abs(p.x-r.camX) > viewR+40 || Math.abs(p.y-r.camY) > viewR+40) continue;
-      drawProp(g, p, theme);
+      if(!inView(cull, p.x, p.y, (p.vis || p.size)*0.6)) continue;
+      /* how many buffer pixels this prop will actually occupy. Below a few,
+         the five-ring canopy is five fills that land on the same two pixels,
+         so it collapses to a flat stamp and nobody can tell. */
+      drawProp(g, p, theme, (p.vis || p.size)*scale);
     }
   }
 }
@@ -3946,6 +4133,8 @@ function frame(ts){
   var dt = lastT ? (ts-lastT)/1000 : 0.016;
   lastT = ts;
   if(dt > 0.05) dt = 0.05;
+  if(++resizeCheck > 40){ resizeCheck = 0; pendingResize = true; }
+  applyPendingResize();
   if(race && !paused){
     updateHudControls(dt);
     if(race.state !== 'done') stepRace(dt);

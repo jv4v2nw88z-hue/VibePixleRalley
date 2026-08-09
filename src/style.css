@@ -5,7 +5,7 @@
   --line:#3c4a38; --text:#dfe6d8; --muted:#8d9a86;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#000;}
+html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#07090c;}
 body{
   font-family:ui-monospace,"SF Mono",Menlo,Consolas,"Courier New",monospace;
   color:var(--text);
@@ -13,8 +13,15 @@ body{
   -webkit-user-select:none;user-select:none;
   overscroll-behavior:none;
 }
-#app{position:fixed;inset:0;overflow:hidden;}
-canvas#game{position:absolute;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated;image-rendering:crisp-edges;background:#1b2416;}
+/* The game owns the whole screen. `dvh` is the one unit that tracks mobile
+   Safari's URL bar, with `vh` behind it for anything that does not know the
+   unit; the game measures this element's real box rather than trusting
+   either of them. */
+#app{position:fixed;left:0;top:0;overflow:hidden;
+  width:100vw;width:100dvw;height:100vh;height:100dvh;background:#07090c;}
+/* sized in device pixels by the game, never stretched by CSS */
+canvas#game{position:absolute;left:0;top:0;width:100%;height:100%;display:block;
+  image-rendering:pixelated;image-rendering:crisp-edges;background:#1b2416;}
 .hidden{display:none !important;}
 
 /* ---------- generic retro panel styling ---------- */
