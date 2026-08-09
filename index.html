@@ -5,50 +5,24 @@
 <title>Rally Pixel</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#101410">
-<meta name="description" content="Rally Pixel - a pixel-art rally time-trial game. Race gravel, tarmac and snow stages, earn credits, upgrade your car in the garage.">
+<meta name="theme-color" content="#0a0d11">
+<meta name="description" content="Rally Pixel - a pixel-art rally time-trial game. Race gravel, tarmac and snow stages from inside the cockpit, earn credits, upgrade your car in the garage.">
 </head>
 <body>
 <div id="app">
+  <!-- the world, the pixel HUD and the countdown all live on this one canvas -->
   <canvas id="game"></canvas>
 
-  <!-- ============ HUD ============ -->
-  <div id="hud" class="hidden">
-    <div id="hud-timer" class="hud-box"><div class="t" id="t-time">0:00.00</div><div class="d" id="t-target">TGT 0:00</div></div>
-    <div id="hud-left" class="hud-box">
-      <div class="nm" id="h-stage">STAGE</div>
-      <div class="nm" style="margin-top:2px">PROGRESS</div><div class="meter"><i id="h-prog"></i></div>
-      <div class="nm" style="margin-top:3px">DAMAGE</div><div class="meter"><i id="h-dmg" class="dmg"></i></div>
-      <div class="nm" style="margin-top:3px">SURFACE <b id="h-surf" style="color:var(--text)">GRAVEL</b></div>
-    </div>
-    <!-- backdrop tying the whole dash band together, behind the controls -->
-    <div id="dash-rail"></div>
-    <!-- instrument cluster: pedals, tacho, gear + lamps, speedo. All canvas. -->
-    <div id="hud-cluster"><canvas id="cluster-cv"></canvas></div>
-    <div id="hud-note"><div class="arrow" id="n-arrow">&#8598;</div><div class="txt" id="n-text">SHARP LEFT</div></div>
-    <div id="hud-split"></div>
-    <div id="big-msg"></div>
-  </div>
-
-  <!-- ============ touch controls ============ -->
-  <div id="controls" class="hidden">
-    <!-- steering rockers, drawn as chrome-housed buttons like the dash -->
-    <div class="pad rocker" id="p-left"><canvas id="steer-l-cv"></canvas></div>
-    <div class="pad rocker" id="p-right"><canvas id="steer-r-cv"></canvas></div>
-    <div class="pad lever" id="p-hbrake"><canvas id="hbrake-cv"></canvas><small>HANDBRAKE</small></div>
-    <div class="pad" id="p-gas">GAS</div>
-    <!-- paddles sit on the outer edges of the dash: left drops a gear, right takes one -->
-    <div class="pad paddle" id="p-shiftdn"><canvas id="pad-dn-cv"></canvas></div>
-    <div class="pad paddle" id="p-shiftup"><canvas id="pad-up-cv"></canvas></div>
-    <div class="pad" id="p-pause">II</div>
-    <div id="tilt-bar" class="hidden"><i id="tilt-ind"></i></div>
-  </div>
+  <!-- the cockpit. One canvas: instruments, tell-tales and every touch
+       control, so the dash art and the hit map can never drift apart. -->
+  <canvas id="dash-cv" class="hidden"></canvas>
 
   <!-- ============ main menu ============ -->
   <div class="screen" id="screen-menu">
     <div id="menu-logo">
-      <canvas id="menu-car" width="120" height="120" style="width:clamp(64px,17vh,120px);height:clamp(64px,17vh,120px)"></canvas>
+      <canvas id="menu-car" width="160" height="160" style="width:clamp(72px,20vh,150px);height:clamp(72px,20vh,150px)"></canvas>
       <h1 class="title">RALLY PIXEL</h1>
       <p class="subtitle">GRAVEL &middot; TARMAC &middot; SNOW</p>
     </div>
@@ -137,9 +111,13 @@
   </div>
 
   <!-- ============ results ============ -->
-  <div class="screen hidden" id="screen-results" style="align-items:center;justify-content:center;gap:10px">
+  <div class="screen hidden" id="screen-results">
     <h1 class="title" id="res-title">STAGE COMPLETE</h1>
-    <div class="card" style="min-width:min(360px,88vw)"><div id="res-rows"></div></div>
+    <div id="res-sub">PINE HOLLOW</div>
+    <div id="res-body">
+      <div class="card res-card" id="res-times"></div>
+      <div class="card res-card" id="res-rows"></div>
+    </div>
     <div class="row" id="res-buttons"></div>
   </div>
 
@@ -153,7 +131,12 @@
     </div>
   </div>
 
-  <div id="rotate"><div class="ph"></div><div class="title" style="font-size:18px">ROTATE YOUR DEVICE</div><div class="subtitle">RALLY PIXEL PLAYS IN LANDSCAPE</div></div>
+  <!-- ============ orientation ============ -->
+  <div id="rotate">
+    <canvas id="rotate-cv" width="120" height="120"></canvas>
+    <div class="title" style="font-size:clamp(15px,4.4vw,22px)">ROTATE DEVICE</div>
+    <div class="subtitle">RALLY PIXEL PLAYS IN LANDSCAPE</div>
+  </div>
 </div>
 <script type="module" src="/src/main.js"></script>
 </body>

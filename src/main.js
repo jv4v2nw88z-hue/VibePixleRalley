@@ -1,4 +1,6 @@
 import './style.css';
+import { renderCarTop } from './carsprite.js';
+import * as PF from './pixfont.js';
 
 (function(){
 'use strict';
@@ -30,18 +32,27 @@ function mulberry(seed){
 }
 
 /* ---------------------------------------------------------------- surfaces */
+/* `color`/`color2` are the surface and its worn wheel tracks, `edge` the
+   loose material along the rim of the road, `verge` the scuffed band just
+   outside it, `grit` the stones the tyres throw and `mark` the colour a
+   sliding tyre leaves behind. */
 var SURFACES = {
-  tarmac:{ name:'TARMAC', grip:1.34, roll:0.34, color:'#3b3d40', color2:'#45484b', dust:'#7d7f82', edge:'#d8d8d2' },
-  gravel:{ name:'GRAVEL', grip:1.00, roll:0.60, color:'#7d6647', color2:'#8d7451', dust:'#c2a97e', edge:'#a08a63' },
-  snow:  { name:'SNOW',   grip:0.74, roll:0.72, color:'#d5e2ee', color2:'#c3d4e4', dust:'#ffffff', edge:'#9fb4c8' },
-  ice:   { name:'ICE',    grip:0.46, roll:0.26, color:'#a9cbe0', color2:'#bcd9ea', dust:'#e6f4ff', edge:'#87aec6' },
-  mud:   { name:'MUD',    grip:0.80, roll:0.95, color:'#54452f', color2:'#5f4f36', dust:'#8a7350', edge:'#6b5940' }
+  tarmac:{ name:'TARMAC', grip:1.34, roll:0.34, color:'#3b3d40', color2:'#484b4e', dust:'#7d7f82',
+           edge:'#d8d8d2', verge:'#2b2d2f', grit:'#9a9c9f', mark:'rgba(12,11,10,.44)' },
+  gravel:{ name:'GRAVEL', grip:1.00, roll:0.60, color:'#8a6f4c', color2:'#9c8159', dust:'#d3b98c',
+           edge:'#ab926a', verge:'#5e4e37', grit:'#e2cfa2', mark:'rgba(62,46,28,.30)' },
+  snow:  { name:'SNOW',   grip:0.74, roll:0.72, color:'#d5e2ee', color2:'#e4eef7', dust:'#ffffff',
+           edge:'#9fb4c8', verge:'#b6c8d8', grit:'#ffffff', mark:'rgba(118,148,178,.30)' },
+  ice:   { name:'ICE',    grip:0.46, roll:0.26, color:'#a9cbe0', color2:'#c2dded', dust:'#e6f4ff',
+           edge:'#87aec6', verge:'#8fb2c8', grit:'#e6f4ff', mark:'rgba(108,148,180,.22)' },
+  mud:   { name:'MUD',    grip:0.80, roll:0.95, color:'#54452f', color2:'#61503a', dust:'#8a7350',
+           edge:'#6b5940', verge:'#3d3223', grit:'#9c8763', mark:'rgba(28,21,13,.42)' }
 };
 /* off-track surface per stage theme */
 var OFFTRACK = {
-  forest:{ name:'GRASS', grip:0.62, roll:2.30, color:'#2f4023', dust:'#4d6b32' },
-  mountain:{ name:'DIRT', grip:0.66, roll:2.10, color:'#4a4a45', dust:'#7a7a70' },
-  snowpass:{ name:'DEEP SNOW', grip:0.55, roll:2.70, color:'#e9f2fa', dust:'#ffffff' }
+  forest:{ name:'GRASS', grip:0.62, roll:2.30, color:'#355023', dust:'#557a35', grit:'#6b8f3e' },
+  mountain:{ name:'DIRT', grip:0.66, roll:2.10, color:'#4a4a45', dust:'#7a7a70', grit:'#8b8b80' },
+  snowpass:{ name:'DEEP SNOW', grip:0.55, roll:2.70, color:'#e9f2fa', dust:'#ffffff', grit:'#ffffff' }
 };
 
 /* ---------------------------------------------------------------- cars */
@@ -132,7 +143,7 @@ var STAGES = [
   {
     id:'s2', name:'COL DE GRANITE', theme:'mountain', surface:'tarmac', width:120,
     country:'MOUNTAIN TARMAC · 9.5 KM', refSpeed:168, payout:1100, sky:'#3a3a36',
-    req:{ handling:44, label:'HANDLING 44+' },
+    req:{ handling:44 },
     segs:[
       {len:480,r:0},{len:300,r:300},{len:200,r:0},{len:250,r:-115,note:'HAIRPIN LEFT'},
       {len:180,r:0},{len:260,r:125,note:'HAIRPIN RIGHT'},{len:220,r:0},{len:340,r:-360},
@@ -148,7 +159,7 @@ var STAGES = [
   {
     id:'s3', name:'VITKULL PASS', theme:'snowpass', surface:'snow', width:146,
     country:'SNOW PASS · 11.8 KM', refSpeed:225, payout:1800, sky:'#dbe8f4',
-    req:{ handling:58, topSpeed:170, label:'HANDLING 58+ · 170 KM/H+' },
+    req:{ handling:58, topSpeed:170 },
     segs:[
       {len:520,r:0},{len:400,r:-450},{len:300,r:0},{len:360,r:380},{len:280,r:0,note:'CREST'},
       {len:420,r:0,s:'ice',note:'ICE! CAUTION'},{len:320,r:-280},{len:240,r:0},
@@ -163,6 +174,49 @@ var STAGES = [
   }
 ];
 function stageDef(id){ for(var i=0;i<STAGES.length;i++){ if(STAGES[i].id===id) return STAGES[i]; } return STAGES[0]; }
+
+/* ------------------------------------------------------ device + quality
+   Three graphics tiers. LOW keeps a tired phone at a playable frame rate,
+   MEDIUM is the mobile default, HIGH is what a desktop or a recent phone
+   gets. Everything expensive reads its budget from here rather than from
+   magic numbers scattered through the renderer, so changing tier is one
+   lookup and nothing has to be rebuilt.
+
+     px         css pixels per world-buffer pixel — the internal render
+                resolution, and by far the biggest lever on both frame rate
+                and how chunky the pixel art reads
+     parts      particle ceiling
+     skids      tyre-mark ceiling
+     lights     0 none, 1 headlight pool, 2 pool + cone
+     detail     ground-clutter density multiplier
+     drawAhead  scenery draw distance, in track nodes                    */
+var QUALITY = {
+  low:    { name:'LOW',    px:3.0, parts:70,  skids:240, lights:1, detail:0.45, drawAhead:60,  glow:0 },
+  medium: { name:'MEDIUM', px:2.2, parts:170, skids:520, lights:1, detail:0.80, drawAhead:90,  glow:1 },
+  high:   { name:'HIGH',   px:1.7, parts:320, skids:900, lights:2, detail:1.00, drawAhead:124, glow:1 }
+};
+var IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints||0) > 0;
+function defaultQuality(){ return IS_TOUCH ? 'medium' : 'high'; }
+function GFX(){ return QUALITY[save.settings.quality] || QUALITY.medium; }
+
+/* ---------------------------------------------------------------- units
+   The dash reads in MPH, as on the reference cluster, but the stage gates
+   and the garage have always talked in km/h. The physics stays in world
+   units either way; these are the only conversions in the game. */
+var U_KMH = 0.42, U_MPH = 0.261;
+function speedUnit(){ return save.settings.units === 'kmh' ? 'KMH' : 'MPH'; }
+function speedFactor(){ return save.settings.units === 'kmh' ? U_KMH : U_MPH; }
+function toSpeed(fwd){ return Math.abs(fwd)*speedFactor(); }
+/* dial full scale, rounded up to a whole major division */
+function speedStep(){ return save.settings.units === 'kmh' ? 40 : 20; }
+function speedDialMax(topSpeed){
+  var step = speedStep();
+  return Math.max(step*4, Math.ceil(topSpeed*speedFactor()*1.12/step)*step);
+}
+function haptic(ms){
+  if(!save || !save.settings.haptics) return;
+  try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){}
+}
 
 /* ---------------------------------------------------------------- save */
 var save = null;
@@ -179,7 +233,9 @@ function freshCarSave(def){
   };
 }
 function freshSave(){
-  var s = { v:1, money:1200, current:'hatch', cars:{}, stages:{}, settings:{ control:'buttons', audio:true, autoGas:false, tiltSens:1, transmission:'auto' } };
+  var s = { v:1, money:1200, current:'hatch', cars:{}, stages:{},
+            settings:{ control:'buttons', audio:true, autoGas:false, tiltSens:1,
+                       transmission:'auto', quality:defaultQuality(), units:'mph', haptics:true } };
   for(var i=0;i<CARS.length;i++) s.cars[CARS[i].id] = freshCarSave(CARS[i]);
   for(var j=0;j<STAGES.length;j++) s.stages[STAGES[j].id] = { best:null, done:false };
   return s;
@@ -221,6 +277,11 @@ function loadSave(){
     /* saves written before manual existed simply stay on automatic */
     if(s.settings.transmission === 'manual' || s.settings.transmission === 'auto')
       save.settings.transmission = s.settings.transmission;
+    /* likewise for the settings this pass added: an older save just takes
+       the device-appropriate default rather than being thrown away */
+    if(QUALITY[s.settings.quality]) save.settings.quality = s.settings.quality;
+    if(s.settings.units === 'mph' || s.settings.units === 'kmh') save.settings.units = s.settings.units;
+    if(typeof s.settings.haptics === 'boolean') save.settings.haptics = s.settings.haptics;
   }
 }
 function persist(){
@@ -294,6 +355,18 @@ function stageUnlocked(st){
   return true;
 }
 function targetTime(st){ return st.len ? st.len / st.refSpeed : 60; }
+
+/* Gates are stored in km/h because that is what the stats have always been
+   in; the label is generated so it follows the units setting. */
+function reqLabel(st){
+  if(!st.req) return '';
+  var out = [];
+  if(st.req.handling) out.push('HANDLING ' + st.req.handling + '+');
+  if(st.req.topSpeed)
+    out.push(Math.round(st.req.topSpeed * (save.settings.units === 'kmh' ? 1 : 0.6214)) +
+             ' ' + speedUnit() + '+');
+  return out.join(' · ');
+}
 
 function fmtTime(t){
   if(t==null || !isFinite(t)) return '--:--.--';
@@ -469,6 +542,10 @@ function buildScenery(track){
 }
 function mkProp(x,y,type,size,node,solid,seed){
   return { x:x, y:y, type:type, size:size, node:node, solid:solid, seed:seed,
+           /* what it looks like vs what it collides as: a conifer's canopy
+              spreads well past the trunk, so the drawn size is bigger than
+              the hit radius and clipping the outer branches is free */
+           vis: size * (type===0 ? 1.85 : type===4 ? 1.45 : 1.15) * (0.72 + seed*0.62),
            r: type===0 ? size*0.42 : size*0.55, hit:0 };
 }
 
@@ -514,115 +591,17 @@ function angDiff(a,b){
 
    Each car has TWO sprite sets:
 
-     1. TOP-DOWN  — a flat character map, used for in-race rendering. Kept
-        deliberately simple: it is only ever seen small and rotating.
+     1. TOP-DOWN  — built by src/carsprite.js. A pseudo-3D body: silhouette,
+        curvature ramp, then the panels that stand proud of it (hood, glass,
+        roof, boot, spoiler, mirrors, lamps). Authored in sprite pixels and
+        blitted into the low-resolution world buffer at roughly 1:1, so a
+        sprite pixel is a world pixel.
 
      2. SIDE VIEW — built from independent, individually swappable layers
         (chassis / wheels / hood / livery / glass / trim). A later pass can
         replace one layer — say WHEEL_STYLES.rally or SIDE_LAYERS.hood —
         or nudge opts.rideHeight, without touching any of the others.
-
-   Top-down legend:
-     B body      H body highlight   S shaded body panel   D dark trim
-     G glass     K black            T tyre                C chrome
-     Y headlight R taillight        W white               . transparent
    ========================================================================= */
-
-var CAR_SPRITES = {
-  /* KESTREL 1.6 GTI — narrow track, tall glasshouse, short overhangs */
-  hatch: [
-    '................',
-    '....KKKKKKKK....',
-    '...KYYKKKKYYK...',
-    '...CBBBBBBBBC...',
-    '..TBBBBBBBBBBT..',
-    '..TBBBHHHHBBBT..',
-    '..TBBBHHHHBBBT..',
-    '..TBBBBBBBBBBT..',
-    '...BBBBBBBBBB...',
-    '...BSSSSSSSSB...',
-    '...BGGGGGGGGB...',
-    '...BGGGGGGGGB...',
-    '..DBGGGGGGGGBD..',
-    '...BBBBBBBBBB...',
-    '...BBBBBBBBBB...',
-    '...BBBBBBBBBB...',
-    '...BBBBBBBBBB...',
-    '...BGGGGGGGGB...',
-    '...BGGGGGGGGB...',
-    '...BSSSSSSSSB...',
-    '..TBBBBBBBBBBT..',
-    '..TBBBBBBBBBBT..',
-    '..TBBBBBBBBBBT..',
-    '...BBBBBBBBBB...',
-    '...CBBBBBBBBC...',
-    '...KRRKKKKRRK...',
-    '....KKKKKKKK....',
-    '................'
-  ],
-  /* FALCON RS EVO — wider track, bonnet vents, boot spoiler */
-  rally: [
-    '................',
-    '...KKKKKKKKKK...',
-    '..KYYKKKKKKYYK..',
-    '..CBBBBBBBBBBC..',
-    '.TTBBBBBBBBBBTT.',
-    '.TTBBBSSSSBBBTT.',
-    '.TTBBBSSSSBBBTT.',
-    '.TTBBBBBBBBBBTT.',
-    '..BBBBBBBBBBBB..',
-    '..BSSSSSSSSSSB..',
-    '..BGGGGGGGGGGB..',
-    '..BGGGGGGGGGGB..',
-    '.DBBGGGGGGGGBBD.',
-    '..BBBBBBBBBBBB..',
-    '..BBBHHHHHHBBB..',
-    '..BBBHHHHHHBBB..',
-    '..BBBBBBBBBBBB..',
-    '..BGGGGGGGGGGB..',
-    '..BGGGGGGGGGGB..',
-    '..BSSSSSSSSSSB..',
-    '.TTBBBBBBBBBBTT.',
-    '.TTBBBBBBBBBBTT.',
-    '.TTBBBBBBBBBBTT.',
-    '..BBBBBBBBBBBB..',
-    '..CBBBBBBBBBBC..',
-    '..KRRKKKKKKRRK..',
-    '.SSSSSSSSSSSSSS.',
-    '.SS..........SS.'
-  ],
-  /* VANTOR WRC-X — box arches, roof scoop, full-width wing */
-  wrc: [
-    '..KKKKKKKKKKKK..',
-    '.KKKKKKKKKKKKKK.',
-    '.KYYKKSSSSKKYYK.',
-    '.CBBBBBBBBBBBBC.',
-    'TTBBBBBBBBBBBBTT',
-    'TTBBBBDDDDBBBBTT',
-    'TTBBBBDDDDBBBBTT',
-    'TTBBBBBBBBBBBBTT',
-    '.BBBBBBBBBBBBBB.',
-    '.BSSSSSSSSSSSSB.',
-    'BBBGGGGGGGGGGBBB',
-    'BBBGGGGGGGGGGBBB',
-    'DBBBGGGGGGGGBBBD',
-    'BBBBBBBBBBBBBBBB',
-    'BBBBBBDDDDBBBBBB',
-    'BBBBBBDDDDBBBBBB',
-    'BBBBBBBBBBBBBBBB',
-    'BBBGGGGGGGGGGBBB',
-    '.BBGGGGGGGGGGBB.',
-    '.BSSSSSSSSSSSSB.',
-    'TTBBBBBBBBBBBBTT',
-    'TTBBBBBBBBBBBBTT',
-    'TTBBBBBBBBBBBBTT',
-    '.BBBBBBBBBBBBBB.',
-    '.CBBBBBBBBBBBBC.',
-    '.KRRKKKKKKKKRRK.',
-    'SSSSSSSSSSSSSSSS',
-    'SS...SSSSSS...SS'
-  ]
-};
 
 function shade(hex, amt){
   var c = hex.replace('#','');
@@ -634,104 +613,64 @@ function shade(hex, amt){
   return 'rgb('+r+','+g+','+b+')';
 }
 
-/* One palette derived from the chosen paint, shared by both sprite sets. */
+/* One palette derived from the chosen paint, shared by both sprite sets.
+   The top-down renderer needs a few extra steps on the ramp — a roof that
+   sits above the body, a third glass tone, a specular catch — so they live
+   here too and both sets keep reading one palette. */
 function carPalette(paint, damageTier){
   return {
     body:   paint,
     lite:   shade(paint, 0.13),
     hi:     shade(paint, 0.26),
+    spec:   shade(paint, 0.40),
+    roof:   shade(paint, 0.20),
+    roofHi: shade(paint, 0.33),
     dark:   shade(paint,-0.15),
     darker: shade(paint,-0.28),
     deep:   shade(paint,-0.44),
     accent: ACCENTS[paint] || '#ffffff',
-    glass:      damageTier>=1 ? '#8ba0af' : '#4d6b86',
-    glassLite:  damageTier>=1 ? '#a9bcc9' : '#6d8ba6',
-    tyre:'#141516', tyreLite:'#26292c',
+    glass:      damageTier>=1 ? '#8ba0af' : '#33506b',
+    glassLite:  damageTier>=1 ? '#a9bcc9' : '#5f829f',
+    glassDark:  damageTier>=1 ? '#68808f' : '#1d3247',
+    tyre:'#171a1c', tyreLite:'#2b3034', tyreDark:'#0b0d0f',
+    vent:'#2a2f34',
     chrome:'#b9bec4', chromeDark:'#767b82',
-    lamp:'#ffe9a8', tail:'#e8352a', black:'#171a1c', white:'#f2f2ea'
+    lamp:'#fff4c4', lampHot:'#ffd45c', tail:'#f2402f', tailDark:'#8e1f18',
+    crack:'rgba(226,236,246,.85)', scorch:'#2b241d', dent:'#4a4038',
+    black:'#111417', white:'#f2f2ea'
   };
 }
 
-/* livery predicates operate in top-down sprite-pixel space */
-function liveryColorAt(livery, px, py, w, h, accent){
-  var mid = w/2 - 0.5;
+/* Livery predicates, in top-down sprite-pixel space. `halfw` is the body
+   half-width on that row, so a side stripe follows the body taper instead
+   of running off the edge on the narrow rows. */
+function liveryColorAt(livery, px, py, w, h, accent, halfw){
+  var mid = (w-1)/2, d = px - mid, t = py/(h-1);
   if(livery===1){                                   /* twin bonnet-to-boot stripes */
-    var d = Math.abs(px - mid);
-    if(d >= 1 && d <= 2.5) return accent;
-  } else if(livery===2){                            /* rally #7 — side panels + door roundel */
-    if(px <= 3 || px >= w-4) return accent;
-    if(py >= 12 && py <= 16 && (px <= 5 || px >= w-6)) return accent;
+    var ad = Math.abs(d);
+    if(ad >= 1.2 && ad <= 3.2) return accent;
+  } else if(livery===2){                            /* rally #7 — side panels */
+    if(halfw && Math.abs(d) >= halfw - 2.2) return accent;
+    if(t > 0.44 && t < 0.62 && halfw && Math.abs(d) >= halfw - 4.2) return accent;
   } else if(livery===3){                            /* chevron */
-    var k = Math.abs(px - mid);
-    var band = py - k*1.25;
+    var band = py - Math.abs(d)*1.25;
     if(band > 2.5 && band < 5.5) return accent;
-    if(band > 11 && band < 14) return accent;
-    if(band > 19.5 && band < 22.5) return accent;
+    if(band > 12 && band < 15) return accent;
+    if(band > 21.5 && band < 24.5) return accent;
   }
   return null;
 }
 
-/* Returns {canvas, w, h, scale} — a top-down car pointing UP (-Y). */
-function renderCarSprite(carId, paint, livery, damageTier, scale){
-  var map = CAR_SPRITES[carDef(carId).sprite];
-  var h = map.length, w = map[0].length;
-  scale = scale || 2;
-  var cv = document.createElement('canvas');
-  cv.width = w*scale; cv.height = h*scale;
-  var g = cv.getContext('2d');
-  g.imageSmoothingEnabled = false;
-  var c = carPalette(paint, damageTier);
-
-  for(var y=0;y<h;y++){
-    var row = map[y];
-    for(var x=0;x<w;x++){
-      var ch = row[x];
-      if(ch === '.') continue;
-      var col = null;
-      if(ch==='B' || ch==='H'){
-        col = liveryColorAt(livery,x,y,w,h,c.accent);
-        if(!col){
-          /* light source from the top-left, for a bit of 16-bit modelling */
-          col = ch==='H' ? c.hi : (x < 3 ? c.lite : (x > w-4 ? c.dark : c.body));
-        }
-      }
-      else if(ch==='S') col = c.darker;
-      else if(ch==='D') col = c.deep;
-      else if(ch==='G') col = c.glass;
-      else if(ch==='K') col = c.black;
-      else if(ch==='T') col = c.tyre;
-      else if(ch==='C') col = c.chromeDark;
-      else if(ch==='Y') col = c.lamp;
-      else if(ch==='R') col = c.tail;
-      else if(ch==='W') col = c.white;
-      g.fillStyle = col;
-      g.fillRect(x*scale, y*scale, scale, scale);
-    }
-  }
-
-  /* damage: cracked screen, then dents & scorch */
-  if(damageTier>=1){
-    g.fillStyle = 'rgba(20,24,28,.85)';
-    var cx0 = Math.floor(w/2)*scale;
-    for(var i=0;i<7;i++){
-      g.fillRect(cx0 - Math.round((i-3)*0.9)*scale, (10 + Math.floor(i*0.3))*scale, scale, scale);
-    }
-  }
-  if(damageTier>=2){
-    g.fillStyle = 'rgba(30,26,22,.72)';
-    g.fillRect(2*scale, 6*scale, scale*2, scale*3);
-    g.fillRect((w-4)*scale, 20*scale, scale*2, scale*3);
-    g.fillRect(4*scale, 23*scale, scale*3, scale);
-    g.fillStyle = 'rgba(0,0,0,.5)';
-    g.fillRect(5*scale, 3*scale, scale*3, scale*2);
-  }
-  return { canvas:cv, w:cv.width, h:cv.height, scale:scale, pw:w, ph:h };
-}
-
-var spriteCache = {};
+/* Returns {canvas, shadow, w, h, pw, ph, lamps} — a car pointing UP (-Y). */
+var spriteCache = {}, spriteCacheN = 0;
 function getCarSprite(carId, paint, livery, damageTier, scale){
   var key = carId+'|'+paint+'|'+livery+'|'+damageTier+'|'+scale;
-  if(!spriteCache[key]) spriteCache[key] = renderCarSprite(carId,paint,livery,damageTier,scale);
+  if(!spriteCache[key]){
+    if(spriteCacheN > 60){ spriteCache = {}; spriteCacheN = 0; }
+    spriteCache[key] = renderCarTop(carDef(carId).sprite, carPalette(paint, damageTier),
+                                    livery, liveryColorAt, damageTier, scale || 1);
+    spriteCacheN++;
+  }
   return spriteCache[key];
 }
 
@@ -1478,64 +1417,74 @@ function getCarSide(carId, opts){
   return sideCache[key];
 }
 
-/* --------------------------------------------------------- scenery draw */
+/* --------------------------------------------------------- scenery draw
+   Seen from above, through the low-resolution buffer. Height is implied the
+   way a voxel scene implies it: a hard shadow offset down and to the right,
+   then stepped rings of colour offset up and to the LEFT, each one smaller
+   and brighter than the last, so the eye reads a stack of blocks rising out
+   of the ground rather than a flat decal.
+
+   The light direction — up and to the left — is the same one the car sprite
+   and the dashboard bezels use, which is most of what makes the three look
+   like they belong in one picture. */
+var TREE_PALS = {
+  forest:  [['#0d2210','#1d4020','#2f6330','#468b41','#5da84e'],
+            ['#0b1d0e','#193619','#28542a','#3c7638','#519145']],
+  mountain:[['#0f2412','#20421f','#33612e','#48803f','#5c9a4d'],
+            ['#101f13','#1d3a22','#2d5734','#40763f','#548d4c']],
+  snowpass:[['#0d1f18','#1c3a2c','#2f5a44','#8fb6c2','#e8f4fb'],
+            ['#0b1a14','#183226','#28503c','#7ea6b4','#dbeaf4']]
+};
+
 function drawProp(g, p, theme){
-  var s = p.size;
+  var s = p.vis || p.size;
+  var v = p.seed;
   g.save();
   g.translate(p.x, p.y);
-  if(p.type===0){                                   /* conifer, seen from above */
-    var v = p.seed;
-    var greens = theme==='snowpass'
-      ? [['#16301f','#2c5741','#4a7f63','#dceaf4'],['#132a1c','#26503b','#417559','#cfe2ef']]
-      : theme==='mountain'
-      ? [['#162c18','#2b4a2e','#436c44','#5b8a58'],['#132714','#264226','#3c633c','#527d4e']]
-      : [['#14300f','#254d24','#3d7a39','#569b47'],['#102a10','#1f451f','#356b33','#4c8c41']];
-    var pal = greens[v < 0.5 ? 0 : 1];
-    /* drop shadow, offset toward bottom-right for a 3/4 feel */
-    g.fillStyle = 'rgba(0,0,0,.33)';
-    g.fillRect(-s*0.42+s*0.20, -s*0.42+s*0.26, s*0.84, s*0.84);
-    /* trunk peeking out */
-    g.fillStyle = theme==='snowpass' ? '#4a3a2c' : '#3f2d1e';
-    g.fillRect(-s*0.09, s*0.20, s*0.18, s*0.30);
-    /* canopy: stepped square rings read as a chunky pixel conifer */
-    g.fillStyle = pal[0];
-    g.fillRect(-s*0.50, -s*0.50, s, s);
-    g.fillStyle = pal[1];
-    g.fillRect(-s*0.42, -s*0.46, s*0.80, s*0.80);
-    g.fillStyle = pal[2];
-    g.fillRect(-s*0.30, -s*0.38, s*0.56, s*0.56);
-    g.fillStyle = pal[3];
-    g.fillRect(-s*0.16, -s*0.30, s*0.26, s*0.26);
-  } else if(p.type===1){                            /* rock */
-    g.fillStyle = 'rgba(0,0,0,.30)';
-    g.fillRect(-s*0.45+2, -s*0.4+3, s*0.95, s*0.85);
-    g.fillStyle = '#6b6b66';
-    g.fillRect(-s*0.5, -s*0.45, s, s*0.9);
-    g.fillStyle = '#87877f';
-    g.fillRect(-s*0.4, -s*0.38, s*0.55, s*0.5);
-    g.fillStyle = '#4d4d49';
-    g.fillRect(-s*0.1, 0, s*0.55, s*0.42);
+
+  if(p.type===0){                                   /* conifer, from above */
+    var pal = (TREE_PALS[theme] || TREE_PALS.forest)[v < 0.5 ? 0 : 1];
+    g.fillStyle = 'rgba(0,0,0,.34)';                /* cast shadow */
+    g.fillRect(-s*0.34, -s*0.30, s*0.74, s*0.74);
+    g.fillStyle = theme==='snowpass' ? '#4a3a2c' : '#3a2a1c';
+    g.fillRect(-s*0.07, s*0.10, s*0.14, s*0.26);    /* trunk peeking out */
+    /* the canopy: five stepped rings climbing up and to the left */
+    g.fillStyle = '#0a1a0b';                        /* hard outline */
+    g.fillRect(-s*0.54, -s*0.54, s*1.08, s*1.08);
+    var rings = [[0.50,0.00,0], [0.40,-0.05,1], [0.30,-0.10,2], [0.20,-0.15,3], [0.10,-0.19,4]];
+    for(var i=0;i<rings.length;i++){
+      var rr = rings[i][0], off = rings[i][1]*s;
+      g.fillStyle = pal[rings[i][2]];
+      g.fillRect(-s*rr + off, -s*rr + off, s*rr*2, s*rr*2);
+    }
+  } else if(p.type===1){                            /* boulder */
+    g.fillStyle = 'rgba(0,0,0,.34)';
+    g.fillRect(-s*0.36, -s*0.28, s*0.86, s*0.76);
+    g.fillStyle = '#4f4f4a'; g.fillRect(-s*0.50, -s*0.45, s, s*0.92);
+    g.fillStyle = '#6f6f68'; g.fillRect(-s*0.50, -s*0.45, s*0.72, s*0.62);
+    g.fillStyle = '#8d8d84'; g.fillRect(-s*0.44, -s*0.40, s*0.42, s*0.36);
+    g.fillStyle = '#a8a89d'; g.fillRect(-s*0.40, -s*0.36, s*0.18, s*0.15);
   } else if(p.type===2){                            /* guardrail post */
-    g.fillStyle = 'rgba(0,0,0,.3)';
-    g.fillRect(-s*0.5+2, -s*0.3+2, s, s*0.6);
-    g.fillStyle = '#b9bcc0';
-    g.fillRect(-s*0.5, -s*0.3, s, s*0.6);
-    g.fillStyle = '#75797d';
-    g.fillRect(-s*0.5, s*0.1, s, s*0.2);
-  } else if(p.type===3){                            /* snow bank marker pole */
-    g.fillStyle = 'rgba(0,0,0,.18)';
-    g.fillRect(-s*0.3+2, -s*0.3+2, s*0.6, s*0.7);
-    g.fillStyle = '#f4f8fb';
-    g.fillRect(-s*0.3, -s*0.4, s*0.6, s*0.8);
-    g.fillStyle = '#e0483a';
-    g.fillRect(-s*0.3, -s*0.4, s*0.6, s*0.26);
-  } else {                                          /* bush / stump */
+    g.fillStyle = 'rgba(0,0,0,.34)';
+    g.fillRect(-s*0.40, -s*0.16, s, s*0.62);
+    g.fillStyle = '#3b4046'; g.fillRect(-s*0.50, -s*0.30, s, s*0.60);
+    g.fillStyle = '#c3c8ce'; g.fillRect(-s*0.50, -s*0.30, s, s*0.22);
+    g.fillStyle = '#7d838a'; g.fillRect(-s*0.50, -s*0.08, s, s*0.14);
+  } else if(p.type===3){                            /* snow marker pole */
     g.fillStyle = 'rgba(0,0,0,.22)';
-    g.fillRect(-s*0.45+2, -s*0.35+2, s*0.9, s*0.7);
-    g.fillStyle = theme==='snowpass' ? '#dfe9f2' : (theme==='mountain' ? '#4e5a3d' : '#3c5a2a');
-    g.fillRect(-s*0.5, -s*0.4, s, s*0.8);
-    g.fillStyle = theme==='snowpass' ? '#ffffff' : '#4d7135';
-    g.fillRect(-s*0.3, -s*0.3, s*0.5, s*0.45);
+    g.fillRect(-s*0.22, -s*0.20, s*0.62, s*0.72);
+    g.fillStyle = '#f4f8fb'; g.fillRect(-s*0.30, -s*0.42, s*0.60, s*0.84);
+    g.fillStyle = '#e0483a'; g.fillRect(-s*0.30, -s*0.42, s*0.60, s*0.28);
+    g.fillStyle = '#ffffff'; g.fillRect(-s*0.30, -s*0.42, s*0.22, s*0.14);
+  } else {                                          /* bush / stump */
+    var bp = theme==='snowpass' ? ['#b9cbd8','#dfe9f2','#ffffff']
+           : theme==='mountain' ? ['#33401f','#4a5a2c','#5f7239']
+           : ['#1f3a16','#33581f','#487431'];
+    g.fillStyle = 'rgba(0,0,0,.26)';
+    g.fillRect(-s*0.32, -s*0.24, s*0.76, s*0.66);
+    g.fillStyle = bp[0]; g.fillRect(-s*0.46, -s*0.40, s*0.92, s*0.80);
+    g.fillStyle = bp[1]; g.fillRect(-s*0.40, -s*0.36, s*0.62, s*0.56);
+    g.fillStyle = bp[2]; g.fillRect(-s*0.34, -s*0.32, s*0.30, s*0.26);
   }
   g.restore();
 }
@@ -1551,6 +1500,44 @@ var cv = document.getElementById('game');
 var ctx = cv.getContext('2d', { alpha:false });
 var view = { w:0, h:0, dpr:1 };
 
+/* ------------------------------------------------------- world buffer
+   The stage is not drawn straight to the screen. It goes into a small
+   offscreen canvas — a few hundred pixels across — which is then blitted
+   up with nearest-neighbour filtering. That one change does three things
+   at once:
+
+     * it is what makes the game look like pixel art rather than like
+       smooth vector shapes. Every tree, rut and dust puff lands on the
+       same coarse grid, and the car sprite is drawn at roughly 1:1 with
+       it, so sprite pixels and world pixels are the same size;
+     * it cuts the fill cost by the square of the scale factor, which is
+       most of the reason this runs at 60fps on a phone;
+     * it gives the graphics-quality setting something meaningful to
+       change — `px` is css pixels per buffer pixel.
+
+   The HUD, the dashboard and the countdown are drawn AFTER the blit, at
+   full device resolution, so nothing the player has to read is ever
+   resampled.                                                           */
+var world = { cv:null, g:null, w:0, h:0, scale:1, key:'' };
+
+function ensureWorld(){
+  var ps = GFX().px;
+  var bw = Math.max(80, Math.round(view.w/ps));
+  var bh = Math.max(60, Math.round(view.h/ps));
+  var key = bw+'x'+bh;
+  if(key !== world.key){
+    if(!world.cv) world.cv = document.createElement('canvas');
+    world.cv.width = bw; world.cv.height = bh;
+    world.g = world.cv.getContext('2d', { alpha:false });
+    world.key = key;
+  }
+  world.w = bw; world.h = bh;
+  /* the blit factor: one buffer pixel is this many css pixels */
+  world.scale = view.w/bw;
+  world.g.imageSmoothingEnabled = false;
+  return world;
+}
+
 function resize(){
   var dpr = Math.min(window.devicePixelRatio || 1, 2);
   var w = window.innerWidth, h = window.innerHeight;
@@ -1558,60 +1545,132 @@ function resize(){
   cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.imageSmoothingEnabled = false;
+  world.key = '';
+  dash.key = '';
 }
 window.addEventListener('resize', function(){ resize(); if(race) resetHudControls(); });
-window.addEventListener('orientationchange', function(){ setTimeout(resize, 250); });
+window.addEventListener('orientationchange', function(){
+  setTimeout(function(){ resize(); if(race) resetHudControls(); }, 250);
+});
 
-/* ----------------------------------------------------------------- input */
-var input = { left:false, right:false, gas:false, hbrake:false, steer:0, tiltRaw:0, tiltZero:0, tiltOn:false };
+/* =========================================================================
+   INPUT
 
-function bindPad(el, key){
-  var on = function(e){ e.preventDefault(); input[key] = true; el.classList.add('act'); audioKick(); };
-  var off = function(e){ if(e) e.preventDefault(); input[key] = false; el.classList.remove('act'); };
-  el.addEventListener('touchstart', on, {passive:false});
-  el.addEventListener('touchend', off, {passive:false});
-  el.addEventListener('touchcancel', off, {passive:false});
-  el.addEventListener('mousedown', on);
-  el.addEventListener('mouseup', off);
-  el.addEventListener('mouseleave', off);
+   The dashboard is the controller. Every touch control is a region of the
+   dash canvas rather than a DOM node, so there is one hit map, one piece of
+   art and nothing to keep in sync — and no browser buttons floating over a
+   pixel-art cockpit.
+
+   Pointer Events give multi-touch for free: both thumbs down at once is the
+   normal case (steer with the left, throttle with the right), so each
+   pointer id is tracked to the region it went down on and released from
+   exactly that one. Dragging off a control releases it, dragging onto
+   another engages it, which is what a thumb sliding between the throttle
+   and the handbrake expects to happen.
+   ========================================================================= */
+var input = { left:false, right:false, gas:false, brake:false, hbrake:false,
+              steer:0, tiltRaw:0, tiltZero:0, tiltOn:false };
+
+/* held regions, by pointer id */
+var pointers = {};
+/* how many pointers are holding each region — a region stays down until the
+   last finger on it lifts */
+var held = {};
+
+function regionDown(id){
+  if(!id) return;
+  held[id] = (held[id]||0) + 1;
+  if(held[id] > 1) return;
+  applyRegion(id, true);
 }
-bindPad(document.getElementById('p-left'),'left');
-bindPad(document.getElementById('p-right'),'right');
-bindPad(document.getElementById('p-gas'),'gas');
-bindPad(document.getElementById('p-hbrake'),'hbrake');
+function regionUp(id){
+  if(!id || !held[id]) return;
+  held[id]--;
+  if(held[id] > 0) return;
+  delete held[id];
+  applyRegion(id, false);
+}
+function applyRegion(id, down){
+  switch(id){
+    case 'steerL': input.left = down; break;
+    case 'steerR': input.right = down; break;
+    case 'gas':    input.gas = down; break;
+    case 'brake':  input.brake = down; break;
+    case 'hbrake': input.hbrake = down; break;
+    /* the shifters are taps, not holds */
+    case 'padUp':   if(down){ ctl.padUp = 1; shiftUp(); } break;
+    case 'padDn':   if(down){ ctl.padDn = 1; shiftDown(); } break;
+    case 'shiftUp': if(down){ ctl.shiftUp = 1; shiftUp(); } break;
+    case 'shiftDn': if(down){ ctl.shiftDn = 1; shiftDown(); } break;
+  }
+  if(down){
+    audioKick();
+    haptic(id === 'padUp' || id === 'padDn' || id === 'shiftUp' || id === 'shiftDn' ? 14 : 8);
+  }
+}
 
-/* the shift pads are taps, not holds, so they get their own binding */
-function bindTap(el, fn){
-  var fire = function(e){
+function bindDashInput(el){
+  var down = function(e){
+    var id = dashHit(e.clientX, e.clientY);
+    if(!id) return;                       /* the paddle overhang is mostly air */
     e.preventDefault();
-    el.classList.add('act');
-    setTimeout(function(){ el.classList.remove('act'); }, 90);
-    audioKick(); fn();
+    if(el.setPointerCapture) { try{ el.setPointerCapture(e.pointerId); }catch(err){} }
+    pointers[e.pointerId] = id;
+    regionDown(id);
   };
-  el.addEventListener('touchstart', fire, {passive:false});
-  el.addEventListener('mousedown', fire);
+  var move = function(e){
+    var was = pointers[e.pointerId];
+    if(was === undefined) return;
+    e.preventDefault();
+    var now = dashHit(e.clientX, e.clientY);
+    /* a tap control should not re-fire while the thumb wanders over it */
+    if(now === was) return;
+    regionUp(was);
+    if(now){ pointers[e.pointerId] = now; regionDown(now); }
+    else delete pointers[e.pointerId];
+  };
+  var up = function(e){
+    var was = pointers[e.pointerId];
+    if(was === undefined) return;
+    e.preventDefault();
+    delete pointers[e.pointerId];
+    regionUp(was);
+  };
+  el.addEventListener('pointerdown', down, {passive:false});
+  el.addEventListener('pointermove', move, {passive:false});
+  el.addEventListener('pointerup', up, {passive:false});
+  el.addEventListener('pointercancel', up, {passive:false});
+  el.addEventListener('lostpointercapture', up, {passive:false});
+  el.addEventListener('contextmenu', function(e){ e.preventDefault(); });
 }
-/* the paddle shifters are the real control; they call straight into the
-   Pass 3 gearbox and no-op in automatic, where they render dimmed */
-bindTap(document.getElementById('p-shiftup'), function(){ hudCtl.padUp = 1; shiftUp(); });
-bindTap(document.getElementById('p-shiftdn'), function(){ hudCtl.padDn = 1; shiftDown(); });
+
+/* Everything still held is released when the game is interrupted — pausing
+   with the throttle down must not leave it stuck open. */
+function releaseAllInput(){
+  pointers = {}; held = {};
+  input.left = input.right = input.gas = input.brake = input.hbrake = false;
+}
 
 document.addEventListener('keydown', function(e){
   if(e.repeat) return;
-  if(e.key==='e'||e.key==='E'||e.key==='x'||e.key==='X'){ shiftUp(); return; }
-  if(e.key==='q'||e.key==='Q'||e.key==='z'||e.key==='Z'){ shiftDown(); return; }
+  if(e.key==='e'||e.key==='E'||e.key==='x'||e.key==='X'){ ctl.padUp = 1; shiftUp(); return; }
+  if(e.key==='q'||e.key==='Q'||e.key==='z'||e.key==='Z'){ ctl.padDn = 1; shiftDown(); return; }
   if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A') input.left = true;
   else if(e.key==='ArrowRight'||e.key==='d'||e.key==='D') input.right = true;
-  else if(e.key==='ArrowUp'||e.key==='w'||e.key==='W'||e.key===' ') { input.gas = true; e.preventDefault(); }
-  else if(e.key==='ArrowDown'||e.key==='s'||e.key==='S'||e.key==='Shift') input.hbrake = true;
+  else if(e.key==='ArrowUp'||e.key==='w'||e.key==='W') input.gas = true;
+  else if(e.key==='ArrowDown'||e.key==='s'||e.key==='S') input.brake = true;
+  else if(e.key===' '||e.key==='Shift'){ input.hbrake = true; e.preventDefault(); }
   else if(e.key==='Escape'||e.key==='p'||e.key==='P'){ if(race && race.state!=='done') togglePause(); }
 });
 document.addEventListener('keyup', function(e){
   if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A') input.left = false;
   else if(e.key==='ArrowRight'||e.key==='d'||e.key==='D') input.right = false;
-  else if(e.key==='ArrowUp'||e.key==='w'||e.key==='W'||e.key===' ') input.gas = false;
-  else if(e.key==='ArrowDown'||e.key==='s'||e.key==='S'||e.key==='Shift') input.hbrake = false;
+  else if(e.key==='ArrowUp'||e.key==='w'||e.key==='W') input.gas = false;
+  else if(e.key==='ArrowDown'||e.key==='s'||e.key==='S') input.brake = false;
+  else if(e.key===' '||e.key==='Shift') input.hbrake = false;
 });
+/* a tab switch or a phone call arrives as a blur, not as key-ups */
+window.addEventListener('blur', function(){ releaseAllInput(); });
 
 /* tilt steering ------------------------------------------------------- */
 function orientationHandler(e){
@@ -1717,8 +1776,8 @@ function audioKick(){
   }catch(e){ actx = null; }
 }
 
-/* rpm is 0..1+ of redline, load is 0..1 throttle */
-function audioEngine(rpm, load, slip, running){
+/* rpm is 0..1+ of redline, load is 0..1 throttle, boost 0..1 turbo pressure */
+function audioEngine(rpm, load, slip, running, boost){
   if(!actx || !save.settings.audio){
     if(engineGain) engineGain.gain.value = 0;
     if(noiseGain) noiseGain.gain.value = 0;
@@ -1734,7 +1793,11 @@ function audioEngine(rpm, load, slip, running){
     oscWhine.frequency.setTargetAtTime(f*3.02, t, 0.035);
     /* filter opens with revs — flat drone at idle, growl at the top */
     toneFilter.frequency.setTargetAtTime(260 + r*r*2600, t, 0.05);
-    whineGain.gain.setTargetAtTime(0.05 + load*0.11 + r*0.05, t, 0.06);
+    /* the turbo rides on the gear whine: more pressure, more of it, and it
+       climbs in pitch as the impeller spools */
+    var bst = clamp(boost||0, 0, 1);
+    oscWhine.frequency.setTargetAtTime(f*(3.02 + bst*0.9), t, 0.04);
+    whineGain.gain.setTargetAtTime(0.05 + load*0.11 + r*0.05 + bst*0.10, t, 0.06);
     /* volume rises with both throttle and revs, weighted to revs */
     engineGain.gain.setTargetAtTime(running ? (0.045 + load*0.075 + r*r*0.055) : 0, t, 0.07);
     indFilter.frequency.setTargetAtTime(380 + r*1500, t, 0.05);
@@ -1797,854 +1860,914 @@ function audioBeep(freq, dur){
     o.connect(g); g.connect(masterGain); o.start(); o.stop(actx.currentTime+dur+0.02);
   }catch(e){}
 }
-function audioStopAll(){ audioEngine(0,0,0,false); }
+function audioStopAll(){ audioEngine(0,0,0,false,0); }
+
+/* the blow-off valve, on a lifted throttle with pressure still in the pipe */
+function audioBlowoff(power){
+  if(!actx || !save.settings.audio || !noiseBuf) return;
+  try{
+    var t = actx.currentTime;
+    var src = actx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    var bp = actx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.Q.value = 2.4;
+    bp.frequency.setValueAtTime(2600, t);
+    bp.frequency.exponentialRampToValueAtTime(900, t + 0.28);
+    var g = actx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.10*clamp(power,0.1,1), t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.30);
+    src.connect(bp); bp.connect(g); g.connect(masterGain);
+    src.start(t); src.stop(t + 0.32);
+  }catch(e){}
+}
 
 /* =========================================================================
-   HUD — INSTRUMENT CLUSTER AND CONTROLS
+   COCKPIT DASHBOARD
 
-   The cluster is one canvas sitting in the middle of the dash: pedal bay,
-   analog tachometer, gear panel with a shift bar and warning lamps, and an
-   analog speedometer with a digital readout. Everything is canvas-drawn —
-   no asset files anywhere in the game.
+   One canvas pinned to the bottom of the viewport, drawn as a single moulded
+   rally dash rather than a row of widgets floating over the game: steering
+   rockers under the left thumb, a gear selector, the tachometer, the shift
+   block, the speedometer, a boost gauge, the handbrake and the throttle and
+   brake pads under the right thumb, with a strip of tell-tales along the
+   bottom. The paddle shifters stand proud of the dash top edge.
 
-   Cost control: the parts that never change (panel shell, dial faces with
-   their ticks, numbers and redline arc, the pedal floor) are painted once
-   into an offscreen bitmap at device resolution and blitted as a single
-   image each frame. Only the needles, digits, gear, bar, lamps and pedal
-   plates are re-drawn live, so a frame is one drawImage plus a few dozen
-   primitives. The paddles and the handbrake keep their own small canvases
-   and still only repaint when their animation actually moves.
+   COORDINATES. Everything is laid out on a fixed grid DASH_GH rows tall,
+   with DASH_OVER further rows ABOVE the panel for the paddles. One grid unit
+   is `u` device pixels; the painter rounds every edge to a whole device pixel
+   so the art stays crisp at any scale, and the layout itself is resolution
+   independent — a phone and a desktop get the same composition, not the same
+   art scaled by CSS.
+
+   SAFE AREAS. The moulding is drawn full bleed so the dash reaches the screen
+   edges, but the layout box is inset by the device's safe-area insets, so no
+   control ever ends up under a notch or the home indicator.
+
+   COST. Everything that never moves — moulding, bezels, dial faces, every
+   label — is painted once into an offscreen bitmap at device resolution. A
+   frame is one blit plus the needles, digits, lamps and whichever controls
+   are currently pressed.
+
+   TOUCH. The layout doubles as the hit map: `L.regions` is the same list the
+   renderer draws from, so a control cannot drift away from the area that
+   activates it.
    ========================================================================= */
 
-var hudCtl = { gas:0, brake:0, hb:0, padUp:0, padDn:0,
-               drawnHb:-1, drawnUp:-1, drawnDn:-1, drawnMode:null,
-               drawnL:null, drawnR:null };
+var DASH_GH = 128;                 /* panel height, in grid rows */
+var DASH_OVER = 46;                /* rows above the panel, for the paddles */
 
-/* integer-scaled pixel painter for a small HUD canvas */
-function hudPainter(cv, gw, gh, cssScale){
-  var dpr = Math.min(window.devicePixelRatio || 1, 2);
-  var S = Math.max(1, Math.round(cssScale*dpr));
-  if(cv.width !== gw*S || cv.height !== gh*S){
-    cv.width = gw*S; cv.height = gh*S;
-    cv.style.width = (gw*cssScale)+'px';
-    cv.style.height = (gh*cssScale)+'px';
+var DC = {
+  shell:'#191d23', shellHi:'#3d4653', shellLo:'#0b0e13', seam:'#04060a',
+  edge:'#5a6673', edgeLo:'#232a33', vent:'#0d1116',
+  steel:'#96a0ab', steelHi:'#dbe3ea', steelLo:'#4d565f', steelDk:'#222932',
+  face:'#07090c', tick:'#ffffff', tickDim:'rgba(206,222,242,.52)',
+  num:'#f6f9ff', numDim:'#aebbcc',
+  red:'#cf2a1c', redHot:'#ff6a52', needle:'#e8382a',
+  amber:'#ffb432', amberLo:'#6d4a10',
+  green:'#4fe463', greenLo:'#17491f',
+  blue:'#5aa8ff', blueLo:'#183456',
+  white:'#eef4fb', off:'#1c222a', offLo:'#0f1419'
+};
+
+/* ------------------------------------------------------------- painters */
+/* Grid units in, whole device pixels out. Rounding both edges rather than
+   the origin and the size keeps adjacent rectangles butted together with no
+   seam and no half-pixel bleed. */
+function dashPainter(g, u, oy){
+  return function(x, y, w, h, col){
+    var x0 = Math.round(x*u), x1 = Math.round((x+w)*u);
+    var y0 = Math.round((y+oy)*u), y1 = Math.round((y+h+oy)*u);
+    if(x1 <= x0) x1 = x0+1;
+    if(y1 <= y0) y1 = y0+1;
+    g.fillStyle = col;
+    g.fillRect(x0, y0, x1-x0, y1-y0);
+  };
+}
+
+/* a raised moulding: lit along the top and left, shaded along the bottom
+   and right, which is the light direction the whole game uses */
+function raised(px, x, y, w, h, face, hi, lo){
+  px(x, y, w, h, face);
+  px(x, y, w, 1, hi || DC.edge);
+  px(x, y, 1, h, hi || DC.edge);
+  px(x, y+h-1, w, 1, lo || DC.seam);
+  px(x+w-1, y, 1, h, lo || DC.seam);
+}
+/* a recess cut into the moulding — the same bevel, inverted */
+function sunken(px, x, y, w, h, face){
+  px(x, y, w, h, face || DC.face);
+  px(x, y, w, 1, DC.seam);
+  px(x, y, 1, h, DC.seam);
+  px(x, y+h-1, w, 1, DC.edgeLo);
+  px(x+w-1, y, 1, h, DC.edgeLo);
+}
+function screw(px, x, y){
+  px(x, y, 2, 2, DC.steelLo);
+  px(x, y, 1, 1, DC.steelHi);
+  px(x+1, y+1, 1, 1, DC.seam);
+}
+/* The bitmap face is 5x7 with a 1px gap, so a string at scale `s` is
+   (6*len-1) by 7 grid units. Every label on the dash picks its scale by
+   asking what fits the box it has been given rather than by a magic
+   multiplier, which is what keeps the type consistent from a phone-sized
+   dash to a desktop one. */
+function fitScale(str, maxW, maxH){
+  var s = Math.min((maxW+1)/(str.length*6), maxH/7);
+  return Math.max(1, Math.floor(s));
+}
+function textH(scale){ return 7*scale; }
+
+/* a run of segment lamps — rev lights, throttle bar, boost bar */
+function lampRow(px, x, y, w, h, n, lit, on, off, gap){
+  gap = gap == null ? 1 : gap;
+  var sw = (w - (n-1)*gap)/n;
+  for(var i=0;i<n;i++){
+    var c = i < lit ? (typeof on === 'function' ? on(i, n) : on) : off;
+    px(x + i*(sw+gap), y, sw, h, c);
+    if(i < lit) px(x + i*(sw+gap), y, sw, 1, DC.white);
   }
-  var g = cv.getContext('2d');
-  g.imageSmoothingEnabled = false;
-  g.clearRect(0,0,cv.width,cv.height);
-  return function(x,y,w,h,col){
-    g.fillStyle = col;
-    g.fillRect(Math.round(x)*S, Math.round(y)*S,
-               Math.max(1,Math.round(w))*S, Math.max(1,Math.round(h))*S);
-  };
-}
-
-var HUDC = {
-  steel:'#9aa2a8', steelHi:'#c6ccd1', steelLo:'#5c6167',
-  dark:'#20262a', black:'#12161a', rubber:'#2b3036', rubberHi:'#3c434a',
-  amber:'#ffb432', amberLo:'#a8721a', green:'#7ef08a', red:'#ff5a4a',
-  dim:'#575e63', dimLo:'#3a4045',
-  /* instrument faces — near-black glass under a chrome bezel, with bright
-     white/periwinkle numbering for contrast at a glance */
-  bezelHi:'#eef3f8', bezel:'#7d8894', bezelLo:'#333b44',
-  tick:'#ffffff', tickDim:'rgba(196,212,234,.62)', tickRed:'#c2392c',
-  numSpd:'#f4f8ff', numTach:'#bcccff',
-  needle:'#ff3b2f', needleHot:'#ff6f52', needleSpd:'#ff3b2f',
-  lcd:'#05070a', lcdOn:'#f2f7ff', lampOff:'#39423a'
-};
-
-/* pixel painter that draws into an existing context at an offset, so the
-   chunky pixel art can share a canvas with the smooth dial faces */
-function pxInto(g, ox, oy, s){
-  return function(x,y,w,h,col){
-    g.fillStyle = col;
-    g.fillRect(ox + Math.round(x)*s, oy + Math.round(y)*s,
-               Math.max(1,Math.round(w))*s, Math.max(1,Math.round(h))*s);
-  };
-}
-function roundPath(g,x,y,w,h,r){
-  r = Math.min(r, w/2, h/2);
-  g.beginPath();
-  g.moveTo(x+r,y);
-  g.lineTo(x+w-r,y); g.quadraticCurveTo(x+w,y,x+w,y+r);
-  g.lineTo(x+w,y+h-r); g.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
-  g.lineTo(x+r,y+h); g.quadraticCurveTo(x,y+h,x,y+h-r);
-  g.lineTo(x,y+r); g.quadraticCurveTo(x,y,x+r,y);
-  g.closePath();
-}
-function hudFont(g, size, weight){
-  g.font = (weight||'bold') + ' ' + size.toFixed(1) +
-           'px ui-monospace,"SF Mono",Menlo,Consolas,monospace';
 }
 
 /* =========================================================================
-   GAUGE CLUSTER
+   LAYOUT
    ========================================================================= */
 
-/* Dial sweep: 135deg (bottom-left) clockwise through 270deg to 45deg
-   (bottom-right), the layout every road-car instrument uses. */
-var DIAL_A0 = Math.PI*0.75, DIAL_SWEEP = Math.PI*1.5;
-function dialAngle(v, min, max){ return DIAL_A0 + DIAL_SWEEP*clamp((v-min)/(max-min),0,1); }
-
-/* The tacho reads in thousands of rpm. race.rpm is a fraction of redline,
-   so redline sits exactly on the 7 mark and the dial runs on to 9 — the
-   same 1.0 threshold the gearbox and the shift bar use. */
-var TACH_MAX = 9, TACH_RED = 7, TACH_SCALE = 7;
-
-var cluster = {
-  cv:null, g:null, base:null, L:null, key:'',
-  S:1, W:0, H:0, kmhMax:240,
-  nRpm:0, nKmh:0, heat:0
-};
-
-/* Sizing.
-
-   The dash is deliberately kept to under a fifth of the screen height. This
-   is a chase cam: the car is drawn below the camera's focal point by however
-   far the camera is looking ahead, so it rides low on screen at speed. Every
-   pixel the dash grows is a pixel of road — and eventually of car — that the
-   player loses, so the panel hugs the bottom edge and stays short. Width
-   follows from the height, since the dials are circles. */
-var CLUSTER_BOTTOM = 4;                       /* px above the safe-area edge */
-
-/* Total horizontal safe-area inset. The side controls are positioned inside
-   it, so the panel has to budget for it too — a notched phone in landscape
-   hands back a good 40px on one side. Read off a probe rather than assumed,
-   and only ever called when the viewport changes. */
 var safeProbe = null;
-function safeInsetX(){
+function safeInsets(){
   if(!safeProbe){
     safeProbe = document.createElement('div');
     safeProbe.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;' +
       'visibility:hidden;pointer-events:none;' +
-      'padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right);';
+      'padding:env(safe-area-inset-top) env(safe-area-inset-right) ' +
+      'env(safe-area-inset-bottom) env(safe-area-inset-left);';
     document.body.appendChild(safeProbe);
   }
   var cs = getComputedStyle(safeProbe);
-  return (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+  return { t:parseFloat(cs.paddingTop)||0, r:parseFloat(cs.paddingRight)||0,
+           b:parseFloat(cs.paddingBottom)||0, l:parseFloat(cs.paddingLeft)||0 };
 }
 
-function clusterLayout(){
-  var vw = view.w || window.innerWidth || 800;
-  var vh = view.h || window.innerHeight || 400;
-  var pad = 3, gap = 4;
-  /* The side controls reach SIDE_REACH in from each edge (steering pads and
-     the outboard blade on the left, lever + throttle + blade on the right).
-     The panel is centred on the screen, so its half-width has to clear the
-     deeper of the two — hence the full width less twice that reach. */
-  var SIDE_REACH = 198;
-  var maxW = Math.max(140, vw - safeInsetX() - 2*SIDE_REACH - 8);
-  /* Columns run left to right exactly as on the reference cluster: footwell,
-     gear barrel, tacho, the little auxiliary stack, speedo. As fractions of
-     the dial diameter that is 0.46 + 0.50 + 1 + 0.34 + 1 = 3.30 D, plus the
-     padding and four gaps. Invert it for the largest dial the width allows —
-     though on any real phone it is the HEIGHT cap that binds, not this. */
-  var D = Math.min(clamp(Math.round(vh*0.185), 54, 88) - 2*pad,
-                   Math.floor((maxW - 2*pad - 4*gap)/3.40));
-  var wp = Math.round(D*0.46);                /* footwell */
-  var wg = Math.round(D*0.56);                /* gear barrel */
-  var wa = Math.round(D*0.38);                /* auxiliary stack */
-  var W = 2*pad + wp + wg + 2*D + wa + 4*gap;
-  var H = D + 2*pad;
-  var ps = Math.max(1, Math.floor(wp/24));    /* pedal-art pixel size */
+/* How tall the panel is in CSS pixels. Deep enough to read as a cockpit —
+   the reference gives the dash better than half the frame — but capped
+   against the width too, so an ultra-wide phone in landscape does not end
+   up with a dash so deep there is no road left to look at. */
+function dashPanelH(){
+  return Math.round(clamp(Math.min(view.h*0.42, view.w*0.34), 92, 300));
+}
+/* what the chase camera has to keep the car clear of */
+function dashBandH(){ return dash.L ? dash.L.panelCss : dashPanelH(); }
 
-  var x = pad;
-  var L = { W:W, H:H, pad:pad, gap:gap, D:D, R:D/2, dialY:pad + D/2 };
-  L.bayX = x; L.bayY = pad; L.wp = wp;
-  L.ps = ps; L.pgw = Math.floor(wp/ps); L.pgh = Math.floor(D/ps);
-  x += wp + gap;
-  L.gearX = x; L.wg = wg;
-  x += wg + gap;
-  L.tachX = x + D/2;
-  x += D + gap;
-  L.auxX = x; L.wa = wa;
-  x += wa + gap;
-  L.spdX = x + D/2;
+function dashLayout(){
+  var dpr = view.dpr;
+  var panelCss = dashPanelH();
+  var u = Math.max(1, (panelCss*dpr)/DASH_GH);
+  var si = safeInsets();
+  var GW = (view.w*dpr)/u;
+  var inL = (si.l*dpr)/u, inR = (si.r*dpr)/u, inB = (si.b*dpr)/u;
+  var UH = DASH_GH - inB;                       /* rows clear of system UI */
+  var x0 = inL + 4, x1 = GW - inR - 4;
 
-  /* gear barrel: label, big numeral, then the rev-range bar under it. The
-     barrel takes whatever height the bar leaves, so the numeral fills it. */
-  L.barH  = Math.max(5, Math.round(D*0.15));
-  L.gearH = D - L.barH - 3;
-  L.barY  = pad + L.gearH + 3;
+  var L = { u:u, GW:GW, UH:UH, over:DASH_OVER, panelCss:panelCss,
+            inL:inL, inR:inR, inB:inB, x0:x0, x1:x1, regions:[] };
 
-  /* auxiliary stack: paddle tell-tales, knob, then the warning lamps */
-  L.triH  = Math.max(5, Math.round(D*0.13));
-  L.knobY = pad + L.triH + 2;
-  L.knobR = Math.max(4, Math.round(D*0.13));
-  L.lampY = L.knobY + L.knobR*2 + 2;
-  L.lampH = Math.max(6, pad + D - L.lampY);
+  function reg(id, x, y, w, h, pad){
+    pad = pad || 0;
+    var o = { id:id, x:x, y:y, w:w, h:h,
+              hx:x-pad, hy:y-pad, hw:w+2*pad, hh:h+2*pad };
+    L.regions.push(o); L[id] = o;
+    return o;
+  }
+
+  /* ---- left thumb: the two steering rockers ---- */
+  var ah = clamp(UH*0.55, 32, 76), aw = clamp(ah*0.92, 28, 72);
+  var ay = UH - 4 - ah;
+  reg('steerL', x0, ay, aw, ah, 5);
+  reg('steerR', x0 + aw + 4, ay, aw, ah, 5);
+  L.leftEnd = x0 + aw*2 + 4;
+  L.tell = { x:x0 + 1, y:Math.max(3, ay - 15), w:aw*2 + 2, h:11 };
+
+  /* ---- right thumb: throttle in the corner, brake inboard, lever above ---- */
+  var pw = clamp(UH*0.44, 28, 66), phh = clamp(UH*0.46, 30, 68);
+  var py = UH - 4 - phh;
+  reg('gas',   x1 - pw, py, pw, phh, 5);
+  reg('brake', x1 - pw*2 - 4, py, pw, phh, 5);
+  var hbH = Math.max(20, py - 7);
+  reg('hbrake', x1 - pw, 4, pw, hbH, 4);
+  L.aux = { x:x1 - pw*2 - 4, y:4, w:pw, h:hbH };
+  L.rightStart = x1 - pw*2 - 8;
+
+  /* ---- centre: gear, tacho, shift block, speedo, boost ----
+     The dial size is whatever the width between the two thumb blocks allows.
+     On a narrow phone that leaves vertical slack, which goes to centring the
+     instruments rather than to inflating the tell-tale strip — the strip has
+     a height of its own so its glyphs stay the same size everywhere. */
+  var avail = Math.max(90, L.rightStart - L.leftEnd - 8);
+  var stripH = clamp(UH*0.15, 9, 22);
+  var instrH = UH - stripH - 7;
+  var D = clamp(Math.min((avail - 24)/3.60, instrH), 40, 150);
+  var gearW = D*0.42, shiftW = D*0.68, boostD = D*0.54;
+  var cw = gearW + shiftW + boostD + 2*D + 20;
+  var cx = L.leftEnd + 4 + Math.max(0, (avail - cw)/2);
+  var top = 3 + Math.max(0, (instrH - D)/2);
+  L.D = D; L.R = D/2; L.dialY = top + D/2;
+  L.gear  = { x:cx, y:top+1, w:gearW, h:D-2 };            cx += gearW + 5;
+  L.tachX = cx + D/2;                                     cx += D + 5;
+  L.shift = { x:cx, y:top+1, w:shiftW, h:D-2 };
+  reg('shiftDn', cx + 2,            top + 13, shiftW/2 - 3, D*0.24, 3);
+  reg('shiftUp', cx + shiftW/2 + 1, top + 13, shiftW/2 - 3, D*0.24, 3);
+  L.revBar = { x:cx + 3, y:top + 15 + D*0.24, w:shiftW - 6, h:Math.max(4, D*0.10) };
+  L.readout = { x:cx + 2, y:top + D - D*0.30 - 2, w:shiftW - 4, h:D*0.30 };
+                                                          cx += shiftW + 5;
+  L.spdX = cx + D/2;                                      cx += D + 5;
+  L.boost = { cx:cx + boostD/2, cy:top + D - boostD/2 - 1, r:boostD/2 };
+
+  /* ---- tell-tale strip along the bottom of the centre section ---- */
+  L.strip = { x:L.leftEnd + 4, y:UH - stripH - 3, w:L.rightStart - L.leftEnd - 8,
+              h:stripH };
+
+  /* ---- paddles, standing above the dash top edge ---- */
+  var kw = clamp(D*0.50, 24, 60), kh = clamp(DASH_OVER*0.94, 22, 54);
+  reg('padDn', L.leftEnd + 6,          4 - kh, kw, kh, 7);
+  reg('padUp', L.rightStart - 6 - kw,  4 - kh, kw, kh, 7);
+
   return L;
 }
 
-/* How much of the screen bottom the dash band occupies, so the chase camera
-   can keep the car clear of it. Mirrors the CSS that positions the panel. */
-function clusterBandH(){
-  return (cluster.H || clusterLayout().H) + CLUSTER_BOTTOM;
-}
+/* =========================================================================
+   GAUGES — the dial faces. Circles and needles are the one place the dash
+   is not pixel art: a stepped circle at this size reads as a mistake rather
+   than a style, and the reference cluster's bezels are smooth too. The
+   numerals are the bitmap face, so the lettering still matches the HUD.
+   ========================================================================= */
 
-/* --------------------------------------------------------- static face */
-function drawDialFace(g, cx, cy, R, o){
-  var i, v, a, maj, red, r0, r1, len;
-  var num = o.num || HUDC.numSpd;
+var DIAL_A0 = Math.PI*0.75, DIAL_SWEEP = Math.PI*1.5;
+function dialAngle(v, min, max){ return DIAL_A0 + DIAL_SWEEP*clamp((v-min)/(max-min),0,1); }
 
-  /* --- chrome bezel. A polished ring reads as a sweep of light around the
-     circumference, not a flat tint: bright at the top left where the sky
-     catches it, dark through the middle, picking up a second, weaker
-     highlight at the bottom right as it turns back up. --- */
-  var bw = Math.max(2.4, R*0.13);
-  var bez = g.createLinearGradient(cx - R*0.75, cy - R*0.85, cx + R*0.68, cy + R*0.82);
-  bez.addColorStop(0.00, '#ffffff');
-  bez.addColorStop(0.13, HUDC.bezelHi);
-  bez.addColorStop(0.30, '#b0bcc8');
-  bez.addColorStop(0.47, '#6d7884');
-  bez.addColorStop(0.62, '#414a55');
-  bez.addColorStop(0.79, '#98a4b1');
-  bez.addColorStop(0.92, '#5c6672');
-  bez.addColorStop(1.00, HUDC.bezelLo);
+/* The tacho reads in thousands of rpm. race.rpm is a fraction of redline,
+   so redline sits exactly on the 7 and the dial runs on to 8. */
+var TACH_MAX = 8, TACH_RED = 7, TACH_SCALE = 7;
+
+function drawGauge(g, px, L, gcx, gcy, gR, o){
+  var u = L.u, oy = L.over;
+  var cx = gcx*u, cy = (gcy+oy)*u, R = gR*u;
+  var i, v, a, maj, red, r0, r1;
+
+  /* --- bezel: a polished ring, bright where the sky catches it top left,
+     dark through the middle, a weaker second catch bottom right --- */
+  var bw = Math.max(2.5, R*0.115);
+  var bez = g.createLinearGradient(cx-R*0.75, cy-R*0.85, cx+R*0.68, cy+R*0.82);
+  bez.addColorStop(0.00,'#ffffff'); bez.addColorStop(0.12,'#dbe3ea');
+  bez.addColorStop(0.30,'#a9b5c1'); bez.addColorStop(0.48,'#69747f');
+  bez.addColorStop(0.63,'#3a434c'); bez.addColorStop(0.80,'#93a0ad');
+  bez.addColorStop(0.92,'#586371'); bez.addColorStop(1.00,'#252d36');
   g.beginPath(); g.arc(cx,cy,R,0,TAU); g.fillStyle = bez; g.fill();
-  /* crisp rim catch just inside the outer edge, and a dark inner shoulder */
   g.beginPath(); g.arc(cx,cy,R-bw*0.22,Math.PI*1.02,Math.PI*1.82);
-  g.lineWidth = Math.max(0.7, bw*0.20); g.strokeStyle = 'rgba(255,255,255,.72)'; g.stroke();
-  g.beginPath(); g.arc(cx,cy,R-bw*0.80,0,TAU);
-  g.lineWidth = Math.max(0.8, bw*0.30); g.strokeStyle = 'rgba(10,14,20,.75)'; g.stroke();
-  g.beginPath(); g.arc(cx,cy,R-bw,0,TAU); g.fillStyle = '#010204'; g.fill();
+  g.lineWidth = Math.max(0.8, bw*0.20); g.strokeStyle = 'rgba(255,255,255,.72)'; g.stroke();
+  g.beginPath(); g.arc(cx,cy,R-bw*0.82,0,TAU);
+  g.lineWidth = Math.max(0.9, bw*0.28); g.strokeStyle = 'rgba(6,9,14,.8)'; g.stroke();
 
-  /* --- near-black glass, vignetted so the middle lifts slightly --- */
-  var fr = R - bw - 0.5;
-  var face = g.createRadialGradient(cx - R*0.30, cy - R*0.36, R*0.03, cx, cy, R*1.05);
-  face.addColorStop(0.00, '#1d242e');
-  face.addColorStop(0.42, '#0b0f15');
-  face.addColorStop(1.00, '#020406');
+  /* --- face: near-black glass, lifted a little off centre --- */
+  var fr = R - bw;
+  var face = g.createRadialGradient(cx-R*0.30, cy-R*0.36, R*0.03, cx, cy, R*1.05);
+  face.addColorStop(0.00,'#1b222c'); face.addColorStop(0.42,'#0a0e14');
+  face.addColorStop(1.00,'#020406');
   g.beginPath(); g.arc(cx,cy,fr,0,TAU); g.fillStyle = face; g.fill();
 
-  /* Both dials reserve the same outer ring so they read as a matched pair;
-     on the tacho it carries the redline band. */
-  var trackR = fr - Math.max(1.4, R*0.055), trackW = Math.max(2, R*0.075);
+  /* --- scale track, carrying the redline band on the tacho --- */
+  var trackR = fr - Math.max(1.6, R*0.05), trackW = Math.max(2, R*0.07);
   var a0 = dialAngle(o.min,o.min,o.max), a1 = dialAngle(o.max,o.min,o.max);
   g.lineCap = 'butt';
-  g.beginPath(); g.arc(cx,cy,trackR, a0, a1);
-  g.lineWidth = trackW; g.strokeStyle = 'rgba(170,196,232,.13)'; g.stroke();
-  if(o.redFrom != null){                       /* redline band */
+  g.beginPath(); g.arc(cx,cy,trackR,a0,a1);
+  g.lineWidth = trackW; g.strokeStyle = 'rgba(168,196,232,.12)'; g.stroke();
+  if(o.redFrom != null){
     var ra = dialAngle(o.redFrom,o.min,o.max);
-    g.beginPath(); g.arc(cx,cy,trackR, ra, a1);
-    g.lineWidth = trackW + 2; g.strokeStyle = 'rgba(255,59,47,.25)'; g.stroke();
-    g.beginPath(); g.arc(cx,cy,trackR, ra, a1);
-    g.lineWidth = trackW; g.strokeStyle = HUDC.needle; g.stroke();
+    g.beginPath(); g.arc(cx,cy,trackR,ra,a1);
+    g.lineWidth = trackW + 2; g.strokeStyle = 'rgba(232,56,42,.24)'; g.stroke();
+    g.beginPath(); g.arc(cx,cy,trackR,ra,a1);
+    g.lineWidth = trackW; g.strokeStyle = DC.red; g.stroke();
   }
 
+  /* --- ticks --- */
   var steps = Math.round((o.max-o.min)/o.minor);
+  var majEvery = Math.round(o.major/o.minor);
   for(i=0;i<=steps;i++){
     v = o.min + i*o.minor;
-    maj = (i % Math.round(o.major/o.minor)) === 0;
+    maj = (i % majEvery) === 0;
     red = o.redFrom != null && v >= o.redFrom - 1e-6;
     a = dialAngle(v,o.min,o.max);
-    len = maj ? R*0.125 : R*0.065;
     r1 = trackR - trackW/2 - 1;
-    r0 = r1 - len;
+    r0 = r1 - (maj ? R*0.13 : R*0.062);
     g.beginPath();
     g.moveTo(cx+Math.cos(a)*r0, cy+Math.sin(a)*r0);
     g.lineTo(cx+Math.cos(a)*r1, cy+Math.sin(a)*r1);
-    g.lineWidth = maj ? Math.max(1.4, R*0.05) : 1;
-    g.strokeStyle = red ? (maj ? HUDC.needle : HUDC.tickRed) : (maj ? HUDC.tick : HUDC.tickDim);
+    g.lineWidth = maj ? Math.max(1.6, R*0.048) : Math.max(1, R*0.016);
+    g.strokeStyle = red ? (maj ? DC.redHot : 'rgba(226,80,60,.7)')
+                        : (maj ? DC.tick : DC.tickDim);
     g.stroke();
-    if(maj && (i % Math.round(o.major*o.labelEvery/o.minor)) === 0){
-      var lr = r0 - R*0.15;
-      hudFont(g, Math.max(7, R*0.29));
-      g.fillStyle = red ? '#ff8b78' : num;
-      g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText(String(Math.round(v)), cx+Math.cos(a)*lr, cy+Math.sin(a)*lr);
-    }
   }
 
-  /* Unit captions ride close in to the hub. The numerals sit out on the
-     diagonals, so anything much further out than this collides with them
-     once the dial gets small — which, on a dash this size, is always. */
-  g.textAlign = 'center'; g.textBaseline = 'middle';
+  /* --- numerals, in the bitmap face, sitting just inside the tick ring --- */
+  var fs = Math.max(1, Math.round(gR*0.026));
+  var labEvery = o.labelEvery || 1;
+  var labR = (trackR - trackW/2 - R*0.135)/u - textH(fs)*0.62;
+  for(i=0;i<=steps;i+=majEvery*labEvery){
+    v = o.min + i*o.minor;
+    a = dialAngle(v,o.min,o.max);
+    red = o.redFrom != null && v >= o.redFrom - 1e-6;
+    var lx = gcx + Math.cos(a)*labR, ly = gcy + Math.sin(a)*labR;
+    PF.textC(px, String(Math.round(v)), lx, ly - textH(fs)/2,
+             red ? '#ff9784' : (o.num || DC.num), fs, 1);
+  }
+
+  /* --- captions, close in to the hub where the numerals cannot reach.
+     They are dropped rather than overlapped if the dial is too small. --- */
+  var capW = gR*0.80;
   if(o.label){
-    hudFont(g, Math.max(4.5, R*0.145));
-    g.fillStyle = 'rgba(226,236,252,.74)';
-    g.fillText(o.label, cx, cy - R*0.23);
+    var ls = fitScale(o.label, capW, gR*0.19);
+    if(PF.textW(o.label, ls, 1) <= capW)
+      PF.textC(px, o.label, gcx, gcy - gR*0.21 - textH(ls)/2,
+               o.labelCol || 'rgba(226,238,255,.82)', ls, 1);
   }
-  if(o.sub){
-    hudFont(g, Math.max(4, R*0.115));
-    g.fillStyle = 'rgba(196,212,234,.46)';
-    g.fillText(o.sub, cx, cy + R*0.25);
+  if(o.sub && gR >= 24){
+    var subW = capW*0.80;
+    var ss = fitScale(o.sub, subW, gR*0.15);
+    if(PF.textW(o.sub, ss, 1) <= subW)
+      PF.textC(px, o.sub, gcx, gcy + (o.subAt == null ? 0.32 : o.subAt)*gR - textH(ss)/2,
+               'rgba(190,208,232,.58)', ss, 1);
   }
 
-  /* --- glass: a soft crescent of reflected light across the top left --- */
-  var gl = g.createLinearGradient(cx - R*0.8, cy - R*0.9, cx + R*0.35, cy + R*0.55);
-  gl.addColorStop(0.00, 'rgba(255,255,255,.20)');
-  gl.addColorStop(0.45, 'rgba(255,255,255,.055)');
-  gl.addColorStop(1.00, 'rgba(255,255,255,0)');
-  g.beginPath(); g.arc(cx, cy, fr - R*0.14, Math.PI*0.90, Math.PI*1.80);
-  g.lineWidth = R*0.30; g.strokeStyle = gl; g.stroke();
+  /* --- glass: a crescent of reflected sky across the top left --- */
+  var gl = g.createLinearGradient(cx-R*0.8, cy-R*0.9, cx+R*0.35, cy+R*0.55);
+  gl.addColorStop(0.00,'rgba(255,255,255,.18)');
+  gl.addColorStop(0.45,'rgba(255,255,255,.05)');
+  gl.addColorStop(1.00,'rgba(255,255,255,0)');
+  g.beginPath(); g.arc(cx,cy,fr-R*0.13,Math.PI*0.90,Math.PI*1.80);
+  g.lineWidth = R*0.28; g.strokeStyle = gl; g.stroke();
 }
 
-/* Everything that never moves, painted once at device resolution. */
-function buildClusterBase(L, S){
+/* A thin instrument pointer: a blade tapering to a point just short of the
+   tick ring, with a stubby counterweight behind the hub. */
+function drawNeedle(g, cx, cy, R, ang, col){
+  var w0 = Math.max(1.0, R*0.040), w1 = Math.max(0.5, R*0.010);
+  g.save();
+  g.translate(cx, cy); g.rotate(ang);
+  g.beginPath();
+  g.moveTo(-R*0.20, -w0*0.62); g.lineTo(-R*0.20, w0*0.62);
+  g.lineTo(-R*0.03, w0*0.85);  g.lineTo(-R*0.03, -w0*0.85);
+  g.closePath(); g.fillStyle = 'rgba(6,9,13,.75)'; g.fill();
+  g.beginPath();
+  g.moveTo(-R*0.05, w0); g.lineTo(R*0.90, w1); g.lineTo(R*0.93, 0);
+  g.lineTo(R*0.90, -w1); g.lineTo(-R*0.05, -w0);
+  g.closePath(); g.fillStyle = col; g.fill();
+  g.beginPath();
+  g.moveTo(-R*0.05, -w0); g.lineTo(R*0.90, -w1);
+  g.lineTo(R*0.90, -w1*0.2); g.lineTo(-R*0.05, -w0*0.42);
+  g.closePath(); g.fillStyle = 'rgba(255,255,255,.38)'; g.fill();
+  g.restore();
+  var hub = g.createLinearGradient(cx-R*0.11, cy-R*0.11, cx+R*0.11, cy+R*0.11);
+  hub.addColorStop(0,'#939ea9'); hub.addColorStop(0.5,'#39424c'); hub.addColorStop(1,'#131920');
+  g.beginPath(); g.arc(cx,cy,R*0.11,0,TAU); g.fillStyle = hub; g.fill();
+  g.beginPath(); g.arc(cx,cy,R*0.042,0,TAU); g.fillStyle = col; g.fill();
+}
+
+/* =========================================================================
+   TELL-TALE ICONS — small pixel glyphs for the status strip. Each draws
+   into a box of its own and takes the ink colour, so the strip only has to
+   decide what is lit.
+   ========================================================================= */
+/* Icons are authored on a 9x8 unit grid; the caller's painter supplies the
+   scale, so nothing in here may reference it. */
+function iconArrow(px, x, y, s, right, col){
+  for(var c=0;c<4;c++)
+    px(x + (right ? 8-c : c), y + 4 - c, 1, 1 + 2*c, col);
+  px(x + (right ? 0 : 5), y + 3, 4, 3, col);
+}
+function iconLamp(px, x, y, s, col){                      /* headlight + beam */
+  var i;
+  for(i=0;i<5;i++) px(x, y+i, 1 + (i===0||i===4 ? 2 : 4), 1, col);
+  px(x, y, 1, 5, col);
+  for(i=0;i<3;i++) px(x + 6, y + i*2, 3, 1, col);
+}
+function iconBelt(px, x, y, s, col){                      /* seated figure */
+  px(x+2, y, 2, 2, col);
+  px(x+1, y+3, 4, 4, col);
+  px(x+5, y+4, 1, 3, col);
+  px(x, y+7, 6, 1, col);
+  px(x+4, y+2, 1, 1, col);
+}
+function iconBrakeP(px, x, y, s, col){                    /* (P) in a ring */
+  var w = 8, h = 8, i;
+  for(i=1;i<w-1;i++){ px(x+i, y, 1, 1, col); px(x+i, y+h-1, 1, 1, col); }
+  for(i=1;i<h-1;i++){ px(x, y+i, 1, 1, col); px(x+w-1, y+i, 1, 1, col); }
+  px(x+3, y+2, 1, 4, col); px(x+3, y+2, 2, 1, col);
+  px(x+5, y+2, 1, 2, col); px(x+3, y+4, 2, 1, col);
+}
+function iconTraction(px, x, y, s, col){                  /* car over squiggles */
+  px(x+1, y+1, 6, 2, col); px(x+2, y, 4, 1, col);
+  px(x, y+3, 8, 1, col);
+  px(x+1, y+5, 2, 1, col); px(x+3, y+6, 2, 1, col); px(x+5, y+5, 2, 1, col);
+}
+function iconDiff(px, x, y, s, col){                      /* axle with a centre */
+  px(x, y+3, 9, 1, col);
+  px(x, y+2, 1, 3, col); px(x+8, y+2, 1, 3, col);
+  px(x+3, y+1, 3, 5, col);
+}
+
+/* =========================================================================
+   STATIC BASE — painted once per layout
+   ========================================================================= */
+function buildDashBase(L){
+  var u = L.u, oy = L.over;
+  var W = Math.round(L.GW*u), H = Math.round((DASH_GH + oy)*u);
   var c = document.createElement('canvas');
-  c.width = L.W*S; c.height = L.H*S;
+  c.width = W; c.height = H;
   var g = c.getContext('2d');
-  g.setTransform(S,0,0,S,0,0);
+  g.imageSmoothingEnabled = false;
+  var px = dashPainter(g, u, oy);
+  var GW = L.GW, i, x;
 
-  /* The carrier is deliberately see-through: at this size it reads as a
-     dash moulding the road passes behind, not a slab dropped on the game.
-     The dials themselves stay fully opaque. */
-  var shell = g.createLinearGradient(0,0,0,L.H);
-  shell.addColorStop(0,'rgba(20,25,31,.50)');
-  shell.addColorStop(0.55,'rgba(10,13,17,.62)');
-  shell.addColorStop(1,'rgba(4,6,9,.74)');
-  roundPath(g, 0.75, 0.75, L.W-1.5, L.H-1.5, 7);
-  g.fillStyle = shell; g.fill();
-  g.lineWidth = 1; g.strokeStyle = 'rgba(150,170,196,.30)'; g.stroke();
-  g.save();                                     /* chrome catch along the top */
-  roundPath(g, 0.75, 0.75, L.W-1.5, L.H-1.5, 7); g.clip();
-  var top = g.createLinearGradient(0,0,0,3.5);
-  top.addColorStop(0,'rgba(255,255,255,.34)'); top.addColorStop(1,'rgba(255,255,255,0)');
-  g.fillStyle = top; g.fillRect(0,0,L.W,3.5);
-  g.restore();
+  /* ---------------- the moulding itself ---------------- */
+  /* a soft top rail so the dash reads as a shaped binnacle rather than a
+     slab, then the carbon face, then the deep footwell shadow */
+  px(0, 0, GW, DASH_GH, DC.shell);
+  var band = [[0,'#39424d'],[1,'#252d37'],[2,'#1c232b'],[4,'#191d23'],
+              [DASH_GH-10,'#141920'],[DASH_GH-5,'#0e1218'],[DASH_GH-2,'#080b0f']];
+  for(i=0;i<band.length-1;i++) px(0, band[i][0], GW, band[i+1][0]-band[i][0], band[i][1]);
+  px(0, band[band.length-1][0], GW, DASH_GH-band[band.length-1][0], band[band.length-1][1]);
+  px(0, 0, GW, 1, '#6d7a89');                            /* chrome catch */
+  px(0, 1, GW, 1, 'rgba(255,255,255,.10)');
 
-  drawPedalBayBase(g, L);
+  /* woven carbon: a coarse two-tone weave, cheap and only drawn once */
+  for(var wy=4; wy<DASH_GH-3; wy+=4){
+    for(var wx=0; wx<GW; wx+=4){
+      var lit = (((wx>>2) + (wy>>2)) & 1) === 0;
+      px(wx, wy, 2, 2, lit ? 'rgba(255,255,255,.030)' : 'rgba(0,0,0,.16)');
+      px(wx+2, wy+2, 2, 2, lit ? 'rgba(255,255,255,.030)' : 'rgba(0,0,0,.16)');
+    }
+  }
+  /* panel seams framing the instrument bay */
+  px(L.leftEnd + 1, 2, 1, DASH_GH-4, DC.seam);
+  px(L.leftEnd + 2, 2, 1, DASH_GH-4, 'rgba(255,255,255,.06)');
+  px(L.rightStart - 2, 2, 1, DASH_GH-4, DC.seam);
+  px(L.rightStart - 1, 2, 1, DASH_GH-4, 'rgba(255,255,255,.06)');
+  for(i=0;i<4;i++){
+    screw(px, L.x0 - 2, 4 + i*((L.UH-10)/3));
+    screw(px, L.x1, 4 + i*((L.UH-10)/3));
+  }
+  /* demister vents filling the moulding either side of the instruments */
+  for(x = L.leftEnd + 6; x < L.tachX - L.R - 6; x += 5){
+    px(x, 6, 3, Math.max(4, L.UH*0.10), DC.vent);
+    px(x, 6, 3, 1, 'rgba(255,255,255,.07)');
+  }
+  for(x = L.spdX + L.R + 8; x < L.rightStart - 8; x += 5){
+    px(x, 6, 3, Math.max(4, L.UH*0.10), DC.vent);
+    px(x, 6, 3, 1, 'rgba(255,255,255,.07)');
+  }
 
-  drawDialFace(g, L.tachX, L.dialY, L.R, {
+  /* ---------------- gauges ---------------- */
+  drawGauge(g, px, L, L.tachX, L.dialY, L.R, {
     min:0, max:TACH_MAX, major:1, minor:0.5, redFrom:TACH_RED,
-    /* no "x1000" caption: at this dial size it lands on the 0 and the 9 */
-    labelEvery: L.R >= 44 ? 1 : 3, label:'RPM',
-    num: HUDC.numTach
+    label:'RPM', sub:'x1000', num:'#dfe8ff',
+    labelEvery: L.R >= 34 ? 1 : 2
   });
-  /* three-digit numbers need room: thin the labelling out once the dial
-     carries more than five divisions, or once the dial itself is small */
-  var divs = cluster.kmhMax/40;
-  drawDialFace(g, L.spdX, L.dialY, L.R, {
-    min:0, max:cluster.kmhMax, major:40,
-    minor: cluster.kmhMax <= 160 ? 10 : 20,
-    labelEvery: (divs > 4 || L.R < 44) ? 2 : 1,  /* unit lives on the readout */
-    label:'KMH', num: HUDC.numSpd
+  var dialMax = dash.spdMax, step = speedStep();
+  var majors = dialMax/step;
+  drawGauge(g, px, L, L.spdX, L.dialY, L.R, {
+    min:0, max:dialMax, major:step, minor:step/2,
+    label: speedUnit(), num:'#f6f9ff',
+    labelEvery: (majors > 6 || L.R < 34) ? 2 : 1
   });
+  drawGauge(g, px, L, L.boost.cx, L.boost.cy, L.boost.r, {
+    min:0, max:20, major:10, minor:5, redFrom:16,
+    sub:'PSI', subAt:-0.32, num:'#f6f9ff', labelEvery:2
+  });
+  PF.textC(px, 'BOOST', L.boost.cx, L.boost.cy - L.boost.r - 9,
+           DC.numDim, fitScale('BOOST', L.boost.r*2.4, 7), 1);
 
-  /* --- gear barrel, to the left of the tacho as on the reference --- */
-  roundPath(g, L.gearX, L.pad, L.wg, L.gearH, 3);
-  var gp = g.createLinearGradient(0, L.pad, 0, L.pad+L.gearH);
-  gp.addColorStop(0,'#161c24'); gp.addColorStop(0.5,'#080c11'); gp.addColorStop(1,'#020407');
-  g.fillStyle = gp; g.fill();
-  g.lineWidth = 1; g.strokeStyle = 'rgba(168,186,210,.45)'; g.stroke();
-  g.save(); roundPath(g, L.gearX, L.pad, L.wg, L.gearH, 3); g.clip();
-  var gtop = g.createLinearGradient(0, L.pad, 0, L.pad+2.5);
-  gtop.addColorStop(0,'rgba(255,255,255,.30)'); gtop.addColorStop(1,'rgba(255,255,255,0)');
-  g.fillStyle = gtop; g.fillRect(L.gearX, L.pad, L.wg, 2.5);
-  g.restore();
-  hudFont(g, Math.max(4.5, L.wg*0.20));
-  g.fillStyle = 'rgba(196,212,234,.66)'; g.textAlign = 'center'; g.textBaseline = 'top';
-  g.fillText('GEAR', L.gearX + L.wg/2, L.pad + 1.5);
+  /* ---------------- gear selector ---------------- */
+  var G0 = L.gear;
+  raised(px, G0.x, G0.y, G0.w, G0.h, '#12161c', DC.edge, DC.seam);
+  sunken(px, G0.x+2, G0.y+9, G0.w-4, G0.h-11, '#05070a');
+  PF.textC(px, 'GEAR', G0.x + G0.w/2, G0.y + 2, DC.numDim, fitScale('GEAR', G0.w-6, 7), 1);
+  /* the gate the selector knob slides in */
+  px(G0.x + G0.w - 6, G0.y + 11, 2, G0.h - 15, '#0a0e13');
+  px(G0.x + G0.w - 6, G0.y + 11, 1, G0.h - 15, DC.seam);
 
-  /* rev-range bar trough, directly under the numeral */
-  roundPath(g, L.gearX, L.barY, L.wg, L.barH, 2);
-  g.fillStyle = '#020407'; g.fill();
-  g.lineWidth = 1; g.strokeStyle = 'rgba(150,170,196,.28)'; g.stroke();
+  /* ---------------- shift block ---------------- */
+  var S0 = L.shift;
+  raised(px, S0.x, S0.y, S0.w, S0.h, '#12161c', DC.edge, DC.seam);
+  PF.textC(px, 'SHIFT', S0.x + S0.w/2, S0.y + 2, DC.num, fitScale('SHIFT', S0.w-8, 8), 1);
+  px(S0.x + 3, S0.y + 11, S0.w - 6, 1, DC.seam);
+  sunken(px, L.revBar.x-1, L.revBar.y-1, L.revBar.w+2, L.revBar.h+2, '#05070a');
+  sunken(px, L.readout.x, L.readout.y, L.readout.w, L.readout.h, '#04060a');
+
+  /* ---------------- steering rockers ---------------- */
+  drawRockerBase(px, L.steerL, false);
+  drawRockerBase(px, L.steerR, true);
+  sunken(px, L.tell.x, L.tell.y, L.tell.w, L.tell.h, '#05070a');
+
+  /* ---------------- throttle / brake pads ---------------- */
+  drawPadBase(px, L.gas,   'THROTTLE');
+  drawPadBase(px, L.brake, 'BRAKE');
+
+  /* ---------------- handbrake housing ---------------- */
+  var HB = L.hbrake;
+  raised(px, HB.x, HB.y, HB.w, HB.h, '#141920', DC.edge, DC.seam);
+  sunken(px, HB.x+2, HB.y+2, HB.w-4, HB.h-11, '#070a0e');
+  px(HB.x+3, HB.y + HB.h - 8, HB.w-6, 5, '#20272f');     /* console plinth */
+  px(HB.x+3, HB.y + HB.h - 8, HB.w-6, 1, DC.steelLo);
+  PF.textC(px, 'HANDBRAKE', HB.x + HB.w/2, HB.y + HB.h - 6, DC.numDim,
+           fitScale('HANDBRAKE', HB.w-6, 5), 1);
+
+  /* ---------------- traction / diff tiles ---------------- */
+  var A = L.aux, th = (A.h - 3)/2;
+  raised(px, A.x, A.y, A.w, th, '#12161c', DC.edge, DC.seam);
+  raised(px, A.x, A.y + th + 3, A.w, th, '#12161c', DC.edge, DC.seam);
+  PF.textC(px, 'TRACTION', A.x + A.w/2, A.y + 2, DC.numDim, fitScale('TRACTION', A.w-4, 6), 1);
+  PF.textC(px, 'DIFF', A.x + A.w/2, A.y + th + 5, DC.numDim, fitScale('DIFF', A.w-4, 6), 1);
+
+  /* ---------------- tell-tale strip ---------------- */
+  var T = L.strip;
+  raised(px, T.x, T.y, T.w, T.h, '#0f1319', DC.edgeLo, DC.seam);
+  px(T.x+1, T.y+1, T.w-2, 1, 'rgba(255,255,255,.05)');
 
   return c;
 }
 
-/* ----------------------------------------------------------- pedal bay
-   A footwell seen head-on: checker-plate floor, ribbed firewall and two
-   hanging pedals. The floor and walls are static; the plates move. */
-function pedalFloorY(GH){ return GH - Math.max(5, Math.round(GH*0.15)); }
-function pedalShroudY(GH){ return Math.max(4, Math.round(GH*0.36)); }
-function pedalRestY(GH){ return pedalShroudY(GH) + Math.max(3, Math.round(GH*0.13)); }
-/* the two pedals, as grid columns: brake wide on the left, throttle narrow */
-function pedalCols(GW){
-  var bw = Math.round(GW*0.44), gw = Math.round(GW*0.34);
-  return [ { x0:2, w:bw }, { x0:GW-2-gw, w:gw } ];
+/* the rocker housings and the pads share a moulding, so the whole dash is
+   cast from one material */
+function drawRockerBase(px, R0, right){
+  raised(px, R0.x, R0.y, R0.w, R0.h, '#141920', DC.edge, DC.seam);
+  sunken(px, R0.x+2, R0.y+2, R0.w-4, R0.h-4, '#080b10');
+  screw(px, R0.x+1, R0.y+1); screw(px, R0.x+R0.w-3, R0.y+1);
+  screw(px, R0.x+1, R0.y+R0.h-3); screw(px, R0.x+R0.w-3, R0.y+R0.h-3);
+}
+function drawPadBase(px, P, label){
+  raised(px, P.x, P.y, P.w, P.h, '#141920', DC.edge, DC.seam);
+  sunken(px, P.x+2, P.y+2, P.w-4, P.h-4, '#080b10');
+  PF.textC(px, label, P.x + P.w/2, P.y + P.h - 8, DC.numDim, fitScale(label, P.w-4, 6), 1);
 }
 
-function drawPedalBayBase(g, L){
-  var s = L.ps, GW = L.pgw, GH = L.pgh;
-  var px = pxInto(g, L.bayX, L.bayY, s);
-  var floorY = pedalFloorY(GH), shroudY = pedalShroudY(GH);
-  var cols = pedalCols(GW);
-  var x, y, i;
+/* =========================================================================
+   LIVE STATE
+   ========================================================================= */
+var dash = {
+  cv:null, g:null, base:null, L:null, key:'', spdMax:160,
+  nRpm:0, nSpd:0, nBoost:0, heat:0, wrap:null
+};
+/* animated 0..1 press values, one per control, plus the readouts that lag */
+var ctl = {
+  steerL:0, steerR:0, gas:0, brake:0, hbrake:0,
+  padUp:0, padDn:0, shiftUp:0, shiftDn:0, flashGear:0
+};
 
-  px(0,0,GW,GH,'#0e130d');                              /* footwell recess */
-  for(x=2;x<GW-2;x+=4) px(x,shroudY,1,floorY-shroudY,'#182014');   /* bulkhead ribs */
-
-  px(0,floorY,GW,GH-floorY,'#434b52');                  /* floor plate */
-  px(0,floorY,GW,1,'#828d99');                          /* lit leading edge */
-  for(y=floorY+2;y<GH-1;y+=3){                          /* checker plate */
-    var off = (((y-floorY)/3)|0) % 2 ? 1 : 0;
-    for(x=1;x<GW-2;x+=3){
-      px(x+off,y,2,1,'#5d6770');
-      px(x+off,y+1,2,1,'#2d343a');
-    }
-  }
-  px(0,GH-1,GW,1,'#060806');
-
-  px(0,0,GW,shroudY,'#20272d');                         /* pedal-box shroud */
-  px(0,0,GW,1,'#525c66');
-  px(1,1,GW-2,1,'#39434c');
-  px(0,Math.round(shroudY*0.55),GW,1,'#141a1f');        /* panel split line */
-  px(0,shroudY-1,GW,1,'#080b0d');
-  px(1,2,1,1,'#7c8792'); px(GW-2,2,1,1,'#7c8792');      /* bolt heads */
-  for(i=0;i<cols.length;i++){                           /* arm slots */
-    var c = cols[i], cx = c.x0 + Math.floor(c.w/2);
-    px(cx-2, shroudY-3, 4, 3, '#0a0e11');
-    px(cx-2, shroudY-3, 4, 1, '#0f151a');
-  }
-  px(0,0,1,GH,'#1c231a'); px(GW-1,0,1,GH,'#080b07');    /* side shading */
-}
-
-function drawPedalPlates(g, L, gasV, brakeV){
-  var s = L.ps, GW = L.pgw, GH = L.pgh;
-  var px = pxInto(g, L.bayX, L.bayY, s);
-  var floorY = pedalFloorY(GH);
-  var cols = pedalCols(GW);
-  var peds = [
-    { x0:cols[0].x0, w:cols[0].w, v:brakeV, hi:'#ff8a7a', lo:'#a33a30', led:HUDC.red },
-    { x0:cols[1].x0, w:cols[1].w, v:gasV,   hi:'#a9f5b2', lo:'#2f7a3c', led:HUDC.green }
-  ];
-  var shroudY = pedalShroudY(GH), restY = pedalRestY(GH);
-  var travel = Math.max(2, Math.round(GH*0.10));
-  var faceH  = Math.max(6, Math.round(GH*0.22));
-
-  for(var i=0;i<peds.length;i++){
-    var p = peds[i], v = p.v, on = v > 0.4;
-    var cx = p.x0 + Math.floor(p.w/2);
-    var topY = restY + Math.round(v*travel);
-    var faceHi = on ? p.hi : '#e8eef4';                 /* bare alloy plate */
-    var faceLo = on ? p.lo : '#5b6670';
-
-    px(cx-2, shroudY-2, 4, topY-shroudY+2, '#333c44');  /* hanging arm */
-    px(cx-2, shroudY-2, 1, topY-shroudY+2, '#6b7681');
-    px(cx+1, shroudY-2, 1, topY-shroudY+2, '#151a1e');
-    px(cx-3, topY-2, 6, 3, '#39424a');                  /* pivot block */
-    px(cx-3, topY-2, 6, 1, '#69747e');
-
-    px(p.x0-1, topY, p.w+2, faceH+3, '#05070a');        /* plate outline */
-    for(var yy=0; yy<faceH; yy+=2){                     /* checker-plate face */
-      for(var xx=0; xx<p.w; xx+=2){
-        var litSq = (((xx>>1) + (yy>>1)) & 1) === 0;
-        px(p.x0+xx, topY+1+yy, 2, 2, litSq ? faceHi : faceLo);
-      }
-    }
-    px(p.x0, topY+1, p.w, 1, '#ffffff');                    /* top bevel */
-    px(p.x0, topY+faceH, p.w, 1, '#1b2126');                /* bottom shadow */
-    px(p.x0, topY+1, 1, faceH, on ? p.hi : '#c8d2da');      /* left bevel */
-    px(p.x0+p.w-1, topY+1, 1, faceH, '#20272c');            /* right shadow */
-    px(p.x0+1, topY+2, 1, 1, '#d5dbe0');                    /* bolt heads */
-    px(p.x0+p.w-2, topY+2, 1, 1, '#d5dbe0');
-    px(p.x0+1, topY+faceH-1, 1, 1, '#0e1216');
-    px(p.x0+p.w-2, topY+faceH-1, 1, 1, '#0e1216');
-
-    if(v > 0.05){                                       /* travel glow on the floor */
-      px(p.x0, floorY+1, p.w, 1, on ? p.led : HUDC.amberLo);
-    }
-    px(cx-1, 0, 2, 2, v > 0.35 ? p.led : '#1d242a');    /* channel lamp */
-  }
-}
-
-/* ------------------------------------------------------------- needles */
-/* A thin, sharp instrument pointer: a hair-width blade that tapers to a
-   point just short of the tick ring, with a stubby counterweight behind
-   the hub. Kept crisp rather than chunky, as on the reference cluster. */
-function drawNeedle(g, cx, cy, R, ang, col){
-  var w0 = Math.max(0.9, R*0.042);                      /* width at the hub */
-  var w1 = Math.max(0.4, R*0.011);                      /* width at the tip */
-  g.save();
-  g.translate(cx, cy); g.rotate(ang);
-
-  g.beginPath();                                        /* counterweight tail */
-  g.moveTo(-R*0.19, -w0*0.62);
-  g.lineTo(-R*0.19,  w0*0.62);
-  g.lineTo(-R*0.03,  w0*0.85);
-  g.lineTo(-R*0.03, -w0*0.85);
-  g.closePath();
-  g.fillStyle = 'rgba(8,10,14,.72)'; g.fill();
-
-  g.beginPath();                                        /* blade */
-  g.moveTo(-R*0.05,  w0);
-  g.lineTo( R*0.90,  w1);
-  g.lineTo( R*0.93,  0);
-  g.lineTo( R*0.90, -w1);
-  g.lineTo(-R*0.05, -w0);
-  g.closePath();
-  g.fillStyle = col; g.fill();
-
-  g.beginPath();                                        /* lit upper edge */
-  g.moveTo(-R*0.05, -w0);
-  g.lineTo( R*0.90, -w1);
-  g.lineTo( R*0.90, -w1*0.2);
-  g.lineTo(-R*0.05, -w0*0.42);
-  g.closePath();
-  g.fillStyle = 'rgba(255,255,255,.40)'; g.fill();
-  g.restore();
-
-  var hub = g.createLinearGradient(cx-R*0.11, cy-R*0.11, cx+R*0.11, cy+R*0.11);
-  hub.addColorStop(0,'#8a95a2'); hub.addColorStop(0.5,'#39424c'); hub.addColorStop(1,'#161c22');
-  g.beginPath(); g.arc(cx,cy,R*0.115,0,TAU);
-  g.fillStyle = hub; g.fill();
-  g.beginPath(); g.arc(cx,cy,R*0.045,0,TAU);
-  g.fillStyle = col; g.fill();
-}
-
-/* --------------------------------------------------------- warning lamps
-   Cosmetic dash atmosphere: they take a hint from the drive (a cooked
-   engine, a battered car, the lever pulled) but nothing reads them back. */
-function drawLamp(g, x, y, sz, kind, on, col){
-  var cx = x + sz/2, cy = y + sz/2;
-  roundPath(g, x, y, sz, sz, 2);
-  g.fillStyle = on ? 'rgba(255,120,60,.10)' : '#080c07'; g.fill();
-  g.lineWidth = 1; g.strokeStyle = on ? 'rgba(255,180,50,.55)' : 'rgba(60,74,56,.85)'; g.stroke();
-  var ink = on ? col : HUDC.lampOff;
-  g.fillStyle = ink; g.strokeStyle = ink;
-
-  if(kind === 'temp'){                                  /* coolant thermometer */
-    g.lineWidth = Math.max(1, sz*0.09);
-    g.beginPath(); g.arc(cx, cy + sz*0.20, sz*0.16, 0, TAU); g.fill();
-    g.fillRect(cx - sz*0.07, cy - sz*0.30, sz*0.14, sz*0.44);
-    g.fillRect(cx + sz*0.12, cy - sz*0.20, sz*0.14, sz*0.07);
-    g.fillRect(cx + sz*0.12, cy - sz*0.02, sz*0.14, sz*0.07);
-    g.beginPath();                                      /* fluid waves */
-    g.moveTo(x + sz*0.14, y + sz*0.86); g.lineTo(x + sz*0.86, y + sz*0.86);
-    g.stroke();
-  } else if(kind === 'engine'){                         /* check engine block */
-    g.fillRect(cx - sz*0.28, cy - sz*0.06, sz*0.50, sz*0.26);
-    g.fillRect(cx - sz*0.14, cy - sz*0.22, sz*0.26, sz*0.18);
-    g.fillRect(cx + sz*0.20, cy - sz*0.02, sz*0.14, sz*0.18);
-    g.fillRect(cx - sz*0.36, cy + sz*0.02, sz*0.10, sz*0.12);
-    g.fillRect(cx - sz*0.06, cy - sz*0.34, sz*0.10, sz*0.12);
-  } else {                                              /* brake / lever lamp */
-    g.lineWidth = Math.max(1, sz*0.09);
-    g.beginPath(); g.arc(cx, cy, sz*0.28, 0, TAU); g.stroke();
-    g.fillRect(cx - sz*0.04, cy - sz*0.17, sz*0.08, sz*0.20);
-    g.fillRect(cx - sz*0.04, cy + sz*0.09, sz*0.08, sz*0.08);
-    g.beginPath();                                      /* motion arcs */
-    g.arc(cx, cy, sz*0.42, Math.PI*0.72, Math.PI*1.28); g.stroke();
-    g.beginPath();
-    g.arc(cx, cy, sz*0.42, Math.PI*-0.28, Math.PI*0.28); g.stroke();
-  }
-}
-
-/* -------------------------------------------------------- live cluster */
-function ensureCluster(){
-  var el = document.getElementById('cluster-cv');
+function ensureDash(){
+  var el = dash.cv || document.getElementById('dash-cv');
   if(!el) return false;
-  var S = Math.max(1, Math.round(Math.min(window.devicePixelRatio || 1, 2)));
-  /* keyed on the viewport, not on the layout, so the common case costs a
-     string compare rather than a fresh layout object every frame */
-  var key = Math.round(view.w)+'x'+Math.round(view.h)+'@'+S+'/'+cluster.kmhMax;
-  if(key !== cluster.key || cluster.cv !== el || !cluster.base){
-    var L = clusterLayout();
-    cluster.cv = el; cluster.L = L; cluster.S = S; cluster.W = L.W; cluster.H = L.H;
-    el.width = L.W*S; el.height = L.H*S;
-    el.style.width = L.W+'px'; el.style.height = L.H+'px';
-    cluster.g = el.getContext('2d');
-    cluster.base = buildClusterBase(L, S);
-    cluster.key = key;
-    document.documentElement.style.setProperty('--cluster-h', L.H+'px');
+  var key = Math.round(view.w)+'x'+Math.round(view.h)+'@'+view.dpr.toFixed(2)+
+            '/'+dash.spdMax+'/'+save.settings.units;
+  if(key !== dash.key || !dash.base){
+    var L = dashLayout();
+    dash.cv = el; dash.L = L;
+    var W = Math.round(L.GW*L.u), H = Math.round((DASH_GH + L.over)*L.u);
+    el.width = W; el.height = H;
+    el.style.width = (W/view.dpr) + 'px';
+    el.style.height = (H/view.dpr) + 'px';
+    dash.g = el.getContext('2d');
+    dash.g.imageSmoothingEnabled = false;
+    dash.base = buildDashBase(L);
+    dash.key = key;
+    document.documentElement.style.setProperty('--dash-h', L.panelCss + 'px');
   }
-  cluster.g.setTransform(S,0,0,S,0,0);
-  cluster.g.imageSmoothingEnabled = false;
   return true;
 }
 
-function drawCluster(r){
-  if(!ensureCluster()) return;
-  var L = cluster.L, g = cluster.g, i;
-  g.clearRect(0,0,L.W,L.H);
-  g.drawImage(cluster.base, 0, 0, L.W, L.H);
+function drawDash(r){
+  if(!ensureDash()) return;
+  var L = dash.L, g = dash.g, u = L.u, oy = L.over;
+  var px = dashPainter(g, u, oy);
+  var X = function(v){ return v*u; }, Y = function(v){ return (v+oy)*u; };
+  var i;
 
-  drawPedalPlates(g, L, hudCtl.gas, hudCtl.brake);
+  g.clearRect(0, 0, dash.cv.width, dash.cv.height);
+  g.drawImage(dash.base, 0, 0);
 
-  /* ---- tachometer ---- */
-  var rpm = cluster.nRpm;
-  var hot = rpm >= 1.0;
-  drawNeedle(g, L.tachX, L.dialY, L.R,
-             dialAngle(clamp(rpm*TACH_SCALE,0,TACH_MAX), 0, TACH_MAX),
-             hot ? HUDC.needleHot : HUDC.needle);
+  var rpm = dash.nRpm, hot = rpm >= 0.985;
+  var spd = dash.nSpd;
+  var driving = !!r;
+  var manual = save.settings.transmission === 'manual';
 
-  /* ---- speedometer + digital readout ---- */
-  var kmh = cluster.nKmh;
-  drawNeedle(g, L.spdX, L.dialY, L.R,
-             dialAngle(clamp(kmh,0,cluster.kmhMax), 0, cluster.kmhMax),
-             HUDC.needleSpd);
-  /* the readout sits in the blank wedge at the foot of the dial, clear of
-     the 0 and full-scale numbers on either side of it */
-  var lh = L.R*0.34, lw = L.R*0.88;
-  var lx = L.spdX - lw/2, ly = L.dialY + L.R*0.68 - lh/2;
-  roundPath(g, lx, ly, lw, lh, 2);
-  g.fillStyle = HUDC.lcd; g.fill();
-  g.lineWidth = 1; g.strokeStyle = 'rgba(180,200,228,.36)'; g.stroke();
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  hudFont(g, lh*0.80);
-  g.fillStyle = HUDC.lcdOn;
-  g.fillText(String(Math.round(Math.max(0,kmh))), lx + lw/2, ly + lh*0.52);
+  /* ---------------- needles ---------------- */
+  drawNeedle(g, X(L.tachX), Y(L.dialY), L.R*u,
+             dialAngle(clamp(rpm*TACH_SCALE, 0, TACH_MAX), 0, TACH_MAX),
+             hot ? DC.redHot : DC.needle);
+  drawNeedle(g, X(L.spdX), Y(L.dialY), L.R*u,
+             dialAngle(clamp(spd, 0, dash.spdMax), 0, dash.spdMax), DC.needle);
+  drawNeedle(g, X(L.boost.cx), Y(L.boost.cy), L.boost.r*u,
+             dialAngle(clamp(dash.nBoost*20, 0, 20), 0, 20), DC.needle);
 
-  /* ---- gear panel ---- */
-  var spd = r ? Math.abs(r.car.fwd) : 0;
-  var gearTxt = spd < 2 ? 'N' : String(r ? r.gear : 1);
-  var flash = r && r.perfectFlash > 0;
-  hudFont(g, Math.min(L.gearH*0.72, L.wg*0.86));
-  g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillStyle = flash ? HUDC.green : (hot ? HUDC.red : HUDC.amber);
-  g.fillText(gearTxt, L.gearX + L.wg/2, L.pad + L.gearH*0.60);
-
-  /* ---- rev-range bar, green through amber to red ---- */
-  var frac = clamp(rpm/1.12, 0, 1);
-  var segs = L.wg >= 34 ? 7 : 5, sgap = 1;
-  var sw = (L.wg - 3 - (segs-1)*sgap)/segs;
-  for(i=0;i<segs;i++){
-    if((i+1)/segs > frac + 1e-6) break;
-    g.fillStyle = i < segs-3 ? HUDC.green : (i < segs-1 ? HUDC.amber : HUDC.red);
-    g.fillRect(L.gearX + 1.5 + i*(sw+sgap), L.barY + 1.5, sw, L.barH - 3);
+  /* ---------------- gear selector ----------------
+     A five-slot window on the gate, sliding to keep the engaged gear in the
+     middle: reverse and neutral below first, then the six forward ratios. */
+  var G0 = L.gear;
+  var gates = ['P','R','N','1','2','3','4','5','6'];
+  var cur = 2;
+  if(driving){
+    if(r.car.fwd < -2) cur = 1;
+    else if(Math.abs(r.car.fwd) < 2 && r.state !== 'run') cur = 2;
+    else cur = 2 + r.gear;
+  }
+  var slots = 5, first = clamp(cur - 2, 0, gates.length - slots);
+  var gy = G0.y + 10, gh = (G0.h - 13)/slots;
+  var gfs = fitScale('0', G0.w - 12, gh - 1);
+  for(i=0;i<slots;i++){
+    var idx = first + i, on = idx === cur;
+    var ly = gy + i*gh;
+    if(on) px(G0.x+3, ly, G0.w-9, gh-1, 'rgba(255,180,50,.14)');
+    PF.textC(px, gates[idx], G0.x + (G0.w-6)/2, ly + gh/2 - 3.5*gfs,
+             on ? (ctl.flashGear > 0 ? DC.green : DC.amber) : '#5d6772', gfs, 1);
+    if(on){                                              /* the selector knob */
+      px(G0.x + G0.w - 7, ly + gh/2 - 2, 4, 4, DC.steel);
+      px(G0.x + G0.w - 7, ly + gh/2 - 2, 4, 1, DC.steelHi);
+      px(G0.x + G0.w - 7, ly + gh/2 + 1, 4, 1, DC.seam);
+    }
   }
 
-  /* ---- auxiliary stack: paddle tell-tales, knob, warning lamps ---- */
-  var ax = L.auxX, aw = L.wa;
-  var tw = (aw - 3)/2, th = L.triH;
-  drawAuxTri(g, ax, L.pad, tw, th, false, hudCtl.padDn > 0.15);
-  drawAuxTri(g, ax + tw + 3, L.pad, tw, th, true, hudCtl.padUp > 0.15);
+  /* ---------------- shift block ---------------- */
+  var S0 = L.shift;
+  drawShiftTri(px, L.shiftDn, false, ctl.shiftDn > 0.1 || ctl.padDn > 0.1, manual);
+  drawShiftTri(px, L.shiftUp, true,  ctl.shiftUp > 0.1 || ctl.padUp > 0.1, manual);
+  /* rev lights: green, then amber, then the whole bar flashing red on the
+     limiter — the cue to pull the paddle */
+  var revN = 6, revLit = Math.round(clamp(rpm/1.06, 0, 1)*revN);
+  var limiter = rpm >= 1.02 && (Math.floor(perfNow()/80) & 1);
+  lampRow(px, L.revBar.x, L.revBar.y, L.revBar.w, L.revBar.h, revN,
+          limiter ? revN : revLit,
+          limiter ? DC.redHot : function(i,n){ return i < n-2 ? DC.green : (i < n-1 ? DC.amber : DC.red); },
+          DC.offLo);
+  /* digital speed, the big readout under the shift block */
+  var RD = L.readout;
+  var rfs = fitScale('000', RD.w - 6, RD.h - 9);
+  PF.textC(px, String(Math.round(Math.max(0, spd))), RD.x + RD.w/2,
+           RD.y + 3, hot ? DC.redHot : DC.white, rfs, 1);
+  PF.textC(px, speedUnit(), RD.x + RD.w/2, RD.y + RD.h - 6,
+           'rgba(190,208,232,.60)', 1, 1);
 
-  var kr = L.knobR, kcx = ax + aw/2, kcy = L.knobY + kr;
-  var kg = g.createLinearGradient(kcx - kr, kcy - kr, kcx + kr, kcy + kr);
-  kg.addColorStop(0,'#8f9aa7'); kg.addColorStop(0.45,'#39424e'); kg.addColorStop(1,'#0d1116');
-  g.beginPath(); g.arc(kcx, kcy, kr, 0, TAU); g.fillStyle = kg; g.fill();
-  g.beginPath(); g.arc(kcx, kcy, Math.max(1.2, kr*0.62), 0, TAU);
-  g.fillStyle = '#0a0e13'; g.fill();
-  g.beginPath(); g.arc(kcx, kcy, kr, Math.PI*1.05, Math.PI*1.72);
-  g.lineWidth = Math.max(0.7, kr*0.22); g.strokeStyle = 'rgba(255,255,255,.5)'; g.stroke();
-
-  var lampSz = Math.min(L.lampH, (aw - 2)/3);
-  var lx0 = ax + (aw - (lampSz*3 + 2))/2;
-  var ly0 = L.lampY + (L.lampH - lampSz)/2;
-  var dmg = r ? r.car.damage : 0;
-  drawLamp(g, lx0,                ly0, lampSz, 'temp',   cluster.heat > 0.55, HUDC.red);
-  drawLamp(g, lx0 + lampSz + 1,   ly0, lampSz, 'engine', dmg > 45,            HUDC.amber);
-  drawLamp(g, lx0 + lampSz*2 + 2, ly0, lampSz, 'brake',  hudCtl.hb > 0.5,     HUDC.red);
-}
-
-/* the pair of little blue triangles above the knob, which wink when the
-   matching paddle is tapped — the reference's shift tell-tales */
-function drawAuxTri(g, x, y, w, h, up, lit){
-  roundPath(g, x, y, w, h, 1.5);
-  g.fillStyle = lit ? 'rgba(120,150,255,.30)' : '#080c12'; g.fill();
-  g.lineWidth = 0.8; g.strokeStyle = lit ? 'rgba(170,195,255,.85)' : 'rgba(120,140,170,.30)';
-  g.stroke();
-  var m = Math.min(w,h)*0.26, cx = x + w/2;
-  g.beginPath();
-  if(up){ g.moveTo(cx, y + h*0.30); g.lineTo(cx + m, y + h*0.68); g.lineTo(cx - m, y + h*0.68); }
-  else  { g.moveTo(cx, y + h*0.70); g.lineTo(cx + m, y + h*0.32); g.lineTo(cx - m, y + h*0.32); }
-  g.closePath();
-  g.fillStyle = lit ? '#dce7ff' : HUDC.numTach; g.fill();
-}
-
-/* A chrome housing, drawn straight into a control's own canvas so every
-   physical control on the dash is cast from the same material as the
-   instrument bezels: dark inset face, bright top edge, shaded foot. */
-function drawHousing(px, w, h, lit){
-  var y, x, t, c;
-  px(0, 0, w, h, '#05070a');                            /* outer edge */
-  for(y=1; y<h-1; y++){                                 /* rolled chrome */
-    t = y/(h-1);
-    c = t < 0.07 ? '#e6edf4' : t < 0.16 ? '#b4bfcb' :
-        t < 0.42 ? '#6f7a87' : t < 0.70 ? '#4a5560' :
-        t < 0.88 ? '#333c46' : '#1a2028';
-    px(1, y, w-2, 1, c);
+  /* ---------------- steering rockers ---------------- */
+  drawRocker(px, L.steerL, false, ctl.steerL);
+  drawRocker(px, L.steerR, true,  ctl.steerR);
+  /* the little strip above them: four lamps that track what the car is
+     actually doing — drive, slip, off-road, damage */
+  var T0 = L.tell;
+  var tl = [ driving && Math.abs(r.car.fwd) > 4,
+             driving && r.slipNow > 0.32,
+             driving && r.offtrack,
+             driving && r.car.damage > 45 ];
+  var tcol = [DC.green, DC.amber, DC.blue, DC.red];
+  var tw = (T0.w - 6)/4;
+  for(i=0;i<4;i++){
+    px(T0.x + 3 + i*tw, T0.y + 3, tw - 2, T0.h - 6, tl[i] ? tcol[i] : DC.off);
+    if(tl[i]) px(T0.x + 3 + i*tw, T0.y + 3, tw - 2, 1, DC.white);
   }
-  for(x=3; x<w-3; x+=3)                                 /* brushed grain */
-    px(x, 2, 1, h-4, 'rgba(255,255,255,.055)');
-  px(1, 1, 1, h-2, '#cdd6de');                          /* left bevel */
-  px(w-2, 1, 1, h-2, '#131920');                        /* right shade */
-  px(3, 4, w-6, h-8, lit ? '#3d3111' : '#070b10');      /* inset face */
-  px(3, 4, w-6, 1, lit ? '#7a6420' : '#020407');
-  px(3, h-5, w-6, 1, lit ? '#241d0a' : '#121a23');
+
+  /* ---------------- throttle / brake pads ---------------- */
+  drawPad(px, L.gas,   ctl.gas,   DC.green, DC.greenLo);
+  drawPad(px, L.brake, ctl.brake, DC.red,   '#4a1712');
+
+  /* ---------------- handbrake ---------------- */
+  drawLever(px, L.hbrake, ctl.hbrake);
+
+  /* ---------------- traction / diff ---------------- */
+  var A = L.aux, th = (A.h - 3)/2;
+  var tracOn = driving && (r.car.wheelSpin > 0.28 || r.slipNow > 0.42);
+  var diffOn = driving && Math.abs(r.car.steer) > 0.35;
+  drawAuxTile(px, A.x, A.y, A.w, th, iconTraction, tracOn, DC.green, DC.amber);
+  drawAuxTile(px, A.x, A.y + th + 3, A.w, th, iconDiff, diffOn, DC.green, DC.blue);
+
+  /* ---------------- tell-tale strip ---------------- */
+  drawStrip(px, L, r);
+
+  /* ---------------- paddles ---------------- */
+  drawPaddle(px, L.padDn, false, ctl.padDn, manual);
+  drawPaddle(px, L.padUp, true,  ctl.padUp, manual);
 }
 
-/* ------------------------------------------------- steering rockers
-   Where the reference cluster carries its NOS button, Rally Pixel needs
-   its steering instead — so the arrows get the same treatment as the
-   rest of the dash: a chrome housing with a rocker that lights and
-   sinks a pixel when pressed. */
-function drawSteer(id, right, pressed){
-  var cv = document.getElementById(id);
-  if(!cv) return;
-  var px = hudPainter(cv, 34, 30, 2);
-  var drop = pressed ? 1 : 0;
-  drawHousing(px, 34, 30, pressed);
-
-  /* the rocker itself: a raised pad carrying the arrow */
-  var rx = 6, ry = 7 + drop, rw = 22, rh = 16;
-  px(rx-1, ry-1, rw+2, rh+2, '#04060a');
-  px(rx, ry, rw, rh, pressed ? '#e0921a' : '#525c68');
-  px(rx, ry, rw, 1, pressed ? '#ffd487' : '#8b96a3');
-  px(rx, ry+rh-1, rw, 1, pressed ? '#8a6416' : '#242c35');
-  px(rx, ry, 1, rh, pressed ? '#ffc457' : '#78838f');
-  px(rx+rw-1, ry, 1, rh, '#1d242c');
-
-  /* solid arrowhead: a column-by-column triangle pointing outboard */
-  var ink = pressed ? '#241800' : '#e8eef6';
-  var n = 8, acy = ry + rh/2, ax0 = rx + rw/2 + (right ? -4 : 4), i;
-  for(i=0;i<n;i++){
-    var hh = n - i;                                     /* 8,7,...,1 */
-    px(right ? ax0 + i : ax0 - i, acy - hh/2, 1, hh, ink);
+function drawShiftTri(px, R0, up, lit, active){
+  var col = !active ? '#39424e' : (lit ? '#dce9ff' : DC.blue);
+  px(R0.x, R0.y, R0.w, R0.h, lit ? 'rgba(90,168,255,.22)' : '#070b11');
+  px(R0.x, R0.y, R0.w, 1, lit ? DC.blue : '#1d2530');
+  px(R0.x, R0.y+R0.h-1, R0.w, 1, DC.seam);
+  var n = Math.max(3, Math.floor(Math.min(R0.w, R0.h)*0.34));
+  var cx = R0.x + R0.w/2, cy = R0.y + R0.h/2;
+  for(var i=0;i<n;i++){
+    var w = 1 + 2*i;
+    px(cx - w/2, up ? cy - n/2 + i : cy + n/2 - i - 1, w, 1, col);
   }
 }
 
-/* ------------------------------------------------------ handbrake lever
-   A console-mounted fly-off lever in a chrome housing to match the rest
-   of the dash: base, gaiter, angled arm and a grip with a release
-   button. Engaging swings the arm up towards vertical. */
-function drawHandbrake(v){
-  var cv = document.getElementById('hbrake-cv');
-  if(!cv) return;
-  var px = hudPainter(cv, 20, 32, 2);
-  var pivotX = 5, pivotY = 24;
-  var on = v > 0.5;
+function drawRocker(px, R0, right, press){
+  var down = press > 0.35;
+  var d = down ? 1 : 0;
+  var ix = R0.x + 4, iy = R0.y + 4 + d, iw = R0.w - 8, ih = R0.h - 9;
+  px(ix-1, iy-1, iw+2, ih+2, '#04070b');
+  px(ix, iy, iw, ih, down ? '#e0921a' : '#3d4753');
+  px(ix, iy, iw, 1, down ? '#ffd487' : '#69747f');
+  px(ix, iy, 1, ih, down ? '#ffc457' : '#5b6672');
+  px(ix, iy+ih-1, iw, 1, down ? '#8a6416' : '#171d24');
+  px(ix+iw-1, iy, 1, ih, '#131920');
+  /* solid arrowhead, pointing outboard */
+  var ink = down ? '#2a1c00' : '#e8eef6';
+  var n = Math.max(4, Math.floor(ih*0.42));
+  var acy = iy + ih/2, ax0 = ix + iw/2 + (right ? -n/2 : n/2);
+  for(var i=0;i<n;i++){
+    var hh = n - i;
+    px(right ? ax0 + i : ax0 - i - 1, acy - hh/2, 1, hh, ink);
+  }
+}
 
-  drawHousing(px, 20, 32, on);                          /* chrome surround */
-  px(2, 26, 16, 4, HUDC.dark);                          /* console base */
-  px(2, 26, 16, 1, on ? HUDC.amber : HUDC.steelLo);
-  px(pivotX-2, 21, 7, 5, HUDC.black);                   /* rubber gaiter */
-  px(pivotX-1, 21, 5, 1, HUDC.rubberHi);
+function drawPad(px, P, v, col, lo){
+  var down = v > 0.3;
+  var ix = P.x + 3, iy = P.y + 3, iw = P.w - 6, ih = P.h - 13;
+  px(ix, iy, iw, ih, down ? lo : '#0c1016');
+  /* the bar graph the reference carries on its throttle panel, filling from
+     the bottom with how much of the pedal is actually being asked for */
+  var n = 5, bh = (ih - 2)/n, litN = Math.round(v*n);
+  for(var i=0;i<n;i++){
+    var on = i < litN;
+    px(ix+2, iy + ih - 1 - (i+1)*bh, iw-4, bh-1, on ? col : DC.offLo);
+    if(on) px(ix+2, iy + ih - 1 - (i+1)*bh, iw-4, 1, DC.white);
+  }
+  px(ix, iy, iw, 1, down ? col : '#242c36');
+  px(ix, iy+ih-1, iw, 1, DC.seam);
+}
 
-  var ang = (38 + v*36) * Math.PI/180;                  /* 38deg at rest, 74deg pulled */
+/* the lever: a chrome arm on a pivot that swings up towards vertical, with a
+   rubber gaiter at its foot and a release button in the grip */
+function drawLever(px, HB, v){
+  var on = v > 0.45;
+  var pivotX = HB.x + HB.w*0.32, pivotY = HB.y + HB.h - 11;
+  var len = Math.max(8, HB.h*0.66);
+  var ang = (46 + v*40) * Math.PI/180;
   var dx = Math.cos(ang), dy = -Math.sin(ang);
-  var len = 13;
-  for(var i=0;i<=len;i++){
-    px(pivotX + dx*i - 1, pivotY + dy*i - 1, 2, 2, HUDC.steel);
-    px(pivotX + dx*i - 1, pivotY + dy*i - 1, 1, 1, HUDC.steelHi);
+  px(pivotX - 4, pivotY - 3, 8, 5, '#0a0e13');             /* gaiter */
+  px(pivotX - 3, pivotY - 3, 6, 1, '#2f3841');
+  var i;
+  for(i=0;i<=len;i++){
+    var lx = pivotX + dx*i, ly = pivotY + dy*i;
+    px(lx - 1, ly - 1, 3, 3, DC.steel);
+    px(lx - 1, ly - 1, 1, 1, DC.steelHi);
+    px(lx + 1, ly + 1, 1, 1, DC.steelDk);
   }
-  px(pivotX-2, pivotY-2, 4, 4, HUDC.steelLo);           /* pivot boss */
-  px(pivotX-1, pivotY-1, 2, 2, HUDC.black);
-
-  var gx = pivotX + dx*len, gy = pivotY + dy*len;       /* grip */
-  px(gx-3, gy-5, 6, 8, HUDC.black);
-  px(gx-2, gy-4, 4, 6, on ? HUDC.amberLo : HUDC.rubber);
-  px(gx-2, gy-4, 4, 1, on ? HUDC.amber : HUDC.rubberHi);
-  px(gx-2, gy+1, 4, 1, HUDC.black);
-  px(gx-1, gy-5, 3, 1, on ? HUDC.amber : HUDC.dim);     /* release button */
+  px(pivotX - 2, pivotY - 2, 4, 4, DC.steelLo);            /* pivot boss */
+  px(pivotX - 1, pivotY - 1, 2, 2, '#05070a');
+  var gx = pivotX + dx*len, gy = pivotY + dy*len;          /* grip */
+  px(gx - 3, gy - 5, 7, 9, '#05070a');
+  px(gx - 2, gy - 4, 5, 7, on ? '#8a5a12' : '#2b3138');
+  px(gx - 2, gy - 4, 5, 1, on ? DC.amber : '#454e57');
+  px(gx - 1, gy - 6, 3, 2, on ? DC.amber : '#5d6772');     /* release button */
+  if(on) px(HB.x+3, HB.y+3, HB.w-6, 1, DC.amber);
 }
 
-/* --------------------------------------------------------- shift paddles
-   Cast alloy blades in the reference's style: a raked plate, drilled
-   checker-plate face, chrome edge highlight and a stamped +/- at the
-   bottom. The rake runs outward — the left blade leans left, the right
-   blade leans right — so the pair frames the dash. */
-function drawPaddle(id, up, press, active){
-  var cv = document.getElementById(id);
-  if(!cv) return;
-  var px = hudPainter(cv, 20, 24, 2);
-  var down = press > 0.5;
-  var drop = down ? 1 : 0;
-  var y, x, lean;
+/* label along the top of the tile, glyph centred in what is left */
+function drawAuxTile(px, x, y, w, h, icon, on, colOn, colOff){
+  var top = 9;                                     /* the static caption's row */
+  var free = Math.max(6, h - top - 2);
+  var s = Math.max(1, Math.floor(Math.min(free/8, (w-8)/9)));
+  var ox = x + (w - 9*s)/2, oy2 = y + top + (free - 8*s)/2;
+  if(on) px(x+2, y+top-1, w-4, h-top-1, 'rgba(79,228,99,.10)');
+  icon(function(ix, iy, iw, ih, c){ px(ox + ix*s, oy2 + iy*s, iw*s, ih*s, c); },
+       0, 0, s, on ? colOn : '#39434e');
+  if(on) px(x+2, y+2, w-4, 1, colOff);
+}
 
-  /* mounting stalk on the screen-inward side */
-  var sx = up ? 0 : 17;
-  px(sx, 9, 3, 7, '#05070a');
-  px(sx, 10, 3, 5, '#2a323c');
-  px(sx + (up?0:2), 10, 1, 5, '#4d5866');
+/* the row of lamps along the bottom: indicators, headlights, belt, parking
+   brake. They follow the drive rather than being decoration. */
+function drawStrip(px, L, r){
+  var T = L.strip, driving = !!r;
+  var s = Math.max(1, Math.floor((T.h - 4)/8));
+  var slots = [
+    { icon:function(p,x,y,ss,c){ iconArrow(p,x,y,ss,false,c); }, w:9,
+      on: driving && r.car.steer < -0.25, col:DC.green },
+    { icon:iconLamp,  w:10, on:true,                                col:DC.green },
+    { icon:iconBelt,  w:7,  on: driving && Math.abs(r.car.fwd) < 6, col:DC.red },
+    { icon:iconBrakeP,w:9,  on: driving && ctl.hbrake > 0.4,        col:DC.red },
+    { icon:iconTraction,w:9,on: driving && r.slipNow > 0.42,        col:DC.amber },
+    { icon:iconDiff,  w:10, on: driving && r.car.wheelSpin > 0.3,   col:DC.amber },
+    { icon:function(p,x,y,ss,c){ iconArrow(p,x,y,ss,true,c); }, w:9,
+      on: driving && r.car.steer > 0.25, col:DC.green }
+  ];
+  var total = 0, i;
+  for(i=0;i<slots.length;i++) total += slots[i].w*s + 6;
+  var x = T.x + (T.w - total)/2 + 3;
+  var cy = T.y + (T.h - 8*s)/2;
+  for(i=0;i<slots.length;i++){
+    var sl = slots[i];
+    if(sl.on) px(x - 2, T.y + 2, sl.w*s + 4, T.h - 4, 'rgba(255,255,255,.045)');
+    sl.icon(function(ix, iy, iw, ih, c){ px(x + ix*s, cy + iy*s, iw*s, ih*s, c); },
+            0, 0, s, sl.on ? sl.col : '#333d48');
+    x += sl.w*s + 6;
+  }
+}
 
-  /* Raked plate: each row steps sideways, giving the blade its diagonal
-     lean. Rows run 1..22, the face is 11 wide. */
-  var faceW = 11;
-  for(y=1; y<23; y++){
-    lean = Math.round((y - 12) * 0.22) * (up ? 1 : -1);
-    var x0 = (up ? 5 : 4) + lean;
-    px(x0-1, y+drop, faceW+2, 1, '#05070a');            /* cast edge */
+/* Cast alloy blades on the outer ends of the dash, standing above its top
+   edge. The rake runs outward, so the pair frames the instrument bay. */
+function drawPaddle(px, P, up, press, active){
+  var down = press > 0.35, drop = down ? 1 : 0;
+  var y, x, wide = Math.max(5, Math.round(P.w*0.72));
+  /* mounting stalk and pivot, on the screen-inward side */
+  var sx = up ? P.x + P.w - 3 : P.x;
+  px(sx, P.y + P.h*0.40, 3, P.h*0.34, '#05070a');
+  px(sx + (up ? 1 : 0), P.y + P.h*0.42, 2, P.h*0.30, '#333c46');
+  px(sx - (up ? 1 : -2), P.y + P.h*0.46, 2, 3, '#8d97a2');
+  for(y=1; y<P.h-1; y++){
+    var t = y/(P.h-1);
+    /* the blade bows away from the wheel and narrows towards its tip, the
+       way a cast paddle actually does */
+    var faceW = Math.max(4, Math.round(wide*(1 - t*0.30)));
+    var lean = Math.round((t*t - 0.22) * P.w*0.42) * (up ? 1 : -1);
+    var x0 = P.x + (P.w - faceW)/2 + lean;
+    px(x0-1, P.y + y + drop, faceW+2, 1, '#04060a');
     for(x=0; x<faceW; x++){
       var col;
-      if(down)                       col = ((x + y) & 2) ? '#ffd487' : '#e2a53c';
-      else if(!active)               col = ((x>>1) + (y>>1)) & 1 ? '#6e757c' : '#585f66';
-      else if(x === 0)               col = '#ffffff';   /* lit outer edge */
-      else if(x >= faceW-2)          col = '#7d858d';   /* shaded inner edge */
-      else if(((x>>1) + (y>>1)) & 1) col = '#f2f5f8';   /* checker plate */
-      else                           col = '#c3cbd2';
-      px(x0+x, y+drop, 1, 1, col);
+      /* dark anodised blade: a bright catch down the outer edge, the face
+         falling away to near-black on the inboard side */
+      if(down)                       col = ((x + y) & 2) ? '#ffcf74' : '#c98a22';
+      else if(!active)               col = x === 0 ? '#4a525b' : (x >= faceW-2 ? '#14181d' : '#252b32');
+      else if(x === 0)               col = '#d8e2ec';
+      else if(x === 1)               col = '#8d97a2';
+      else if(x >= faceW-2)          col = '#0f1317';
+      else if(((x>>1) + (y>>1)) & 1) col = '#3b434c';
+      else                           col = '#2d343b';
+      px(x0+x, P.y + y + drop, 1, 1, col);
     }
-    /* drilled grip holes, in staggered rows down the plate */
-    if(y > 3 && y < 21 && ((y-4) % 4) === 0){
-      px(x0+2, y+drop, 2, 1, down ? '#8a6416' : '#4a525a');
-      px(x0+7, y+drop, 2, 1, down ? '#8a6416' : '#4a525a');
+    if(y > 3 && y < P.h-4 && ((y-4) % 5) === 0){          /* drilled grip holes */
+      px(x0 + 1, P.y + y + drop, 2, 1, down ? '#8a6416' : '#3f4750');
+      px(x0 + faceW - 3, P.y + y + drop, 2, 1, down ? '#8a6416' : '#3f4750');
     }
   }
-
-  /* stamped +/- at the foot of the blade */
-  var ink = down ? '#3a2a06' : (active ? '#2b323a' : '#3d4757');
-  var bx = (up ? 5 : 4) + Math.round((21 - 12) * 0.22) * (up ? 1 : -1);
-  px(bx+3, 19+drop, 5, 1, ink);
-  if(up) px(bx+5, 17+drop, 1, 5, ink);
+  /* stamped + / − at the foot of the blade */
+  var ink = down ? '#3a2a06' : '#e6edf5';
+  var bw2 = Math.max(4, Math.round(faceW*0.55)), bt = Math.max(1, Math.round(P.h*0.045));
+  var bx = P.x + P.w/2, by = P.y + P.h - 5 - bt + drop;
+  px(bx - bw2/2, by, bw2, bt, ink);
+  if(up) px(bx - bt/2, by - bw2/2 + bt/2, bt, bw2, ink);
 }
 
-/* ------------------------------------------------------------- per frame */
+/* =========================================================================
+   HIT TESTING — one pointer map derived from the same layout the art uses
+   ========================================================================= */
+function dashHit(cssX, cssY){
+  var L = dash.L;
+  if(!L) return null;
+  var rect = dash.cv.getBoundingClientRect();
+  var gx = (cssX - rect.left) * view.dpr / L.u;
+  var gy = (cssY - rect.top)  * view.dpr / L.u - L.over;
+  for(var i=0;i<L.regions.length;i++){
+    var o = L.regions[i];
+    if(gx >= o.hx && gx <= o.hx+o.hw && gy >= o.hy && gy <= o.hy+o.hh) return o.id;
+  }
+  return null;
+}
+
+/* =========================================================================
+   PER-FRAME
+   ========================================================================= */
+var perfNow = (window.performance && performance.now)
+  ? function(){ return performance.now(); } : function(){ return Date.now(); };
+
 function updateHudControls(dt){
-  /* mirror exactly what the physics treats as throttle and brake */
-  var gasOn   = save.settings.autoGas ? !input.hbrake : input.gas;
-  var brakeOn = input.hbrake;
   var k = 1 - Math.pow(0.0004, dt);
-  hudCtl.gas   += ((gasOn?1:0)   - hudCtl.gas)*k;
-  hudCtl.brake += ((brakeOn?1:0) - hudCtl.brake)*k;
-  hudCtl.hb    += ((brakeOn?1:0) - hudCtl.hb)*k;
-  hudCtl.padUp = Math.max(0, hudCtl.padUp - dt*4.5);
-  hudCtl.padDn = Math.max(0, hudCtl.padDn - dt*4.5);
+  var press = function(cur, want){ return cur + ((want?1:0) - cur)*k; };
+  ctl.steerL  = press(ctl.steerL,  input.left);
+  ctl.steerR  = press(ctl.steerR,  input.right);
+  ctl.gas     = press(ctl.gas,     save.settings.autoGas ? !input.brake : input.gas);
+  ctl.brake   = press(ctl.brake,   input.brake);
+  ctl.hbrake  = press(ctl.hbrake,  input.hbrake);
+  ctl.padUp   = Math.max(0, ctl.padUp - dt*4.5);
+  ctl.padDn   = Math.max(0, ctl.padDn - dt*4.5);
+  ctl.shiftUp = Math.max(0, ctl.shiftUp - dt*4.5);
+  ctl.shiftDn = Math.max(0, ctl.shiftDn - dt*4.5);
+  ctl.flashGear = Math.max(0, ctl.flashGear - dt*2.5);
 
-  /* Needles chase the live values with a short mechanical lag — fast
-     enough to be accurate, damped enough not to twitch. Nothing here
-     feeds back into the physics; it is all readout. */
+  /* the needles chase the live values with a short mechanical lag — quick
+     enough to be accurate, damped enough not to twitch. Nothing here feeds
+     back into the physics; it is all readout. */
   if(race){
-    var kmh = Math.abs(race.car.fwd)*0.42;
-    cluster.nRpm += (race.rpm - cluster.nRpm) * clamp(dt*20, 0, 1);
-    cluster.nKmh += (kmh      - cluster.nKmh) * clamp(dt*14, 0, 1);
+    dash.nRpm   += (race.rpm - dash.nRpm) * clamp(dt*20, 0, 1);
+    dash.nSpd   += (toSpeed(race.car.fwd) - dash.nSpd) * clamp(dt*13, 0, 1);
+    dash.nBoost += (race.boost - dash.nBoost) * clamp(dt*9, 0, 1);
     var heating = race.rpm > 0.98 ? 1 : (race.rpm > 0.86 ? 0.35 : 0);
-    cluster.heat = clamp(cluster.heat + (heating ? dt*0.30*heating : -dt*0.20), 0, 1);
-    drawCluster(race);
+    dash.heat = clamp(dash.heat + (heating ? dt*0.30*heating : -dt*0.20), 0, 1);
   }
-
-  /* the smaller surfaces repaint only on a visible change */
-  var q = function(v){ return Math.round(v*12); };
-  if(q(hudCtl.hb) !== hudCtl.drawnHb){
-    hudCtl.drawnHb = q(hudCtl.hb);
-    drawHandbrake(hudCtl.hb);
-  }
-  var manual = save.settings.transmission === 'manual';
-  if(q(hudCtl.padUp) !== hudCtl.drawnUp || hudCtl.drawnMode !== manual){
-    hudCtl.drawnUp = q(hudCtl.padUp);
-    drawPaddle('pad-up-cv', true, hudCtl.padUp, manual);
-  }
-  if(q(hudCtl.padDn) !== hudCtl.drawnDn || hudCtl.drawnMode !== manual){
-    hudCtl.drawnDn = q(hudCtl.padDn);
-    drawPaddle('pad-dn-cv', false, hudCtl.padDn, manual);
-  }
-  hudCtl.drawnMode = manual;
-
-  /* the steering rockers are on/off, so they only ever repaint on a press */
-  if(input.left !== hudCtl.drawnL){
-    hudCtl.drawnL = input.left;
-    drawSteer('steer-l-cv', false, input.left);
-  }
-  if(input.right !== hudCtl.drawnR){
-    hudCtl.drawnR = input.right;
-    drawSteer('steer-r-cv', true, input.right);
-  }
+  drawDash(race);
 }
 
-/* force a full repaint, e.g. when a race starts or the viewport changes */
+/* force a full rebuild, e.g. when a race starts or the viewport changes */
 function resetHudControls(){
-  hudCtl.gas = hudCtl.brake = hudCtl.hb = hudCtl.padUp = hudCtl.padDn = 0;
-  hudCtl.drawnHb = -1;
-  hudCtl.drawnUp = hudCtl.drawnDn = -1; hudCtl.drawnMode = null;
-  hudCtl.drawnL = hudCtl.drawnR = null;
-  drawSteer('steer-l-cv', false, false);
-  drawSteer('steer-r-cv', true, false);
-  cluster.nRpm = cluster.nKmh = cluster.heat = 0;
-  /* size the speedo to the car actually being driven, rounded up to a
-     whole major division so the numbering stays tidy */
-  if(race) cluster.kmhMax = Math.max(120, Math.ceil(race.stats.kmh*1.08/40)*40);
-  cluster.key = '';                                     /* force a face rebuild */
-  drawCluster(race);
-  var manual = save.settings.transmission === 'manual';
-  drawHandbrake(0);
-  drawPaddle('pad-up-cv', true, 0, manual);
-  drawPaddle('pad-dn-cv', false, 0, manual);
-  document.getElementById('p-shiftup').classList.toggle('auto', !manual);
-  document.getElementById('p-shiftdn').classList.toggle('auto', !manual);
+  for(var k in ctl) ctl[k] = 0;
+  dash.nRpm = dash.nSpd = dash.nBoost = dash.heat = 0;
+  if(race) dash.spdMax = speedDialMax(race.stats.topSpeed * race.finalDrive);
+  dash.key = '';
+  drawDash(race);
 }
 
 /* ------------------------------------------------------------- gearbox
@@ -2700,9 +2823,11 @@ function setGear(r, g, manual){
     r.shiftT = 0.07;                                   /* drive interrupted */
     if(up && prev >= 0.80 && prev <= 1.06){            /* shifted on the cam */
       r.perfectT = 0.85; r.perfectFlash = 0.85;
+      ctl.flashGear = 0.85;
     }
   }
   audioShift(up);
+  haptic(12);
   return true;
 }
 
@@ -2740,14 +2865,24 @@ function updateGearbox(r, spd, topSpeed, dt){
 /* ---- public shift triggers ------------------------------------------------
    The dedicated paddle-shifter UI in a later pass wires straight to these.
    Nothing outside the gearbox should touch race.gear.                       */
+/* Reaching for a paddle IS the request for a manual gearbox, so rather than
+   doing nothing in automatic it hands the box over and says so. The setting
+   sticks, and Settings puts it back. */
+function engageManual(){
+  save.settings.transmission = 'manual';
+  persist();
+  bigMsg('MANUAL', 'msg', '#ffb432', 1.1);
+  audioBeep(700, 0.09);
+  haptic(20);
+}
 function shiftUp(){
   if(!race || race.state === 'done' || paused) return false;
-  if(save.settings.transmission !== 'manual') return false;
+  if(save.settings.transmission !== 'manual'){ engageManual(); return false; }
   return setGear(race, race.gear + 1, true);
 }
 function shiftDown(){
   if(!race || race.state === 'done' || paused) return false;
-  if(save.settings.transmission !== 'manual') return false;
+  if(save.settings.transmission !== 'manual'){ engageManual(); return false; }
   return setGear(race, race.gear - 1, true);
 }
 
@@ -2768,31 +2903,57 @@ function startRace(stageId){
       node:0, steer:0, damage:0, wheelSpin:0, stuck:0
     },
     sprites: [
-      getCarSprite(save.current, cs.paint, cs.livery, 0, 3),
-      getCarSprite(save.current, cs.paint, cs.livery, 1, 3),
-      getCarSprite(save.current, cs.paint, cs.livery, 2, 3)
+      getCarSprite(save.current, cs.paint, cs.livery, 0, 1),
+      getCarSprite(save.current, cs.paint, cs.livery, 1, 1),
+      getCarSprite(save.current, cs.paint, cs.livery, 2, 1)
     ],
     gear:1, rpm:0, torque:1, shiftT:0, perfectT:0, perfectFlash:0,
+    boost:0, turbo: turboSpec(stats, cs),
     spans: carSpans(save.current), finalDrive: gearingOf(save.current).final,
     t:0, state:'countdown', countdown:3.2, collisions:0, hardHits:0,
-    noteIdx:0, note:null, noteTimer:0,
-    particles:[], skids:[], shake:0,
+    noteIdx:0, note:null, noteTimer:0, msg:null,
+    particles:[], skids:[], shake:0, camLean:0, slipNow:0,
     camX:n0.x, camY:n0.y, camA:n0.a, camZoom:1,
-    surface: st.surface, offtrack:false, progress:0,
+    surface: SURFACES[st.surface].name, offtrack:false, progress:0,
     splitIdx:0, best: save.stages[st.id].best,
+    topSpeedSeen:0, driftTime:0, recoveries:0,
     finishTime:0
   };
   paused = false;
-  document.getElementById('h-stage').textContent = st.name;
-  document.getElementById('t-target').textContent = 'TGT ' + fmtTime(track.targetTime);
+  releaseAllInput();
   showScreen(null);
-  document.getElementById('hud').classList.remove('hidden');
-  document.getElementById('controls').classList.remove('hidden');
-  document.getElementById('tilt-bar').classList.toggle('hidden', save.settings.control !== 'tilt');
-  document.getElementById('p-gas').classList.toggle('hidden', save.settings.autoGas);
+  document.getElementById('dash-cv').classList.remove('hidden');
   resetHudControls();
   audioKick();
-  bigMsg('3');
+  bigMsg('3', 'count', '#ffffff', 1.0);
+}
+
+/* --------------------------------------------------------------- turbo
+   An arcade turbo, so the boost gauge on the dash reads something real.
+   Pressure builds while the throttle is open and the engine is on the cam,
+   bleeds away off throttle, and dumps on an upshift. What it buys is a
+   modest torque multiplier — enough to reward holding a gear and staying on
+   the power, not enough to rewrite the car's stats. Cars with more turbo
+   fitted spool faster and hold more. */
+function turboSpec(S, cs){
+  var lvl = cs && cs.up ? cs.up.turbo : 0;
+  return { max: 0.55 + lvl*0.15, spool: 1.10 + lvl*0.30, bleed: 1.5, gain: 0.09 + lvl*0.035 };
+}
+function updateBoost(r, gas, dt){
+  var T = r.turbo;
+  /* exhaust energy: needs revs as well as throttle, which is why it lags
+     out of a hairpin and is already there at the end of a straight */
+  var drive = gas ? clamp((r.rpm - 0.30)/0.55, 0, 1) : 0;
+  var want = T.max * drive;
+  var k = want > r.boost ? T.spool : T.bleed;
+  var was = r.boost;
+  r.boost += (want - r.boost) * clamp(dt*k, 0, 1);
+  if(r.shiftT > 0) r.boost *= Math.pow(0.35, dt);      /* dumped on a change */
+  r.boost = clamp(r.boost, 0, 1);
+  /* the chirp of the dump valve, on a real lift rather than a dip */
+  if(was > 0.34 && !gas && !r.blewOff){ audioBlowoff(was); r.blewOff = true; }
+  if(gas) r.blewOff = false;
+  return 1 + r.boost*T.gain;
 }
 
 /* --------------------------------------------------------- physics step */
@@ -2805,11 +2966,11 @@ function stepRace(dt){
     r.countdown -= dt;
     var after = Math.ceil(r.countdown);
     if(after !== before){
-      if(after===2){ bigMsg('2'); audioBeep(520,0.12); }
-      else if(after===1){ bigMsg('1'); audioBeep(520,0.12); }
-      else if(after<=0){ bigMsg('GO!'); audioBeep(900,0.3); }
+      if(after===2){ bigMsg('2','count','#ffffff',1.0); audioBeep(520,0.12); haptic(18); }
+      else if(after===1){ bigMsg('1','count','#ffffff',1.0); audioBeep(520,0.12); haptic(18); }
+      else if(after<=0){ bigMsg('GO!','count','#7ef08a',0.9); audioBeep(900,0.3); haptic(45); r.shake = Math.max(r.shake, 0.25); }
     }
-    if(r.countdown<=0){ r.state='run'; setTimeout(function(){ bigMsg(''); }, 500); }
+    if(r.countdown<=0) r.state='run';
   } else if(r.state==='run'){
     r.t += dt;
   }
@@ -2823,12 +2984,15 @@ function stepRace(dt){
     var dz = 3;
     if(Math.abs(tv) < dz) tv = 0; else tv = tv - Math.sign(tv)*dz;
     target = clamp(tv/22, -1, 1);
-    document.getElementById('tilt-ind').style.left = (50 + target*46) + '%';
   } else {
     if(input.left) target -= 1;
     if(input.right) target += 1;
   }
-  var rate = (Math.abs(target) > Math.abs(c.steer)) ? 5.2 : 8.0;
+  /* Steering builds a touch faster than it used to and centres quicker, so
+     a tap of the rocker is a real correction rather than a suggestion — the
+     single biggest thing that made the old buttons feel floaty. It still
+     slows down with speed, further down, so it never becomes twitchy. */
+  var rate = (Math.abs(target) > Math.abs(c.steer)) ? 6.4 : 9.5;
   c.steer += clamp(target - c.steer, -rate*dt, rate*dt);
 
   /* ---- where are we ---- */
@@ -2853,10 +3017,16 @@ function stepRace(dt){
   var topSpeed = S.topSpeed * dmgPenalty * (offtrack ? 0.62 : 1);
   var accel = S.accel * dmgPenalty;
 
-  var gas = driving && (save.settings.autoGas ? !input.hbrake : input.gas);
+  /* Brake and handbrake are now separate controls. The brake is the one you
+     use into every corner — strong, stable, and it does not upset the car.
+     The handbrake is the rally tool: it locks the rears, so it scrubs speed
+     AND lets the tail come round, and it reverses once you are stopped. */
+  var brakeOn = driving && input.brake;
+  var gas = driving && (save.settings.autoGas ? !(input.brake || input.hbrake) : input.gas) && !brakeOn;
   var hb = driving && input.hbrake;
 
   updateGearbox(r, Math.abs(c.fwd), topSpeed, dt);
+  var boostMul = updateBoost(r, gas && !hb && !brakeOn, dt);
 
   if(gas && !hb){
     /* the power curve runs out above the rated top speed, so rolling
@@ -2865,15 +3035,21 @@ function stepRace(dt){
        gearing raises the ceiling and shorter gearing lowers it */
     var head = 1 - c.fwd/(topSpeed*r.finalDrive*1.35);
     if(head < 0) head = 0;
-    c.fwd += accel * head * dt * (offtrack ? 0.70 : 1) * r.torque;
+    c.fwd += accel * head * dt * (offtrack ? 0.70 : 1) * r.torque * boostMul;
     c.wheelSpin = clamp(c.wheelSpin + (1.2 - grip)*dt*2.2, 0, 1);
   } else {
     c.wheelSpin *= Math.pow(0.05, dt);
   }
+  if(brakeOn){
+    /* braking force follows the surface, so ice takes a lot longer to pull
+       up on than tarmac does */
+    var bf = 340 * clamp(0.45 + 0.55*grip, 0.4, 1.25);
+    if(c.fwd > 0) c.fwd = Math.max(0, c.fwd - bf*dt);
+    else if(c.fwd > -80) c.fwd -= 90*dt;               /* reverse out of trouble */
+  }
   if(hb){
-    /* handbrake: locks the rears — big slowdown, and the tail comes round */
     if(c.fwd > 0) c.fwd = Math.max(0, c.fwd - 300*dt);
-    else if(driving && c.fwd > -70) c.fwd -= 70*dt;   /* reverse, to recover */
+    else if(driving && c.fwd > -70) c.fwd -= 70*dt;
   }
   /* rolling resistance + aero */
   c.fwd -= c.fwd * roll * 0.30 * dt;
@@ -2936,17 +3112,20 @@ function stepRace(dt){
 
   /* ---- particles, skids ---- */
   var slip = Math.min(1, (Math.abs(c.lat)/95 + c.wheelSpin*0.5));
+  r.slipNow = slip;
   spawnEffects(r, dt, slip, surf, offtrack);
+  if(driving){
+    if(spd > r.topSpeedSeen) r.topSpeedSeen = spd;
+    if(slip > 0.45 && spd > 60) r.driftTime += dt;
+  }
 
   /* ---- pacenotes ---- */
   while(r.noteIdx < r.track.notes.length && q.d >= r.track.notes[r.noteIdx].d){
     showNote(r.track.notes[r.noteIdx]);
     r.noteIdx++;
   }
-  if(r.noteTimer > 0){
-    r.noteTimer -= dt;
-    if(r.noteTimer<=0) document.getElementById('hud-note').classList.remove('show');
-  }
+  if(r.noteTimer > 0) r.noteTimer -= dt;
+  if(r.msg) { r.msg.t -= dt; if(r.msg.t <= 0) r.msg = null; }
 
   /* ---- splits ---- */
   r.progress = clamp(q.d / r.track.len, 0, 1);
@@ -2969,14 +3148,22 @@ function stepRace(dt){
   var wantZoom = 1 - clamp(spd/S.topSpeed,0,1)*0.18;
   r.camZoom = lerp(r.camZoom, wantZoom, 1-Math.pow(0.06,dt));
   if(r.shake > 0) r.shake = Math.max(0, r.shake - dt*2.6);
+  /* weight transfer: the frame settles back under power and pitches forward
+     under braking. Only a few pixels, but it is what sells acceleration */
+  var wantLean = (gas ? 4 : 0) - (brakeOn ? 6 : 0) - (hb ? 3 : 0);
+  r.camLean = lerp(r.camLean, wantLean*clamp(spd/120,0,1), 1-Math.pow(0.02,dt));
+  /* a shiver through the cockpit as the car slides on the loose */
+  if(slip > 0.5 && spd > 90) r.shake = Math.max(r.shake, (slip-0.5)*0.22);
 
   /* ---- audio ---- */
-  audioEngine(r.rpm, gas?1:0.25, slip*(spd>25?1:0), driving || r.state==='countdown');
+  audioEngine(r.rpm, gas?1:0.25, Math.max(slip, brakeOn||hb ? 0.45 : 0)*(spd>25?1:0),
+              driving || r.state==='countdown', r.boost);
 
   /* ---- finish ---- */
   if(driving && q.d >= r.track.len - 24){
     r.state = 'done'; r.finishTime = r.t;
-    bigMsg('FINISH');
+    bigMsg('FINISH', 'msg', '#ffb432', 1.6);
+    haptic(60);
     audioBeep(760,0.4);
     setTimeout(finishRace, 900);
   }
@@ -2994,9 +3181,8 @@ function respawn(r, q){
   r.gear = 1; r.shiftT = 0; r.perfectT = 0;
   r.camX = nd.x; r.camY = nd.y; r.camA = nd.a;
   r.recoveries = (r.recoveries||0) + 1;
-  bigMsg('RECOVERED');
-  if(bigTimer) clearTimeout(bigTimer);
-  bigTimer = setTimeout(function(){ bigMsg(''); }, 1000);
+  r.boost = 0;
+  bigMsg('RECOVERED', 'msg', '#ffb432', 1.2);
   audioBeep(300, 0.2);
 }
 
@@ -3031,11 +3217,11 @@ function checkCollisions(r, dt){
           if(impact > 110) r.hardHits++;
           c.damage = clamp(c.damage + impact*0.055, 0, 100);
           r.shake = clamp(0.35 + impact/300, 0, 1.1);
+          r.boost = 0;                                /* off the throttle, off boost */
           audioThud(clamp(impact/240,0,1));
-          for(var k=0;k<8;k++) r.particles.push({
-            x:c.x, y:c.y, vx:(Math.random()-0.5)*140, vy:(Math.random()-0.5)*140,
-            life:0.5, max:0.5, size:3+Math.random()*3, col:'#d8c79a', kind:'debris'
-          });
+          haptic(Math.round(clamp(impact/240,0,1)*45) + 12);
+          spawnImpact(r, (c.x+p.x)/2, (c.y+p.y)/2, clamp(impact/200,0,1),
+                      SURFACES[r.track.stage.surface]);
           p.hit = 0.7;
         }
       }
@@ -3043,18 +3229,31 @@ function checkCollisions(r, dt){
   }
 }
 
+/* -------------------------------------------------------------- effects
+   Everything the car throws up. All of it is pixel-scale — square puffs and
+   chips, no soft gradients — so it sits in the same grid as the scenery
+   instead of looking like a particle system bolted onto a pixel-art game.
+
+   The budget comes from the quality tier: LOW thins the emission rate as
+   well as capping the pool, so a tired phone spends its frame on the road
+   rather than on dust.                                                    */
 function spawnEffects(r, dt, slip, surf, offtrack){
   var c = r.car, spd = Math.abs(c.fwd);
+  var gfx = GFX();
+  var cap = gfx.parts;
+  var dirX = Math.sin(c.a), dirY = -Math.cos(c.a);
+  var rgtX = Math.cos(c.a), rgtY = Math.sin(c.a);
+  var braking = ctl.brake > 0.3 || ctl.hbrake > 0.4;
+  var hard = slip > 0.24 || offtrack || (braking && spd > 60);
+
   r.dustAcc = (r.dustAcc||0) + dt;
-  var rate = (slip>0.24 || offtrack) && spd > 30 ? 0.018 : 0.09;
-  if(spd > 12 && r.dustAcc > rate){
+  var rate = (hard ? 0.020 : 0.075) * (gfx.parts >= 300 ? 0.8 : gfx.parts >= 150 ? 1 : 1.9);
+  if(spd > 12 && r.dustAcc > rate && r.particles.length < cap){
     r.dustAcc = 0;
     var back = -30, side = 15;
-    var dirX = Math.sin(c.a), dirY = -Math.cos(c.a);
-    var rgtX = Math.cos(c.a), rgtY = Math.sin(c.a);
-    for(var s=-1;s<=1;s+=2){
-      var px = c.x + dirX*back + rgtX*side*s;
-      var py = c.y + dirY*back + rgtY*side*s;
+    for(var sg=-1;sg<=1;sg+=2){
+      var px = c.x + dirX*back + rgtX*side*sg;
+      var py = c.y + dirY*back + rgtY*side*sg;
       r.particles.push({
         x:px, y:py,
         vx:-dirX*spd*0.16 + (Math.random()-0.5)*45,
@@ -3062,117 +3261,195 @@ function spawnEffects(r, dt, slip, surf, offtrack){
         life:0.55+Math.random()*0.4, max:0.95,
         size:4+Math.random()*6+slip*6, col:surf.dust, kind:'dust'
       });
+      /* stones kicked out of the surface when the tyres are really working */
+      if(hard && spd > 70 && Math.random() < 0.55 && r.particles.length < cap){
+        r.particles.push({
+          x:px, y:py,
+          vx:-dirX*spd*0.55 + (Math.random()-0.5)*180 - rgtX*70*sg,
+          vy:-dirY*spd*0.55 + (Math.random()-0.5)*180 - rgtY*70*sg,
+          life:0.34+Math.random()*0.2, max:0.54,
+          size:2+Math.random()*2, col: surf.grit || surf.edge, kind:'debris'
+        });
+      }
     }
-    if(slip > 0.3 && !offtrack){
-      r.skids.push({ x:c.x - Math.sin(c.a)*28 + Math.cos(c.a)*15, y:c.y + Math.cos(c.a)*28 + Math.sin(c.a)*15, a:c.a, al:Math.min(0.5,slip*0.5) });
-      r.skids.push({ x:c.x - Math.sin(c.a)*28 - Math.cos(c.a)*15, y:c.y + Math.cos(c.a)*28 - Math.sin(c.a)*15, a:c.a, al:Math.min(0.5,slip*0.5) });
-      if(r.skids.length > 900) r.skids.splice(0, 200);
+    /* tyre marks: dark on a hard surface, a lighter scar on the loose */
+    if(slip > 0.28 && !offtrack && r.skids.length < gfx.skids){
+      var al = Math.min(0.55, slip*0.55);
+      var col = surf.mark || 'rgba(24,20,16,.34)';
+      for(var m=-1;m<=1;m+=2){
+        r.skids.push({ x:c.x - dirX*28 + rgtX*15*m, y:c.y - dirY*28 + rgtY*15*m,
+                       a:c.a, al:al, col:col });
+      }
+      if(r.skids.length > gfx.skids) r.skids.splice(0, Math.round(gfx.skids*0.25));
     }
   }
-  /* engine smoke when damaged */
-  if(c.damage > 48){
+
+  /* engine smoke once the car is genuinely battered */
+  if(c.damage > 48 && r.particles.length < cap){
     r.smokeAcc = (r.smokeAcc||0) + dt;
-    if(r.smokeAcc > (c.damage>78 ? 0.045 : 0.1)){
+    if(r.smokeAcc > (c.damage>78 ? 0.05 : 0.11)){
       r.smokeAcc = 0;
       r.particles.push({
-        x:c.x + Math.sin(c.a)*24, y:c.y - Math.cos(c.a)*24,
+        x:c.x + dirX*24, y:c.y + dirY*24,
         vx:(Math.random()-0.5)*24, vy:(Math.random()-0.5)*24 - 12,
         life:1.1, max:1.1, size:7+Math.random()*7,
         col: c.damage>78 ? '#3a3a3a' : '#8d8d8d', kind:'smoke'
       });
     }
   }
+
   for(var i=r.particles.length-1;i>=0;i--){
     var p = r.particles[i];
     p.life -= dt;
     if(p.life<=0){ r.particles.splice(i,1); continue; }
     p.x += p.vx*dt; p.y += p.vy*dt;
     p.vx *= Math.pow(0.12,dt); p.vy *= Math.pow(0.12,dt);
-    if(p.kind==='smoke'){ p.size += dt*13; }
+    if(p.kind==='smoke') p.size += dt*13;
+    else if(p.kind==='dust') p.size += dt*6;
   }
 }
 
-/* --------------------------------------------------------------- render */
+/* a burst of surface and bodywork on a hit */
+function spawnImpact(r, x, y, power, surf){
+  var n = Math.round(clamp(power, 0.2, 1) * (GFX().parts >= 150 ? 14 : 7));
+  for(var k=0;k<n;k++){
+    r.particles.push({
+      x:x, y:y,
+      vx:(Math.random()-0.5)*260, vy:(Math.random()-0.5)*260,
+      life:0.45+Math.random()*0.25, max:0.7,
+      size:2+Math.random()*4,
+      col: k%3 ? (surf && surf.grit ? surf.grit : '#d8c79a') : '#ffd9a0',
+      kind:'debris'
+    });
+  }
+}
+
+/* =========================================================================
+   RENDER
+
+   Two passes with very different jobs.
+
+   1. THE STAGE goes into the low-resolution world buffer: ground, road,
+      tyre marks, particles, scenery, headlights, the car. Everything here
+      is deliberately coarse — it is what gives the game its pixel grid —
+      and it is blitted up to the screen with nearest-neighbour filtering.
+
+   2. THE READOUTS are drawn straight onto the screen canvas afterwards at
+      full device resolution: stage panel, timer, minimap, pacenotes,
+      countdown. Nothing the player has to read is ever resampled, which is
+      the rule the whole presentation is built around — the world may be
+      chunky and motion-blurred, the instruments never are.
+   ========================================================================= */
+
 function renderRace(){
   var r = race, c = r.car;
-  var g = ctx;
   var W = view.w, H = view.h;
-  var theme = r.track.theme;
-  var off = r.track.off;
+  var theme = r.track.theme, off = r.track.off;
+  var w = ensureWorld(), g = w.g;
+  var gfx = GFX();
 
+  g.setTransform(1,0,0,1,0,0);
+  g.imageSmoothingEnabled = false;
   g.fillStyle = off.color;
-  g.fillRect(0,0,W,H);
-
-  var scale = (H/470) / r.camZoom;
-  var shakeX = 0, shakeY = 0;
-  if(r.shake>0){ shakeX = (Math.random()-0.5)*r.shake*16; shakeY = (Math.random()-0.5)*r.shake*16; }
+  g.fillRect(0,0,w.w,w.h);
 
   /* Framing. The camera aims at a point ahead of the car, so the car is
-     drawn that far behind the focal point — down the screen — and the
-     faster you go the lower it rides. Left at a fixed 0.62 it disappears
-     under the dash. So: work out where the car will actually land (the same
-     rotation the transform below applies), and lift the focal point only as
-     far as it takes to keep it above the panel, never past 0.48 so the road
-     ahead stays open. At low speed this is exactly the old framing. */
-  var focal = H*0.62;
+     drawn that far down the screen and rides lower the faster you go. Left
+     unchecked it disappears behind the dash, so the focal point lifts only
+     as far as it takes to keep the car above the panel — at low speed the
+     framing is untouched. */
+  var playH = H - dashBandH();
+  var scaleCss = (playH*0.335/CAR_WORLD_LEN)/r.camZoom;
+  var scale = scaleCss/w.scale;                 /* buffer px per world unit */
+  var focal = playH*0.62;
   var dxc = c.x - r.camX, dyc = c.y - r.camY;
-  var carDrop = (dyc*Math.cos(r.camA) - dxc*Math.sin(r.camA)) * scale;
-  var deck = H - clusterBandH() - CAR_WORLD_LEN*scale*0.55;   /* dash top, less the car */
-  if(focal + carDrop > deck) focal = clamp(deck - carDrop, H*0.44, H*0.62);
+  var carDrop = (dyc*Math.cos(r.camA) - dxc*Math.sin(r.camA)) * scaleCss;
+  var deck = H - dashBandH() - CAR_WORLD_LEN*scaleCss*0.62;
+  if(focal + carDrop > deck) focal = clamp(deck - carDrop, playH*0.30, playH*0.68);
+
+  var shakeX = 0, shakeY = 0;
+  if(r.shake>0){
+    shakeX = (Math.random()-0.5)*r.shake*18;
+    shakeY = (Math.random()-0.5)*r.shake*18;
+  }
+  /* a little weight transfer: the camera leans back under power and dips
+     under braking, which is most of what makes acceleration feel physical */
+  var lean = r.camLean || 0;
 
   g.save();
-  g.translate(W/2 + shakeX, focal + shakeY);
+  g.translate((W/2 + shakeX)/w.scale, (focal + shakeY + lean)/w.scale);
   g.scale(scale, scale);
   g.rotate(-r.camA);
   g.translate(-r.camX, -r.camY);
 
-  var viewR = Math.sqrt(W*W + H*H)/2/scale + 90;
+  var viewR = Math.sqrt(w.w*w.w + w.h*w.h)/2/scale + 90;
 
-  drawGroundDetail(g, r, viewR, theme);
+  drawGroundDetail(g, r, viewR, theme, gfx);
   drawRoad(g, r, viewR);
   drawSkids(g, r, viewR);
   drawParticles(g, r, false);
-  drawProps(g, r, viewR, theme);
-  drawCar(g, r);
+  if(gfx.lights) drawHeadlights(g, r, gfx);
+  drawProps(g, r, viewR, theme, gfx);
+  drawCar(g, r, scale);
   drawParticles(g, r, true);
 
   g.restore();
 
-  drawMinimap(g, r, W, H);
+  /* speed streaks: a few short strokes rushing past the edges of the
+     frame. Subtle, cheap, and confined to the world buffer so the dash and
+     the HUD stay perfectly sharp. */
+  drawRush(g, r, w);
+
+  /* ---- blit, then the crisp layer ---- */
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(w.cv, 0, 0, w.w, w.h, 0, 0, W, H);
+
+  drawHudTop(ctx, r);
+  drawMinimap(ctx, r);
+  drawPacenote(ctx, r);
+  drawBigMsg(ctx, r, focal, carDrop);
 }
 
-function drawGroundDetail(g, r, viewR, theme){
+/* --------------------------------------------------------------- ground */
+function drawGroundDetail(g, r, viewR, theme, gfx){
   var cell = 70;
   var x0 = Math.floor((r.camX-viewR)/cell), x1 = Math.ceil((r.camX+viewR)/cell);
   var y0 = Math.floor((r.camY-viewR)/cell), y1 = Math.ceil((r.camY+viewR)/cell);
-  if((x1-x0)*(y1-y0) > 1400) return;
+  if((x1-x0)*(y1-y0) > 1600) return;
   var palettes = {
-    forest:['#26361b','#37492a','#1f2d16'],
-    mountain:['#41413c','#4c4c46','#383833'],
-    snowpass:['#f3f8fc','#dde8f2','#ffffff']
+    forest:  ['#2e4a1f','#3a5726','#294218','#43632c'],
+    mountain:['#454540','#4e4e47','#3c3c37','#565650'],
+    snowpass:['#eef5fb','#e0eaf4','#f8fcff','#d3e0ec']
   };
   var pal = palettes[theme] || palettes.forest;
-  g.save();
+  var thin = gfx.detail;
   for(var gx=x0;gx<=x1;gx++){
     for(var gy=y0;gy<=y1;gy++){
       var n = rnd2(gx,gy,7);
+      if(n > thin) continue;
       var px = gx*cell + rnd2(gx,gy,11)*cell;
       var py = gy*cell + rnd2(gx,gy,13)*cell;
-      var s = 16 + rnd2(gx,gy,17)*34;
-      g.globalAlpha = 0.45 + rnd2(gx,gy,19)*0.3;
-      g.fillStyle = pal[Math.floor(n*3)%3];
-      g.fillRect(px, py, s, s*0.75);
+      var s = 12 + rnd2(gx,gy,17)*30;
+      g.fillStyle = pal[Math.floor(rnd2(gx,gy,23)*4)%4];
+      g.fillRect(px, py, s, s*0.72);
+      /* a lit top edge turns a flat patch into a clump with a bit of height */
+      g.fillStyle = pal[3];
+      g.fillRect(px, py, s, s*0.18);
+      /* a second, smaller clump off the same cell doubles the density for
+         one extra fill — cheap texture rather than twice the loop */
+      var s2 = 7 + rnd2(gx,gy,29)*13;
+      g.fillStyle = pal[Math.floor(rnd2(gx,gy,31)*4)%4];
+      g.fillRect(px + cell*0.45, py + cell*0.38, s2, s2*0.72);
     }
   }
-  g.restore();
 }
 
+/* ----------------------------------------------------------------- road */
 function drawRoad(g, r, viewR){
   var nodes = r.track.nodes;
   var lo = Math.max(0, r.car.node - 60);
   var hi = Math.min(nodes.length-1, r.car.node + Math.ceil(viewR/NODE_STEP) + 24);
 
-  /* group consecutive nodes sharing a surface into one polygon */
   var i = lo;
   while(i < hi){
     var surfId = nodes[i].s;
@@ -3180,13 +3457,67 @@ function drawRoad(g, r, viewR){
     while(j < hi && nodes[j+1] && nodes[j+1].s === surfId) j++;
     var end = Math.min(hi, j+1);
     var S = SURFACES[surfId];
+    var k, m;
+
+    /* the verge: a band of scuffed ground either side, so the road sits in
+       the landscape instead of being pasted onto it */
     g.beginPath();
-    for(var k=i;k<=end;k++){
+    for(k=i;k<=end;k++){
+      var vn = nodes[k], vx = Math.cos(vn.a), vy = Math.sin(vn.a);
+      var e = vn.hw + 9;
+      if(k===i) g.moveTo(vn.x - vx*e, vn.y - vy*e); else g.lineTo(vn.x - vx*e, vn.y - vy*e);
+    }
+    for(m=end;m>=i;m--){
+      var vn2 = nodes[m], vx2 = Math.cos(vn2.a), vy2 = Math.sin(vn2.a);
+      var e2 = vn2.hw + 9;
+      g.lineTo(vn2.x + vx2*e2, vn2.y + vy2*e2);
+    }
+    g.closePath();
+    g.fillStyle = S.verge || S.edge;
+    g.fill();
+
+    /* the trees throw a band of shade across the outside of the verge,
+       which is what gives a forest stage its corridor */
+    g.save();
+    g.globalAlpha = 0.32;
+    g.fillStyle = '#000000';
+    g.beginPath();
+    for(k=i;k<=end;k++){
+      var sn = nodes[k], sx3 = Math.cos(sn.a), sy3 = Math.sin(sn.a);
+      var o1 = sn.hw + 9, o2 = sn.hw + 26;
+      if(k===i) g.moveTo(sn.x - sx3*o1, sn.y - sy3*o1); else g.lineTo(sn.x - sx3*o1, sn.y - sy3*o1);
+      if(k===end){
+        for(m=end;m>=i;m--){
+          var sn2 = nodes[m], sx4 = Math.cos(sn2.a), sy4 = Math.sin(sn2.a);
+          var o3 = sn2.hw + 26;
+          g.lineTo(sn2.x - sx4*o3, sn2.y - sy4*o3);
+        }
+      }
+    }
+    g.closePath(); g.fill();
+    g.beginPath();
+    for(k=i;k<=end;k++){
+      var tn = nodes[k], tx3 = Math.cos(tn.a), ty3 = Math.sin(tn.a);
+      var p1 = tn.hw + 9;
+      if(k===i) g.moveTo(tn.x + tx3*p1, tn.y + ty3*p1); else g.lineTo(tn.x + tx3*p1, tn.y + ty3*p1);
+      if(k===end){
+        for(m=end;m>=i;m--){
+          var tn2 = nodes[m], tx4 = Math.cos(tn2.a), ty4 = Math.sin(tn2.a);
+          g.lineTo(tn2.x + tx4*(tn2.hw + 26), tn2.y + ty4*(tn2.hw + 26));
+        }
+      }
+    }
+    g.closePath(); g.fill();
+    g.restore();
+
+    /* the road surface */
+    g.beginPath();
+    for(k=i;k<=end;k++){
       var nd = nodes[k], nx = Math.cos(nd.a), ny = Math.sin(nd.a);
       var x = nd.x - nx*nd.hw, y = nd.y - ny*nd.hw;
       if(k===i) g.moveTo(x,y); else g.lineTo(x,y);
     }
-    for(var m=end;m>=i;m--){
+    for(m=end;m>=i;m--){
       var nd2 = nodes[m], nx2 = Math.cos(nd2.a), ny2 = Math.sin(nd2.a);
       g.lineTo(nd2.x + nx2*nd2.hw, nd2.y + ny2*nd2.hw);
     }
@@ -3194,31 +3525,42 @@ function drawRoad(g, r, viewR){
     g.fillStyle = S.color;
     g.fill();
 
-    /* surface speckle for texture */
+    /* the two wheel tracks worn down the middle of the stage, lighter and
+       smoother than the loose stuff either side of them */
     g.fillStyle = S.color2;
-    for(var t=i;t<end;t+=2){
-      var nd3 = nodes[t];
-      var nxx = Math.cos(nd3.a), nyy = Math.sin(nd3.a);
-      for(var q=0;q<3;q++){
-        var lat = (rnd2(t,q,3)*2-1)*nd3.hw*0.94;
-        var sz = 3 + rnd2(t,q,5)*7;
-        g.fillRect(nd3.x + nxx*lat, nd3.y + nyy*lat, sz, sz);
+    for(var t=i;t<end;t+=1){
+      var n3 = nodes[t];
+      var ax = Math.cos(n3.a), ay = Math.sin(n3.a);
+      for(var s2=-1;s2<=1;s2+=2){
+        var lat = s2*n3.hw*0.42;
+        g.fillRect(n3.x + ax*lat - 5, n3.y + ay*lat - 5, 11, 11);
       }
     }
-    /* edges */
-    g.lineWidth = 3.5; g.strokeStyle = S.edge;
+    /* loose surface speckle */
+    for(var t2=i;t2<end;t2+=2){
+      var n4 = nodes[t2];
+      var bx = Math.cos(n4.a), by = Math.sin(n4.a);
+      for(var q=0;q<3;q++){
+        var l2 = (rnd2(t2,q,3)*2-1)*n4.hw*0.94;
+        var sz = 3 + rnd2(t2,q,5)*7;
+        g.fillStyle = rnd2(t2,q,9) < 0.35 ? S.edge : S.color2;
+        g.fillRect(n4.x + bx*l2, n4.y + by*l2, sz, sz);
+      }
+    }
+    /* the edges, which is what you aim at when you are going well */
+    g.lineWidth = 4; g.strokeStyle = S.edge;
     g.beginPath();
-    for(var e=i;e<=end;e++){
-      var n4 = nodes[e], ax = Math.cos(n4.a), ay = Math.sin(n4.a);
-      var ex = n4.x - ax*n4.hw, ey = n4.y - ay*n4.hw;
-      if(e===i) g.moveTo(ex,ey); else g.lineTo(ex,ey);
+    for(var e3=i;e3<=end;e3++){
+      var n5 = nodes[e3], cx2 = Math.cos(n5.a), cy2 = Math.sin(n5.a);
+      var ex = n5.x - cx2*n5.hw, ey = n5.y - cy2*n5.hw;
+      if(e3===i) g.moveTo(ex,ey); else g.lineTo(ex,ey);
     }
     g.stroke();
     g.beginPath();
-    for(var e2=i;e2<=end;e2++){
-      var n5 = nodes[e2], bx = Math.cos(n5.a), by = Math.sin(n5.a);
-      var fx = n5.x + bx*n5.hw, fy = n5.y + by*n5.hw;
-      if(e2===i) g.moveTo(fx,fy); else g.lineTo(fx,fy);
+    for(var e4=i;e4<=end;e4++){
+      var n6 = nodes[e4], dx2 = Math.cos(n6.a), dy2 = Math.sin(n6.a);
+      var fx = n6.x + dx2*n6.hw, fy = n6.y + dy2*n6.hw;
+      if(e4===i) g.moveTo(fx,fy); else g.lineTo(fx,fy);
     }
     g.stroke();
     i = end;
@@ -3231,7 +3573,7 @@ function drawRoad(g, r, viewR){
 function drawBanner(g, nd, ca, cb){
   var nx = Math.cos(nd.a), ny = Math.sin(nd.a);
   var dx = Math.sin(nd.a), dy = -Math.cos(nd.a);
-  var n = 10, w = nd.hw*2/n, depth = 16;
+  var n = 10, w = nd.hw*2/n, depth = 18;
   for(var i=0;i<n;i++){
     var lat = -nd.hw + i*w;
     for(var k=0;k<2;k++){
@@ -3245,36 +3587,87 @@ function drawBanner(g, nd, ca, cb){
   }
 }
 
+/* ------------------------------------------------------------ tyre marks */
 function drawSkids(g, r, viewR){
-  g.fillStyle = 'rgba(24,20,16,.30)';
   for(var i=0;i<r.skids.length;i++){
     var s = r.skids[i];
     if(Math.abs(s.x-r.camX) > viewR || Math.abs(s.y-r.camY) > viewR) continue;
     g.save(); g.translate(s.x,s.y); g.rotate(s.a);
     g.globalAlpha = s.al;
-    g.fillRect(-3.5, -5, 7, 10);
+    g.fillStyle = s.col || 'rgba(24,20,16,.34)';
+    g.fillRect(-4, -6, 8, 12);
     g.restore();
   }
   g.globalAlpha = 1;
 }
 
+/* ------------------------------------------------------------- particles */
 function drawParticles(g, r, above){
   for(var i=0;i<r.particles.length;i++){
     var p = r.particles[i];
-    var isSmoke = p.kind==='smoke';
-    if(isSmoke !== above) continue;
+    var hi = (p.kind==='smoke' || p.kind==='debris');
+    if(hi !== above) continue;
     var a = p.life/p.max;
-    g.globalAlpha = clamp(a*(isSmoke?0.55:0.7),0,1);
+    g.globalAlpha = clamp(a*(p.kind==='smoke'?0.55:0.78),0,1);
     g.fillStyle = p.col;
-    g.fillRect(p.x-p.size/2, p.y-p.size/2, p.size, p.size);
+    var s = p.size;
+    g.fillRect(p.x-s/2, p.y-s/2, s, s);
   }
   g.globalAlpha = 1;
 }
 
-function drawProps(g, r, viewR, theme){
+/* ------------------------------------------------------------- headlights
+   Two wedges and a warm pool on the ground ahead of the car, drawn in
+   additive mode so they lift the gravel rather than paint over it. The pool
+   alone is enough on MEDIUM; HIGH adds the cones. */
+function drawHeadlights(g, r, gfx){
+  var c = r.car;
+  var dirX = Math.sin(c.a), dirY = -Math.cos(c.a);
+  var rgtX = Math.cos(c.a), rgtY = Math.sin(c.a);
+  var nx = c.x + dirX*40, ny = c.y + dirY*40;
+  var reach = 150 + Math.min(120, Math.abs(c.fwd)*0.45);
+
+  g.save();
+  g.globalCompositeOperation = 'lighter';
+
+  if(gfx.lights >= 2){
+    g.globalAlpha = 0.26;
+    for(var s=-1;s<=1;s+=2){
+      var ox = nx + rgtX*13*s, oy = ny + rgtY*13*s;
+      var tipX = nx + dirX*reach, tipY = ny + dirY*reach;
+      var spread = reach*0.34;
+      g.beginPath();
+      g.moveTo(ox, oy);
+      g.lineTo(tipX + rgtX*(spread + 10*s), tipY + rgtY*(spread + 10*s));
+      g.lineTo(tipX - rgtX*(spread - 10*s), tipY - rgtY*(spread - 10*s));
+      g.closePath();
+      var lg = g.createLinearGradient(ox, oy, tipX, tipY);
+      lg.addColorStop(0,'rgba(255,236,178,.55)');
+      lg.addColorStop(0.5,'rgba(210,180,110,.16)');
+      lg.addColorStop(1,'rgba(120,100,60,0)');
+      g.fillStyle = lg;
+      g.fill();
+    }
+  }
+
+  /* the hot pool right in front of the bumper */
+  g.globalAlpha = 0.72;
+  var px2 = nx + dirX*46, py2 = ny + dirY*46;
+  var pool = g.createRadialGradient(px2, py2, 4, px2, py2, 72);
+  pool.addColorStop(0,'rgba(255,240,196,.40)');
+  pool.addColorStop(0.45,'rgba(220,188,120,.16)');
+  pool.addColorStop(1,'rgba(120,100,60,0)');
+  g.fillStyle = pool;
+  g.fillRect(px2-76, py2-76, 152, 152);
+  g.restore();
+  g.globalAlpha = 1;
+}
+
+/* ---------------------------------------------------------------- props */
+function drawProps(g, r, viewR, theme, gfx){
   var byNode = r.track.byNode;
-  var lo = Math.max(0, r.car.node - 50);
-  var hi = Math.min(byNode.length-1, r.car.node + Math.ceil(viewR/NODE_STEP) + 20);
+  var lo = Math.max(0, r.car.node - 45);
+  var hi = Math.min(byNode.length-1, r.car.node + Math.min(gfx.drawAhead, Math.ceil(viewR/NODE_STEP)) + 20);
   for(var i=lo;i<=hi;i++){
     var arr = byNode[i]; if(!arr) continue;
     for(var j=0;j<arr.length;j++){
@@ -3285,27 +3678,151 @@ function drawProps(g, r, viewR, theme){
   }
 }
 
-function drawCar(g, r){
+/* ------------------------------------------------------------------ car */
+function drawCar(g, r, scale){
   var c = r.car;
   var tier = c.damage>72 ? 2 : (c.damage>34 ? 1 : 0);
   var sp = r.sprites[tier];
-  /* the car occupies a fixed footprint in world units, so redrawing the
-     sprite on a different pixel grid never changes how big it drives */
+  /* the car occupies a fixed footprint in world units, so changing the
+     sprite grid stays purely visual and never alters how big it drives */
   var wh = CAR_WORLD_LEN, ww = wh * sp.pw / sp.ph;
+  var braking = ctl.brake > 0.25 || ctl.hbrake > 0.4;
   g.save();
   g.translate(c.x, c.y);
   g.rotate(c.a);
-  g.fillStyle = 'rgba(0,0,0,.30)';
-  g.fillRect(-ww/2+5, -wh/2+6, ww-7, wh-9);
+  /* the shadow is the car's own silhouette, offset down and right to match
+     the light, and pixellated exactly like everything else */
+  g.drawImage(sp.shadow, -ww/2 + ww*0.06, -wh/2 + wh*0.05, ww, wh);
   g.drawImage(sp.canvas, -ww/2, -wh/2, ww, wh);
+  if(braking && sp.lamps){
+    var ux = ww/sp.pw, uy = wh/sp.ph;
+    g.fillStyle = '#ff5a44';
+    for(var i=0;i<sp.lamps.brake.length;i++){
+      var l = sp.lamps.brake[i];
+      g.fillRect(-ww/2 + l[0]*ux, -wh/2 + l[1]*uy, ux, uy*2);
+    }
+  }
   g.restore();
 }
 
-function drawMinimap(g, r, W, H){
+/* ---------------------------------------------------------------- rush */
+function drawRush(g, r, w){
+  var frac = clamp(Math.abs(r.car.fwd)/Math.max(1, r.stats.topSpeed), 0, 1);
+  if(frac < 0.52) return;
+  var a = (frac-0.52)/0.48;
+  g.setTransform(1,0,0,1,0,0);
+  g.globalAlpha = a*0.16;
+  g.fillStyle = '#ffffff';
+  var n = 7, t = perfNow()*0.02;
+  for(var i=0;i<n;i++){
+    var side = i & 1 ? 1 : 0;
+    var band = (i/n);
+    var y = ((t*(1.4 + band) + band*w.h) % (w.h + 40)) - 20;
+    var len = w.h*0.10 + band*w.h*0.06;
+    var x = side ? w.w - 2 - Math.floor(band*w.w*0.10)
+                 : 1 + Math.floor(band*w.w*0.10);
+    g.fillRect(x, y, 1, len);
+  }
+  g.globalAlpha = 1;
+}
+
+/* =========================================================================
+   CRISP LAYER — the HUD, at full device resolution.
+
+   Painted with the bitmap font through a painter that snaps to whole device
+   pixels, so it is genuine pixel art rather than a scaled-down web overlay.
+   ========================================================================= */
+
+var HUD = { pause:null };
+
+/* css pixels per HUD art pixel */
+function hudUnit(){ return clamp(view.h/340, 0.8, 2.4); }
+
+function hudPainter(g, u){
+  var d = view.dpr;
+  return function(x,y,w,h,col){
+    var x0 = Math.round(x*u*d)/d, x1 = Math.round((x+w)*u*d)/d;
+    var y0 = Math.round(y*u*d)/d, y1 = Math.round((y+h)*u*d)/d;
+    g.fillStyle = col;
+    g.fillRect(x0, y0, Math.max(1/d, x1-x0), Math.max(1/d, y1-y0));
+  };
+}
+/* the HUD's house panel: near-black glass with a thin lit rim */
+function hudPanel(px, x, y, w, h){
+  px(x, y, w, h, 'rgba(6,10,14,.72)');
+  px(x, y, w, 1, 'rgba(150,172,198,.55)');
+  px(x, y+h-1, w, 1, 'rgba(0,0,0,.65)');
+  px(x, y, 1, h, 'rgba(150,172,198,.35)');
+  px(x+w-1, y, 1, h, 'rgba(0,0,0,.55)');
+}
+function hudBar(px, x, y, w, h, frac, colA, colB){
+  px(x, y, w, h, '#080c10');
+  px(x, y, w, 1, '#0d1318');
+  var fw = Math.max(0, Math.round((w-2)*clamp(frac,0,1)));
+  if(fw > 0){
+    px(x+1, y+1, fw, h-2, colA);
+    px(x+1, y+1, fw, 1, colB);
+  }
+  px(x, y, 1, h, 'rgba(140,160,186,.45)');
+  px(x+w-1, y, 1, h, 'rgba(0,0,0,.5)');
+}
+
+function drawHudTop(g, r){
+  var u = hudUnit();
+  var px = hudPainter(g, u);
+  var si = safeInsets();
+  var padX = si.l/u + 5, padR = si.r/u + 5, padY = si.t/u + 5;
+  var Wg = view.w/u;
+
+  /* ---------------- top left: the stage panel ----------------
+     The box takes its width from the longest stage name rather than a fixed
+     number, so a long one cannot run off the end of its own panel. */
+  var nameS = PF.textW(r.stage.name, 2, 1) > 150 ? 1 : 2;
+  var pw = Math.max(118, PF.textW(r.stage.name, nameS, 1) + 11), ph = 60;
+  hudPanel(px, padX, padY, pw, ph);
+  PF.text(px, r.stage.name, padX+5, padY+5 + (nameS===1 ? 3 : 0), '#f2f6fb', nameS, 1);
+  PF.text(px, 'PROGRESS', padX+5, padY+20, '#93a2b4', 1, 1);
+  hudBar(px, padX+5, padY+28, pw-10, 5, r.progress, '#4fe463', '#b7ffc4');
+  PF.text(px, 'DAMAGE', padX+5, padY+37, '#93a2b4', 1, 1);
+  hudBar(px, padX+5, padY+45, pw-10, 5, r.car.damage/100, '#e04a2f', '#ffb08c');
+  PF.text(px, 'SURFACE', padX+5, padY+53, '#93a2b4', 1, 1);
+  PF.text(px, r.surface, padX+53, padY+53, '#ffffff', 1, 1);
+
+  /* ---------------- top centre: the clock ---------------- */
+  var t = r.state==='countdown' ? 0 : r.t;
+  var big = fmtTime(t);
+  var tgt = 'TGT ' + fmtTime(r.track.targetTime);
+  var tw = Math.max(PF.textBoldW(big, 3, 1), PF.textW(tgt, 1, 1)) + 12;
+  var tx = Math.round(Wg/2 - tw/2);
+  hudPanel(px, tx, padY, tw, 36);
+  var late = r.state==='run' && r.t > r.track.targetTime;
+  PF.textBold(px, big, Math.round(Wg/2 - PF.textBoldW(big,3,1)/2), padY+5,
+              late ? '#ff6a52' : '#ffb432', 3, 1);
+  PF.textC(px, tgt, Wg/2, padY+27, '#93a2b4', 1, 1);
+
+  /* ---------------- top right: pause ---------------- */
+  var bw = 26, bh = 20;
+  var bx = Wg - padR - bw, by = padY;
+  hudPanel(px, bx, by, bw, bh);
+  px(bx+9, by+5, 3, bh-10, '#e6eef7');
+  px(bx+15, by+5, 3, bh-10, '#e6eef7');
+  HUD.pause = { x:bx*u, y:by*u, w:bw*u, h:bh*u };
+  HUD.mapBox = { x:bx + bw - 74, y:by + bh + 4, w:74, h:66 };
+}
+
+/* ----------------------------------------------------------- minimap
+   The real stage, not an illustration: the same node list the physics
+   drives on, with the car's live position on it. */
+function drawMinimap(g, r){
+  var u = hudUnit();
+  var px = hudPainter(g, u);
+  var B = HUD.mapBox;
+  if(!B) return;
   var nodes = r.track.nodes;
-  var mw = Math.min(120, W*0.19), mh = mw;
-  var x0 = W - mw - 10, y0 = 46;          /* top right, under the pause button */
-  /* fit whole track */
+
+  hudPanel(px, B.x, B.y, B.w, B.h);
+  px(B.x+1, B.y+1, B.w-2, B.h-2, 'rgba(10,20,14,.72)');
+
   if(!r.mapBox){
     var minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
     for(var i=0;i<nodes.length;i+=4){
@@ -3315,62 +3832,112 @@ function drawMinimap(g, r, W, H){
     r.mapBox = {minx:minx,maxx:maxx,miny:miny,maxy:maxy};
   }
   var bb = r.mapBox;
-  var sx = mw/Math.max(1,(bb.maxx-bb.minx)), sy = mh/Math.max(1,(bb.maxy-bb.miny));
-  var s = Math.min(sx,sy)*0.88;
-  var ox = x0 + mw/2 - ((bb.minx+bb.maxx)/2)*s;
-  var oy = y0 + mh/2 - ((bb.miny+bb.maxy)/2)*s;
-  g.save();
-  g.fillStyle = 'rgba(8,11,7,.55)';
-  g.fillRect(x0-6, y0-6, mw+12, mh+12);
-  g.strokeStyle = 'rgba(60,74,56,.85)'; g.lineWidth = 2;
-  g.strokeRect(x0-6, y0-6, mw+12, mh+12);
-  g.globalAlpha = 0.85;
-  g.strokeStyle = '#c9d3c2'; g.lineWidth = 2;
-  g.beginPath();
-  for(var k=0;k<nodes.length;k+=6){
-    var px = ox+nodes[k].x*s, py = oy+nodes[k].y*s;
-    if(k===0) g.moveTo(px,py); else g.lineTo(px,py);
+  var s = Math.min((B.w-8)/Math.max(1,bb.maxx-bb.minx),
+                   (B.h-8)/Math.max(1,bb.maxy-bb.miny));
+  var ox = B.x + B.w/2 - ((bb.minx+bb.maxx)/2)*s;
+  var oy = B.y + B.h/2 - ((bb.miny+bb.maxy)/2)*s;
+  var P = function(n){ return [ox + n.x*s, oy + n.y*s]; };
+
+  /* the line itself, stamped as pixels so it matches the rest of the HUD */
+  var step = Math.max(1, Math.round(nodes.length/260));
+  for(var k=0;k<nodes.length;k+=step){
+    var p = P(nodes[k]);
+    px(p[0]-1, p[1]-1, 2, 2, '#0a1a0e');
   }
-  g.stroke();
-  g.globalAlpha = 1;
-  g.fillStyle = '#ffb432';
-  g.fillRect(ox+r.car.x*s-3, oy+r.car.y*s-3, 6, 6);
-  g.restore();
+  for(var k2=0;k2<nodes.length;k2+=step){
+    var p2 = P(nodes[k2]);
+    px(p2[0], p2[1], 2, 2, '#dfe8d6');
+  }
+  /* start and finish */
+  var st = P(nodes[0]), fi = P(nodes[nodes.length-1]);
+  px(st[0]-1, st[1]-1, 3, 3, '#7ef08a');
+  px(fi[0]-1, fi[1]-1, 3, 3, '#ffffff');
+  /* the checkpoint splits, so the map reads as a stage and not a squiggle */
+  for(var q=1;q<4;q++){
+    var n2 = nodes[Math.floor(nodes.length*q/4)];
+    var cp = P(n2);
+    px(cp[0], cp[1]-1, 1, 3, 'rgba(255,180,50,.75)');
+  }
+  /* the car — blinking so it is findable at a glance */
+  var cp2 = [ox + r.car.x*s, oy + r.car.y*s];
+  px(cp2[0]-2, cp2[1]-2, 4, 4, '#08100a');
+  px(cp2[0]-1, cp2[1]-1, 3, 3, '#ffb432');
+}
+
+/* ---------------------------------------------------------- pacenotes */
+function drawPacenote(g, r){
+  if(!r.note || r.noteTimer <= 0) return;
+  var u = hudUnit();
+  var px = hudPainter(g, u);
+  var Wg = view.w/u;
+  var n = r.note;
+  var col = n.warn ? '#ff6a52' : '#ffffff';
+  var fade = clamp(r.noteTimer/0.4, 0, 1);
+  var s = 2;
+  var tw = PF.textBoldW(n.text, s, 1);
+  var y = (safeInsets().t/u) + 46;
+  var ax = Math.round(Wg/2 - tw/2) - 14;
+  if(fade < 1 && (Math.floor(perfNow()/90) & 1)) return;
+
+  hudPanel(px, ax - 5, y - 4, tw + 24, 16);
+  /* the corner arrow, drawn rather than typed */
+  var i;
+  if(n.dir === 0){
+    for(i=0;i<5;i++) px(ax+4, y+i, 2, 1, col);
+    px(ax+4, y+6, 2, 2, col);
+  } else {
+    var rgt = n.dir > 0;
+    for(i=0;i<4;i++) px(ax + (rgt ? 6+i : 5-i), y+3-i, 1, 1+i, col);
+    px(ax + (rgt ? 2 : 4), y+6, 5, 2, col);
+  }
+  PF.textBold(px, n.text, ax + 16, y, col, s, 1);
+}
+
+/* -------------------------------------------------------- big messages
+   Countdown and stage calls, in large outlined bitmap type placed above
+   the car rather than in the middle of the screen — the reference frames
+   the countdown right over the bonnet. */
+function drawBigMsg(g, r, focal, carDrop){
+  if(!r.msg || r.msg.t <= 0) return;
+  var u = hudUnit();
+  var px = hudPainter(g, u);
+  var m = r.msg;
+  var age = 1 - m.t/m.ttl;
+  var Wg = view.w/u;
+
+  /* the countdown pops on and settles */
+  var pop = m.kind === 'count' ? clamp(1 - age*3.2, 0, 1) : 0;
+  var s = Math.max(2, Math.round((m.big ? 6 : 3.4) * (1 + pop*0.28)));
+  var carY = (focal + carDrop)/u;
+  var y = Math.round(clamp(carY - (m.big ? 26 : 18)*s*0.5 - 10, (safeInsets().t/u) + 60, Wg));
+
+  /* a flash of light behind the numeral on the frame it changes */
+  if(pop > 0.6){
+    var fw = PF.textBoldW(m.text, s, 1) + 20;
+    g.save();
+    g.globalAlpha = (pop-0.6)*1.2;
+    px(Math.round(Wg/2 - fw/2), y - 6, fw, 7*s + 12, 'rgba(255,220,150,.30)');
+    g.restore();
+  }
+  PF.textOutlineC(px, m.text, Wg/2, y, m.col || '#ffffff', 'rgba(4,6,9,.92)', s, 1);
 }
 
 /* ------------------------------------------------------------------ HUD */
-/* the DOM half of the HUD — speed, revs and gear all live on the canvas
-   cluster now, which paints itself from updateHudControls each frame */
-function updateHUD(r){
-  r = r || race;
-  document.getElementById('t-time').textContent = fmtTime(r.state==='countdown'?0:r.t);
-  document.getElementById('h-prog').style.width = (r.progress*100).toFixed(1)+'%';
-  document.getElementById('h-dmg').style.width = r.car.damage.toFixed(0)+'%';
-  document.getElementById('h-surf').textContent = r.surface;
-}
-var bigTimer = null;
-function bigMsg(txt){
-  var el = document.getElementById('big-msg');
-  el.textContent = txt;
-  el.classList.toggle('show', !!txt);
+function bigMsg(txt, kind, col, ttl){
+  if(!race) return;
+  race.msg = txt ? { text:txt, kind:kind||'msg', col:col, ttl:ttl||1.0, t:ttl||1.0,
+                     big: kind === 'count' } : null;
 }
 function showNote(n){
-  var el = document.getElementById('hud-note');
-  var arrows = { '-1':'↖', '0':'⚠', '1':'↗' };
-  document.getElementById('n-arrow').textContent = n.sev>=5 ? (n.dir<0?'↰':'↱') : arrows[String(n.dir)];
-  document.getElementById('n-text').textContent = n.text;
-  el.classList.toggle('warn', !!n.warn);
-  el.classList.add('show');
-  race.noteTimer = 2.4;
+  race.note = n;
+  race.noteTimer = 2.6;
   audioBeep(n.warn?420:640, 0.07);
 }
 function showSplit(delta){
-  var el = document.getElementById('hud-split');
-  el.textContent = fmtDelta(delta);
-  el.style.color = delta <= 0 ? 'var(--green)' : 'var(--red)';
-  el.classList.add('show');
-  setTimeout(function(){ el.classList.remove('show'); }, 2200);
+  bigMsg(fmtDelta(delta), 'split', delta <= 0 ? '#7ef08a' : '#ff6a52', 1.6);
+  audioBeep(delta <= 0 ? 900 : 380, 0.09);
 }
+function updateHUD(r){ /* the HUD is painted from renderRace now */ }
 
 /* --------------------------------------------------------------- loop */
 var lastT = 0;
@@ -3382,7 +3949,13 @@ function frame(ts){
   if(race && !paused){
     updateHudControls(dt);
     if(race.state !== 'done') stepRace(dt);
-    else { race.shake = Math.max(0, race.shake - dt*2); spawnEffects(race,dt,0,SURFACES[race.stage.surface],false); }
+    else {
+      race.shake = Math.max(0, race.shake - dt*2);
+      race.slipNow = 0;
+      if(race.msg){ race.msg.t -= dt; if(race.msg.t <= 0) race.msg = null; }
+      if(race.noteTimer > 0) race.noteTimer -= dt;
+      spawnEffects(race, dt, 0, SURFACES[race.stage.surface], false);
+    }
     renderRace();
   } else if(!race){
     if(currentScreen === 'garage') drawGarageScene(dt);
@@ -3392,7 +3965,54 @@ function frame(ts){
       ctx.fillRect(0,0,view.w,view.h);
     }
   }
+  drawRotatePrompt(dt);
 }
+
+/* ---------------------------------------------------- orientation prompt
+   Landscape is the playing orientation, so portrait gets a proper prompt
+   rather than a squeezed cockpit: a pixel-art phone that tips onto its
+   side, drawn in the same style as the rest of the game. */
+var rotT = 0;
+function drawRotatePrompt(dt){
+  var el = document.getElementById('rotate-cv');
+  if(!el || window.innerWidth > window.innerHeight) return;
+  rotT += dt;
+  var g = el.getContext('2d');
+  var S = 4, GW = el.width/S, GH = el.height/S;
+  g.imageSmoothingEnabled = false;
+  g.clearRect(0,0,el.width,el.height);
+  var px = function(x,y,w,h,c){
+    g.fillStyle = c;
+    g.fillRect(Math.round(x)*S, Math.round(y)*S, Math.max(1,Math.round(w))*S, Math.max(1,Math.round(h))*S);
+  };
+  /* 0 upright, 1 on its side, with a pause at each end */
+  var cyc = (rotT % 2.6)/2.6;
+  var k = cyc < 0.35 ? 0 : cyc < 0.55 ? (cyc-0.35)/0.20 : cyc < 0.9 ? 1 : 1-(cyc-0.9)/0.10;
+  var ang = -k*Math.PI/2;
+  var pw = 9, ph = 16;
+  var cx = GW/2, cy = GH/2;
+  var ca = Math.cos(ang), sa = Math.sin(ang);
+  for(var y=0;y<ph;y++){
+    for(var x=0;x<pw;x++){
+      var lx = x - (pw-1)/2, ly = y - (ph-1)/2;
+      var edge = (x===0||x===pw-1||y===0||y===ph-1);
+      var screen = (x>0 && x<pw-1 && y>1 && y<ph-2);
+      var col = edge ? '#8d9aa8' : (screen ? (k > 0.5 ? '#2a4a2c' : '#141a20') : '#3b444f');
+      if(y===1 && x===(pw>>1)) col = '#5b6672';
+      if(y===ph-2 && x===(pw>>1)) col = '#5b6672';
+      px(cx + lx*ca - ly*sa - 0.5, cy + lx*sa + ly*ca - 0.5, 1, 1, col);
+    }
+  }
+  /* the arc arrow telling you which way to turn it, sweeping over the top */
+  var R2 = 12, a0 = -Math.PI*0.92, a1 = -Math.PI*0.20;
+  for(var i=0;i<=14;i++){
+    var a2 = a0 + (a1-a0)*i/14;
+    px(cx + Math.cos(a2)*R2 - 0.5, cy + Math.sin(a2)*R2 - 0.5, 1, 1, '#ffb432');
+  }
+  var hx = cx + Math.cos(a1)*R2, hy = cy + Math.sin(a1)*R2;
+  for(var j=0;j<3;j++) px(hx - j, hy - 2 + j, 1 + j, 1, '#ffb432');
+}
+
 /* =========================================================================
    SCENES — canvas-drawn backdrops for the garage and the parking lot.
 
@@ -3705,8 +4325,8 @@ function showScreen(name){
   }
   currentScreen = name;
   var racing = (name === null);
-  document.getElementById('hud').classList.toggle('hidden', !racing);
-  document.getElementById('controls').classList.toggle('hidden', !racing);
+  document.getElementById('dash-cv').classList.toggle('hidden', !racing);
+  if(!racing) releaseAllInput();
   if(name && name !== 'results'){
     if(race){ race = null; audioStopAll(); }
     paused = false;
@@ -3819,7 +4439,7 @@ function renderStages(){
         var req = document.createElement('span');
         req.className = 'meta';
         req.style.fontSize = '9px';
-        req.textContent = 'NEEDS ' + st.req.label;
+        req.textContent = 'NEEDS ' + reqLabel(st);
         foot.appendChild(req);
       }
       card.appendChild(foot);
@@ -3987,7 +4607,8 @@ function renderGarage(){
   }
 
   document.getElementById('car-stats').innerHTML =
-    statRow('SPEED', s.kmh+' KM/H', s.kmh/240*100, false, dl(function(x){ return x.kmh; })) +
+    statRow('SPEED', Math.round(s.kmh*(save.settings.units==='kmh'?1:0.6214)) + ' ' + speedUnit(),
+            s.kmh/240*100, false, dl(function(x){ return x.kmh; })) +
     statRow('ACCEL', s.accelScore, s.accelScore, false, dl(function(x){ return x.accelScore; })) +
     statRow('HANDLING', s.handlingScore, s.handlingScore, false, dl(function(x){ return x.handlingScore; })) +
     statRow('G/GRAVEL', s.gripScore('gravel'), s.gripScore('gravel'), true, dl(function(x){ return x.gripScore('gravel'); })) +
@@ -4049,7 +4670,9 @@ function renderUpgrades(body){
   var hint = document.createElement('div');
   hint.className = 'up-desc';
   hint.style.padding = '8px';
-  hint.textContent = 'Tap an upgrade to fit it on the car and see it before you pay. Stage 2 needs handling 44+. Stage 3 needs handling 58+ and 170 km/h+. Upgrades apply to the currently selected car only.';
+  hint.textContent = 'Tap an upgrade to fit it on the car and see it before you pay. ' +
+    'Col de Granite needs ' + reqLabel(STAGES[1]) + '. Vitkull Pass needs ' + reqLabel(STAGES[2]) + '. ' +
+    'Upgrades apply to the currently selected car only.';
   body.appendChild(hint);
 }
 
@@ -4111,12 +4734,13 @@ function renderGearing(body){
 
   /* what the current ratios actually give you */
   var spans = carSpans(carId);
-  var topKmh = Math.round(st.topSpeed * cs.gearing.final * 0.42);
-  var firstKmh = Math.round(st.topSpeed * spans[0] * 0.42);
+  var uf = speedFactor(), un = speedUnit();
+  var topKmh = Math.round(st.topSpeed * cs.gearing.final * uf);
+  var firstKmh = Math.round(st.topSpeed * spans[0] * uf);
   var out = document.createElement('div');
   out.className = 'up-row';
   out.innerHTML = '<span class="up-name">AT REDLINE</span>' +
-    '<span class="up-desc">1st runs to <b>' + firstKmh + ' KM/H</b>, top gear to <b>' + topKmh + ' KM/H</b>. ' +
+    '<span class="up-desc">1st runs to <b>' + firstKmh + ' ' + un + '</b>, top gear to <b>' + topKmh + ' ' + un + '</b>. ' +
     (gearingIsStock(carId) ? 'Currently stock.' : 'Tuned away from stock.') + '</span>';
   var reset = document.createElement('button');
   reset.className = 'btn small';
@@ -4365,8 +4989,36 @@ function renderSettings(){
 
   b.appendChild(segRow('THROTTLE',
     'Auto throttle holds the gas for you so you only steer and brake.',
-    [['manual','GAS BUTTON'],['auto','AUTO']], save.settings.autoGas?'auto':'manual', function(v){
+    [['manual','THROTTLE PAD'],['auto','AUTO']], save.settings.autoGas?'auto':'manual', function(v){
       save.settings.autoGas = (v==='auto'); persist(); renderSettings();
+    }));
+
+  b.appendChild(segRow('GRAPHICS',
+    'How much work each frame is worth. LOW renders the stage at a coarser ' +
+    'pixel size and thins out dust, lighting and scenery — pick it if the game ' +
+    'stutters or the phone gets hot. MEDIUM is the mobile default. HIGH adds ' +
+    'headlight cones, more particles and a finer pixel grid.',
+    [['low','LOW'],['medium','MEDIUM'],['high','HIGH']], save.settings.quality, function(v){
+      save.settings.quality = v;
+      world.key = '';                          /* the buffer resizes with it */
+      persist(); renderSettings();
+    }));
+
+  b.appendChild(segRow('UNITS',
+    'What the speedometer and the garage read in.',
+    [['mph','MPH'],['kmh','KM/H']], save.settings.units, function(v){
+      save.settings.units = v;
+      if(race) dash.spdMax = speedDialMax(race.stats.topSpeed * race.finalDrive);
+      dash.key = '';
+      persist(); renderSettings();
+    }));
+
+  b.appendChild(segRow('HAPTICS',
+    'A short buzz on shifts, impacts and the countdown, where the device supports it.',
+    [['on','ON'],['off','OFF']], save.settings.haptics?'on':'off', function(v){
+      save.settings.haptics = (v==='on');
+      if(save.settings.haptics) haptic(20);
+      persist(); renderSettings();
     }));
 
   b.appendChild(segRow('AUDIO',
@@ -4394,7 +5046,11 @@ function renderSettings(){
 
   var about = document.createElement('div');
   about.className = 'set-row';
-  about.innerHTML = '<div class="hint">RALLY PIXEL — keyboard: arrows / WASD to steer and accelerate, SHIFT or DOWN for handbrake, E / Q to change gear in manual, ESC to pause.</div>';
+  about.innerHTML = '<div class="hint">RALLY PIXEL &mdash; on a phone the dashboard is the controller: ' +
+    'the rockers bottom left steer, THROTTLE and BRAKE sit under the right thumb, the lever above them ' +
+    'is the handbrake, and the paddles either side of the instruments change gear. ' +
+    'Keyboard: arrows / WASD to steer, brake and accelerate, SPACE for the handbrake, ' +
+    'E / Q to change gear in manual, ESC to pause.</div>';
   b.appendChild(about);
 }
 function segRow(label, hint, opts, value, onPick){
@@ -4434,32 +5090,55 @@ function finishRace(){
   var first = !rec.done ? Math.round(st.payout*1.20) : 0;
   var total = base + pace + clean + tbonus + first;
 
+  var prevBest = rec.best;
   var isBest = rec.best == null || time < rec.best;
   if(isBest) rec.best = time;
   rec.done = true;
   save.money += total;
   persist();
 
-  var rows = document.getElementById('res-rows');
-  rows.innerHTML =
-    line('TIME', fmtTime(time) + (isBest ? '  ★ BEST' : '')) +
+  document.getElementById('res-sub').textContent =
+    st.name + '  ·  ' + SURFACES[st.surface].name + '  ·  ' + curCarDef().name;
+
+  /* the numbers that say how the run went */
+  var unit = speedUnit();
+  document.getElementById('res-times').innerHTML =
+    '<div class="res-line big"><span>TIME</span><span>' + fmtTime(time) + '</span></div>' +
     line('TARGET', fmtTime(tgt)) +
-    line('DELTA', fmtDelta(time-tgt)) +
+    lineCol('DIFFERENCE', fmtDelta(time-tgt), time <= tgt ? 'good' : 'bad') +
+    line('BEST', prevBest != null ? fmtTime(prevBest) + (isBest ? '  BEATEN' : '') : 'FIRST RUN') +
+    '<div style="height:5px"></div>' +
+    line('TOP SPEED', Math.round(r.topSpeedSeen*speedFactor()) + ' ' + unit) +
+    line('SIDEWAYS', r.driftTime.toFixed(1) + ' S') +
     line('COLLISIONS', String(r.collisions)) +
     line('DAMAGE', Math.round(r.car.damage) + '%') +
-    '<div style="height:6px"></div>' +
+    line('RECOVERIES', String(r.recoveries||0));
+
+  /* and the numbers that say what it paid */
+  document.getElementById('res-rows').innerHTML =
     line('FINISH FEE', fmtMoney(base)) +
     line('PACE BONUS', fmtMoney(pace)) +
     line('CLEAN RUN', fmtMoney(clean)) +
     (tbonus ? line('TARGET BEATEN', fmtMoney(tbonus)) : '') +
     (first ? line('FIRST CLEAR', fmtMoney(first)) : '') +
-    '<div class="res-line total"><span>PAYOUT</span><span>'+fmtMoney(total)+'</span></div>';
+    '<div class="res-line total"><span>PAYOUT</span><span>'+fmtMoney(total)+'</span></div>' +
+    '<div style="height:5px"></div>' +
+    line('CREDITS', fmtMoney(save.money));
 
-  document.getElementById('res-title').textContent = time <= tgt ? 'TARGET BEATEN' : 'STAGE COMPLETE';
+  document.getElementById('res-title').textContent =
+    isBest && prevBest != null ? 'NEW BEST TIME' : (time <= tgt ? 'TARGET BEATEN' : 'STAGE COMPLETE');
 
   var bts = document.getElementById('res-buttons');
   bts.innerHTML = '';
   bts.appendChild(mkBtn('RETRY','primary', function(){ startRace(st.id); }));
+  /* the next stage, when it is open — the natural thing to want next */
+  var idx = 0, i;
+  for(i=0;i<STAGES.length;i++) if(STAGES[i].id === st.id) idx = i;
+  var next = STAGES[idx+1];
+  if(next){
+    if(stageUnlocked(next)) bts.appendChild(mkBtn('NEXT STAGE','primary', function(){ startRace(next.id); }));
+    else bts.appendChild(mkBtn('UNLOCK NEXT','', function(){ showScreen('garage'); }));
+  }
   bts.appendChild(mkBtn('GARAGE','', function(){ showScreen('garage'); }));
   bts.appendChild(mkBtn('STAGES','', function(){ showScreen('stages'); }));
   bts.appendChild(mkBtn('MENU','', function(){ showScreen('menu'); }));
@@ -4470,6 +5149,7 @@ function finishRace(){
   audioBeep(880,0.18);
   setTimeout(function(){ audioBeep(1180,0.28); }, 160);
 }
+function lineCol(a,b,cls){ return '<div class="res-line '+cls+'"><span>'+a+'</span><span>'+b+'</span></div>'; }
 function line(a,b){ return '<div class="res-line"><span>'+a+'</span><span>'+b+'</span></div>'; }
 function mkBtn(text, cls, fn){
   var b = document.createElement('button');
@@ -4484,6 +5164,8 @@ function togglePause(){
   if(!race) return;
   paused = !paused;
   document.getElementById('pause-overlay').classList.toggle('hidden', !paused);
+  /* nothing may stay held across a pause, or the throttle sticks open */
+  releaseAllInput();
   if(paused) audioStopAll();
 }
 document.getElementById('pause-resume').onclick = function(){ togglePause(); };
@@ -4499,12 +5181,20 @@ document.getElementById('pause-quit').onclick = function(){
   race = null; audioStopAll();
   showScreen('stages');
 };
-(function(){
-  var pb = document.getElementById('p-pause');
-  var tap = function(e){ e.preventDefault(); togglePause(); };
-  pb.addEventListener('touchstart', tap, {passive:false});
-  pb.addEventListener('click', function(e){ e.preventDefault(); if(!('ontouchstart' in window)) togglePause(); });
-})();
+/* The pause button is painted into the HUD, so the game canvas carries its
+   own hit test rather than a DOM button sitting on top of the artwork. */
+cv.addEventListener('pointerdown', function(e){
+  if(!race || !HUD.pause) return;
+  var rect = cv.getBoundingClientRect();
+  var x = e.clientX - rect.left, y = e.clientY - rect.top;
+  var p = HUD.pause;
+  var pad = 10;
+  if(x >= p.x-pad && x <= p.x+p.w+pad && y >= p.y-pad && y <= p.y+p.h+pad){
+    e.preventDefault();
+    audioKick(); haptic(10);
+    togglePause();
+  }
+}, {passive:false});
 
 /* ------------------------------------------------------------- wiring */
 var navs = document.querySelectorAll('[data-go]');
@@ -4525,7 +5215,7 @@ for(var t=0;t<tabEls.length;t++){
 }
 document.getElementById('pv-buy').addEventListener('click', function(){ commitPreview(); });
 document.getElementById('pv-cancel').addEventListener('click', function(){ cancelPreview(); });
-document.addEventListener('touchstart', function(){ audioKick(); }, {passive:true, once:true});
+document.addEventListener('pointerdown', function(){ audioKick(); }, {passive:true, once:true});
 document.addEventListener('gesturestart', function(e){ e.preventDefault(); });
 document.addEventListener('dblclick', function(e){ e.preventDefault(); });
 
@@ -4538,6 +5228,7 @@ function boot(){
     STAGES[i].len = L;
   }
   resize();
+  bindDashInput(document.getElementById('dash-cv'));
   if(save.settings.control === 'tilt' && window.DeviceOrientationEvent &&
      typeof window.DeviceOrientationEvent.requestPermission !== 'function'){
     enableTilt();
@@ -4545,6 +5236,22 @@ function boot(){
   showScreen('menu');
   requestAnimationFrame(frame);
 }
+
+/* A handle for the automated screenshot pass to drive the game with. Guarded
+   on the dev flag, so it is compiled out of the production bundle entirely. */
+if(import.meta.env && import.meta.env.DEV){
+  window.__rally = {
+    state: function(){ return race; },
+    jumpToFinish: function(){
+      if(!race) return;
+      var n = race.track.nodes, k = n.length - 4;
+      race.car.node = k; race.car.x = n[k].x; race.car.y = n[k].y; race.car.a = n[k].a;
+      race.camX = n[k].x; race.camY = n[k].y; race.camA = n[k].a;
+      race.state = 'run';
+    }
+  };
+}
+
 boot();
 
 })();

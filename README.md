@@ -1,13 +1,14 @@
 # Rally Pixel
 
-A pixel-art rally time-trial game. Canvas-based, vanilla JS, no game engine and no external
-assets — every sprite is drawn into canvas at runtime. Built with Vite and deployed as a
-static site.
+A pixel-art rally time-trial game played from inside the cockpit. Canvas-based, vanilla JS,
+no game engine and no external assets — every sprite, gauge and letterform is drawn into
+canvas at runtime. Built with Vite and deployed as a static site.
 
 Vibe coded using Claude Opus 5 on high.
 
-Designed for **landscape** iPhone Safari — touch controls, safe-area insets, no zooming — but
-it plays fine with a keyboard on desktop.
+Designed for **landscape** phones first — the dashboard *is* the controller, the whole
+layout is laid out on a resolution-independent grid, and safe-area insets keep every control
+clear of notches and home indicators. It plays fine with a keyboard on desktop too.
 
 ## Build
 
@@ -30,11 +31,16 @@ The build uses a relative `base`, so it works from a domain root or a project su
 ## Project structure
 
 ```
-index.html       page shell and DOM (HUD, menus, garage, touch controls)
-src/main.js      the whole game — sprites, track builder, physics, UI
-src/style.css    retro rally styling for the HUD and menu screens
+index.html       page shell — the two canvases and the menu screens
+src/main.js      the game — track builder, physics, cockpit, renderer, UI
+src/carsprite.js the top-down car: a pseudo-3D body through a pixel pipeline
+src/pixfont.js   the 5x7 bitmap face every label in the game is set in
+src/style.css    retro rally styling for the menu screens
 vite.config.js   build config (output to /dist)
 ```
+
+Only two canvases exist while you are driving. The first carries the stage and the readouts
+painted over it; the second is the cockpit. There is no DOM in the game view at all.
 
 ## The loop
 
@@ -42,6 +48,11 @@ Drive a stage against the clock → get paid for pace, for beating the target ti
 keeping the car straight → spend the credits in the garage → unlock the next stage and the
 next car. Stages are gated on your car's **stats**, not on grinding, so progression follows
 the upgrades you actually choose to buy.
+
+## Units
+
+Settings → `UNITS`. MPH by default, as on the cockpit reference; km/h is a switch away, and
+the dial, the digital readout, the garage stats and the stage requirements all follow it.
 
 ## Stages
 
@@ -61,42 +72,93 @@ calls like `ICE! CAUTION`, `MUD PATCH`, `CREST` and `TIGHTENS`. Notes are genera
 stage geometry — severity comes from the corner radius — and arrive about 165 m before the
 corner. Red notes are the ones that will hurt.
 
+## The cockpit
+
+The bottom of the screen is a rally dashboard, drawn as one canvas: steering rockers under
+the left thumb, a sliding gear selector, an analog tachometer reading in thousands of rpm
+with the redline banded at 7, a shift block with paddle tell-tales, rev lights and a digital
+speed readout, an analog speedometer, a turbo boost gauge, the handbrake lever, and the
+throttle and brake pads under the right thumb. A strip of tell-tales runs along the bottom —
+indicators, headlights, seatbelt, parking brake, traction, differential — and they all follow
+what the car is actually doing.
+
+It is laid out on a fixed grid 128 rows deep, with a further 46 rows above it for the paddle
+shifters, which stand proud of the dash top edge. One grid unit is a whole number of device
+pixels, so a phone and a desktop get the same composition rather than the same art scaled by
+CSS. The moulding is drawn full bleed to the screen edges; the layout inside it is inset by
+the device's safe-area insets, so no control ends up under a notch or a home indicator.
+
+Everything static — moulding, bezels, dial faces, every label — is painted once into an
+offscreen bitmap at device resolution. A frame is one blit plus the needles, digits, lamps
+and whichever controls are being held.
+
 ## Controls
 
-**Buttons (default)**
+The dashboard is the controller. There are no DOM buttons over the game.
 
-| Action | Control |
-|---|---|
-| Steer | on-screen ◀ / ▶ |
-| Throttle | `GAS` (or switch to auto throttle in Settings) |
-| Handbrake | the lever on the right — locks the rears for hairpins, and reverses when stopped |
-| Shift | the paddles on the outer edges of the dash: `−` bottom left drops a gear, `+` bottom right takes one (manual gearbox only) |
-| Pause | `II`, top right |
+| Action | Control | Keyboard |
+|---|---|---|
+| Steer | the rockers bottom left | arrows / `A` `D` |
+| Throttle | `THROTTLE`, bottom right corner | `↑` / `W` |
+| Brake | `BRAKE`, inboard of the throttle | `↓` / `S` |
+| Handbrake | the lever above the throttle — locks the rears for hairpins, and reverses when stopped | `SPACE` / `SHIFT` |
+| Shift | the paddles either side of the instruments, or the `SHIFT` arrows between the dials | `E` / `Q` |
+| Pause | `II`, top right | `ESC` |
 
-## The dash
-
-The instrument binnacle along the bottom of the screen is one canvas, drawn from scratch
-every frame: a footwell with live brake and throttle pedals, an analog tachometer reading
-in thousands of rpm with the redline banded in red at 7, a gear panel with a shift bar, and
-an analog speedometer with a digital km/h readout. Chrome bezels, near-black glass and thin
-red pointers. The speedometer scales itself to the car you are driving. Three warning lamps
-— coolant, check-engine, brake — pick up on a cooked engine, a battered car and the
-handbrake, purely for atmosphere.
-
-The dash is held to under a fifth of the screen height and pinned to the bottom edge, and
-the steering pads, shifter blades and handbrake line up on the same baseline so the whole
-band reads as one dashboard. It has to stay small: this is a chase cam, and the camera aims
-at a point *ahead* of the car, which means the car itself is drawn that far down the screen
-and rides lower the faster you go. So the camera also watches where the car will land and
-lifts its focal point only as far as it takes to keep it above the dash — at low speed the
-framing is untouched.
+Both thumbs work at once — pointer ids are tracked to the control they went down on, so
+holding the throttle while steering and reaching for the handbrake all works. Sliding a thumb
+off a control releases it and onto another engages it. Reaching for a paddle while the
+gearbox is in automatic hands the box over to manual and tells you so.
 
 **Tilt** — enable in Settings (iOS asks for motion permission). Steering comes from the
-phone's tilt; gas and handbrake stay on screen. Hold the phone how you want to drive, then
-hit `CALIBRATE`. Sensitivity is adjustable.
+phone's tilt; the throttle, brake and handbrake stay on the dash. Hold the phone how you want
+to drive, then hit `CALIBRATE`.
 
-**Keyboard** — arrows or WASD to steer and accelerate, `SHIFT`/`DOWN` for the handbrake,
-`ESC` to pause.
+## Framing
+
+This is a chase cam, and the camera aims at a point *ahead* of the car, which means the car
+is drawn that far down the screen and rides lower the faster you go. The camera watches where
+the car will land and lifts its focal point only as far as it takes to keep it above the
+dashboard — at low speed the framing is untouched. The frame also leans back under power and
+pitches forward under braking, a few pixels, which is most of what sells acceleration.
+
+## How it is rendered
+
+The stage is not drawn straight to the screen. It goes into a small offscreen buffer a few
+hundred pixels across, which is blitted up with nearest-neighbour filtering. That is what
+makes the game read as pixel art rather than as smooth vector shapes: every tree, rut and
+dust puff lands on the same coarse grid, and the car sprite is drawn at roughly 1:1 with it,
+so a sprite pixel and a world pixel are the same size. It also cuts the fill cost by the
+square of the scale factor, which is most of the reason it holds 60fps on a phone.
+
+The readouts are drawn *after* the blit, at full device resolution, in a 5x7 bitmap face.
+Nothing the player has to read is ever resampled: the world may be chunky and streaked with
+motion, the instruments never are.
+
+Light comes from the top left everywhere — scenery, car sprite, dashboard bezels — which is
+most of what makes the three look like one picture.
+
+## Graphics quality
+
+Settings → `GRAPHICS`. Mobile defaults to MEDIUM, desktop to HIGH.
+
+| | LOW | MEDIUM | HIGH |
+|---|---|---|---|
+| Internal resolution | coarse | normal | fine |
+| Particles | 70 | 170 | 320 |
+| Headlights | ground pool | ground pool | pool + cones |
+| Scenery draw distance | short | normal | long |
+
+Pick LOW if the game stutters or the phone gets warm — it is a real reduction in work per
+frame, not a cosmetic switch.
+
+## Turbo
+
+Boost builds while the throttle is open and the engine is on the cam, bleeds away off
+throttle, and dumps on an upshift or a hit. It is worth a modest torque multiplier — enough
+to reward holding a gear and staying on the power, not enough to rewrite the car's stats.
+Cars with more turbo fitted spool faster and hold more. The gauge on the dash reads it, and
+you can hear the impeller in the gear whine and the valve on a lift.
 
 ## Driving it well
 
@@ -105,6 +167,9 @@ hit `CALIBRATE`. Sensitivity is adjustable.
 - Sliding sideways costs speed. A tidy, slightly-sideways line beats a spectacular one.
 - Trees, rocks and guardrails sit off the road. Clipping one costs speed and adds damage;
   past 48% damage the car smokes, and 100% damage costs you about 20% of your top speed.
+- The brake and the handbrake are different tools. The brake is strong and stable and is what
+  you use into every corner; braking distance follows the surface, so ice takes a lot longer
+  to pull up on than tarmac. The handbrake is for hairpins.
 - Beach it in a ditch and it drops you back on the road after a couple of seconds. The lost
   time is the penalty.
 
