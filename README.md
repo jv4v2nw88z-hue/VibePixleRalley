@@ -131,6 +131,16 @@ dust puff lands on the same coarse grid, and the car sprite is drawn at roughly 
 so a sprite pixel and a world pixel are the same size. It also cuts the fill cost by the
 square of the scale factor, which is most of the reason it holds 60fps on a phone.
 
+Both the world buffer and the dashboard have a ceiling on their internal resolution. Pixel
+art does not get better by rendering a 1440-wide window at 720 internal pixels — it gets
+smoother, which is the opposite of the point — and the fill cost grows with the area of the
+window for no visual gain. Above the cap the blit simply scales up further and the pixels get
+chunkier, which is what the art wants.
+
+Objects are culled against the real screen rectangle in camera space rather than a radius
+around the camera. The view is wide and shallow, because the dash takes the bottom of it, so
+a radius selects roughly twice the trees that can actually be seen.
+
 The readouts are drawn *after* the blit, at full device resolution, in a 5x7 bitmap face.
 Nothing the player has to read is ever resampled: the world may be chunky and streaked with
 motion, the instruments never are.
