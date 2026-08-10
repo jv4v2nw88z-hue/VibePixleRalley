@@ -2091,9 +2091,8 @@ function sunken(px, x, y, w, h, face){
   px(x+w-1, y, 1, h, DC.edgeLo);
 }
 function screw(px, x, y){
-  px(x, y, 2, 2, DC.steelLo);
-  px(x, y, 1, 1, DC.steelHi);
-  px(x+1, y+1, 1, 1, DC.seam);
+  px(x, y, 2, 2, '#39424b');
+  px(x, y, 1, 1, '#5b646d');
 }
 /* The bitmap face is 5x7 with a 1px gap, so a string at scale `s` is
    (6*len-1) by 7 grid units. Every label on the dash picks its scale by
@@ -2435,13 +2434,12 @@ function buildDashBase(L){
   px(0, 0, GW, 1, '#6d7a89');                            /* chrome catch */
   px(0, 1, GW, 1, 'rgba(255,255,255,.10)');
 
-  /* woven carbon: a coarse two-tone weave, cheap and only drawn once */
-  for(var wy=4; wy<DASH_GH-3; wy+=4){
-    for(var wx=0; wx<GW; wx+=4){
-      var lit = (((wx>>2) + (wy>>2)) & 1) === 0;
-      px(wx, wy, 2, 2, lit ? 'rgba(255,255,255,.030)' : 'rgba(0,0,0,.16)');
-      px(wx+2, wy+2, 2, 2, lit ? 'rgba(255,255,255,.030)' : 'rgba(0,0,0,.16)');
-    }
+  /* Moulded texture: a fine rib running the width of the panel. Continuous
+     lines, so nothing here can ever align into what looks like a dashed
+     outline around a control. */
+  for(var wy=3; wy<DASH_GH-3; wy+=3){
+    px(0, wy, GW, 1, 'rgba(0,0,0,.13)');
+    px(0, wy+1, GW, 1, 'rgba(255,255,255,.016)');
   }
   /* The raised centre binnacle the instruments sit on. Five stepped rows
      rising above the panel line, chamfered back down at both ends, which is
@@ -2455,20 +2453,18 @@ function buildDashBase(L){
     px(bx0, by2, 1, 1, '#7e8b99');
     px(bx1-1, by2, 1, 1, '#11151a');
   }
-  /* the carbon weave carries on over the raised part */
-  for(var cy2=-bnH+1; cy2<0; cy2+=4){
-    for(var cx2=bnX0; cx2<bnX1; cx2+=4)
-      px(cx2, cy2, 2, 2, (((cx2>>2)+(cy2>>2)) & 1) ? 'rgba(0,0,0,.16)' : 'rgba(255,255,255,.03)');
-  }
+  /* the rib carries on over the raised part */
+  for(var cy2=-bnH+2; cy2<0; cy2+=3)
+    px(bnX0+2, cy2, bnX1-bnX0-4, 1, 'rgba(0,0,0,.13)');
 
   /* panel seams framing the instrument bay */
   px(L.leftEnd + 1, 2, 1, DASH_GH-4, DC.seam);
   px(L.leftEnd + 2, 2, 1, DASH_GH-4, 'rgba(255,255,255,.06)');
   px(L.rightStart - 2, 2, 1, DASH_GH-4, DC.seam);
   px(L.rightStart - 1, 2, 1, DASH_GH-4, 'rgba(255,255,255,.06)');
-  for(i=0;i<4;i++){
-    screw(px, L.x0 - 2, 4 + i*((L.UH-10)/3));
-    screw(px, L.x1, 4 + i*((L.UH-10)/3));
+  for(i=0;i<2;i++){
+    screw(px, L.x0 - 2, 8 + i*(L.UH-22));
+    screw(px, L.x1, 8 + i*(L.UH-22));
   }
   /* demister vents filling the moulding either side of the instruments */
   for(x = L.leftEnd + 6; x < L.tachX - L.R - 6; x += 5){
@@ -2555,8 +2551,7 @@ function buildDashBase(L){
 function drawRockerBase(px, R0, right){
   raised(px, R0.x, R0.y, R0.w, R0.h, '#141920', DC.edge, DC.seam);
   sunken(px, R0.x+2, R0.y+2, R0.w-4, R0.h-4, '#080b10');
-  screw(px, R0.x+1, R0.y+1); screw(px, R0.x+R0.w-3, R0.y+1);
-  screw(px, R0.x+1, R0.y+R0.h-3); screw(px, R0.x+R0.w-3, R0.y+R0.h-3);
+  screw(px, R0.x+1, R0.y+1); screw(px, R0.x+R0.w-3, R0.y+R0.h-3);
 }
 function drawPadBase(px, P, label){
   raised(px, P.x, P.y, P.w, P.h, '#141920', DC.edge, DC.seam);
@@ -2824,24 +2819,30 @@ function drawStrip(px, L, r){
   var slots = [
     { icon:function(p,x,y,ss,c){ iconArrow(p,x,y,ss,false,c); }, w:9,
       on: driving && r.car.steer < -0.25, col:DC.green },
-    { icon:iconLamp,  w:10, on:true,                                col:DC.green },
-    { icon:iconBelt,  w:7,  on: driving && Math.abs(r.car.fwd) < 6, col:DC.red },
-    { icon:iconBrakeP,w:9,  on: driving && ctl.hbrake > 0.4,        col:DC.red },
-    { icon:iconTraction,w:9,on: driving && r.slipNow > 0.42,        col:DC.amber },
-    { icon:iconDiff,  w:10, on: driving && r.car.wheelSpin > 0.3,   col:DC.amber },
+    { icon:iconLamp,  w:10, on:true,                                col:DC.green, pill:0 },
+    { icon:iconBelt,  w:7,  on: driving && Math.abs(r.car.fwd) < 6, col:DC.red,   pill:1 },
+    { icon:iconBrakeP,w:9,  on: driving && ctl.hbrake > 0.4,        col:DC.red,   pill:1 },
     { icon:function(p,x,y,ss,c){ iconArrow(p,x,y,ss,true,c); }, w:9,
       on: driving && r.car.steer > 0.25, col:DC.green }
   ];
   var total = 0, i;
-  for(i=0;i<slots.length;i++) total += slots[i].w*s + 6;
-  var x = T.x + (T.w - total)/2 + 3;
+  for(i=0;i<slots.length;i++) total += slots[i].w*s + 10;
+  var x = T.x + (T.w - total)/2 + 5;
   var cy = T.y + (T.h - 8*s)/2;
   for(i=0;i<slots.length;i++){
     var sl = slots[i];
-    if(sl.on) px(x - 2, T.y + 2, sl.w*s + 4, T.h - 4, 'rgba(255,255,255,.045)');
+    /* the warning lamps sit in a bordered pill, as on the reference */
+    if(sl.pill){
+      var pw2 = sl.w*s + 6, py2 = T.y + 2, ph2 = T.h - 4;
+      px(x - 3, py2, pw2, ph2, sl.on ? 'rgba(226,60,42,.16)' : 'rgba(255,255,255,.03)');
+      px(x - 3, py2, pw2, 1, sl.on ? 'rgba(232,80,60,.7)' : 'rgba(140,156,176,.22)');
+      px(x - 3, py2+ph2-1, pw2, 1, sl.on ? 'rgba(232,80,60,.7)' : 'rgba(140,156,176,.22)');
+      px(x - 3, py2, 1, ph2, sl.on ? 'rgba(232,80,60,.7)' : 'rgba(140,156,176,.22)');
+      px(x - 4 + pw2, py2, 1, ph2, sl.on ? 'rgba(232,80,60,.7)' : 'rgba(140,156,176,.22)');
+    }
     sl.icon(function(ix, iy, iw, ih, c){ px(x + ix*s, cy + iy*s, iw*s, ih*s, c); },
             0, 0, s, sl.on ? sl.col : '#333d48');
-    x += sl.w*s + 6;
+    x += sl.w*s + 10;
   }
 }
 
@@ -3985,8 +3986,13 @@ function drawRush(g, r, w){
 
 var HUD = { pause:null };
 
-/* css pixels per HUD art pixel */
-function hudUnit(){ return clamp(view.h/340, 0.8, 2.4); }
+/* CSS pixels per HUD art pixel.
+
+   Keyed off the SHORTER viewport dimension rather than the height alone. On
+   a short wide window the height alone drove this to its ceiling and the
+   readouts ballooned; the stage name ended up twice the size it is on the
+   reference and dominated the frame. */
+function hudUnit(){ return clamp(Math.min(view.h, view.w*0.52)/380, 0.75, 2.0); }
 
 function hudPainter(g, u){
   var d = view.dpr;
@@ -3999,24 +4005,29 @@ function hudPainter(g, u){
 }
 /* the HUD's house panel: near-black glass with a thin lit rim */
 function hudPanel(px, x, y, w, h){
-  px(x, y, w, h, 'rgba(6,10,14,.72)');
+  px(x, y, w, h, 'rgba(6,10,14,.74)');
   px(x, y, w, 1, 'rgba(150,172,198,.55)');
   px(x, y+h-1, w, 1, 'rgba(0,0,0,.65)');
   px(x, y, 1, h, 'rgba(150,172,198,.35)');
   px(x+w-1, y, 1, h, 'rgba(0,0,0,.55)');
 }
+/* recessed track with a fill, for progress and damage */
 function hudBar(px, x, y, w, h, frac, colA, colB){
   px(x, y, w, h, '#080c10');
-  px(x, y, w, 1, '#0d1318');
+  px(x, y, w, 1, '#04070a');
+  px(x, y, 1, h, '#04070a');
   var fw = Math.max(0, Math.round((w-2)*clamp(frac,0,1)));
   if(fw > 0){
     px(x+1, y+1, fw, h-2, colA);
     px(x+1, y+1, fw, 1, colB);
   }
-  px(x, y, 1, h, 'rgba(140,160,186,.45)');
-  px(x+w-1, y, 1, h, 'rgba(0,0,0,.5)');
+  px(x, y+h-1, w, 1, 'rgba(150,172,198,.28)');
+  px(x+w-1, y, 1, h, 'rgba(150,172,198,.20)');
 }
 
+/* Every panel below measures its own content and sizes to it. Nothing here
+   uses a fixed box, which is what let the timer digits run over the target
+   line and the info rows run past the panel edge. */
 function drawHudTop(g, r){
   var u = hudUnit();
   var px = hudPainter(g, u);
@@ -4025,39 +4036,56 @@ function drawHudTop(g, r){
   var Wg = view.w/u;
 
   /* ---------------- top left: the stage panel ----------------
-     The box takes its width from the longest stage name rather than a fixed
-     number, so a long one cannot run off the end of its own panel. */
-  var nameS = PF.textW(r.stage.name, 2, 1) > 150 ? 1 : 2;
-  var pw = Math.max(118, PF.textW(r.stage.name, nameS, 1) + 11), ph = 60;
+     A compact readout, not a title card. Rows are a fixed leading apart and
+     the panel takes its height from however many there are. */
+  var nameS = 2, rowS = 1;
+  var lead = 9, barH = 4, nameH = 7*nameS;
+  var innerW = Math.max(96, PF.textW(r.stage.name, nameS, 1) + 4);
+  var pw = innerW + 10;
+  /* name, PROGRESS, bar, DAMAGE, bar, SURFACE. Each entry is the row's own
+     height, so the panel is exactly as tall as what is inside it. */
+  var rows = [nameH + 3, lead, barH+3, lead, barH+3, 7];
+  var ph = 8; for(var q=0;q<rows.length;q++) ph += rows[q];
   hudPanel(px, padX, padY, pw, ph);
-  PF.text(px, r.stage.name, padX+5, padY+5 + (nameS===1 ? 3 : 0), '#f2f6fb', nameS, 1);
-  PF.text(px, 'PROGRESS', padX+5, padY+20, '#93a2b4', 1, 1);
-  hudBar(px, padX+5, padY+28, pw-10, 5, r.progress, '#4fe463', '#b7ffc4');
-  PF.text(px, 'DAMAGE', padX+5, padY+37, '#93a2b4', 1, 1);
-  hudBar(px, padX+5, padY+45, pw-10, 5, r.car.damage/100, '#e04a2f', '#ffb08c');
-  PF.text(px, 'SURFACE', padX+5, padY+53, '#93a2b4', 1, 1);
-  PF.text(px, r.surface, padX+53, padY+53, '#ffffff', 1, 1);
 
-  /* ---------------- top centre: the clock ---------------- */
+  var ty = padY + 4;
+  PF.text(px, r.stage.name, padX+5, ty, '#f2f6fb', nameS, 1); ty += rows[0];
+  PF.text(px, 'PROGRESS', padX+5, ty, '#8fa0b3', rowS, 1);
+  PF.textR(px, Math.round(r.progress*100) + '%', padX+pw-5, ty, '#d7e2ee', rowS, 1); ty += lead;
+  hudBar(px, padX+5, ty, innerW, barH, r.progress, '#ffb432', '#ffe0a8'); ty += barH + 3;
+  PF.text(px, 'DAMAGE', padX+5, ty, '#8fa0b3', rowS, 1);
+  PF.textR(px, Math.round(r.car.damage) + '%', padX+pw-5, ty,
+           r.car.damage > 45 ? '#ff8a72' : '#d7e2ee', rowS, 1); ty += lead;
+  hudBar(px, padX+5, ty, innerW, barH, r.car.damage/100, '#e04a2f', '#ffb08c'); ty += barH + 3;
+  PF.text(px, 'SURFACE', padX+5, ty, '#8fa0b3', rowS, 1);
+  PF.textR(px, r.surface, padX+pw-5, ty, '#ffffff', rowS, 1);
+
+  /* ---------------- top centre: the clock ----------------
+     Both lines are measured, and the panel is as tall as they stack. The
+     bitmap face is fixed width, so the digits never jitter. */
   var t = r.state==='countdown' ? 0 : r.t;
-  var big = fmtTime(t);
-  var tgt = 'TGT ' + fmtTime(r.track.targetTime);
-  var tw = Math.max(PF.textBoldW(big, 3, 1), PF.textW(tgt, 1, 1)) + 12;
+  var big = fmtTime(t), bigS = 3;
+  var tgt = 'TGT ' + fmtTime(r.track.targetTime), tgtS = 1;
+  var bigH = 7*bigS + bigS, tgtH = 7*tgtS;              /* bold adds one step */
+  var tw = Math.max(PF.textBoldW(big, bigS, 1), PF.textW(tgt, tgtS, 1)) + 14;
+  var th = 5 + bigH + 3 + tgtH + 5;
   var tx = Math.round(Wg/2 - tw/2);
-  hudPanel(px, tx, padY, tw, 36);
+  hudPanel(px, tx, padY, tw, th);
   var late = r.state==='run' && r.t > r.track.targetTime;
-  PF.textBold(px, big, Math.round(Wg/2 - PF.textBoldW(big,3,1)/2), padY+5,
-              late ? '#ff6a52' : '#ffb432', 3, 1);
-  PF.textC(px, tgt, Wg/2, padY+27, '#93a2b4', 1, 1);
+  PF.textBold(px, big, Math.round(Wg/2 - PF.textBoldW(big,bigS,1)/2), padY+5,
+              late ? '#ff6a52' : '#ffb432', bigS, 1);
+  PF.textC(px, tgt, Wg/2, padY + 5 + bigH + 3, '#93a2b4', tgtS, 1);
+  HUD.clockBottom = padY + th;
 
-  /* ---------------- top right: pause ---------------- */
-  var bw = 26, bh = 20;
+  /* ---------------- top right: pause, then the minimap under it ---------- */
+  var bw = 24, bh = 18;
   var bx = Wg - padR - bw, by = padY;
   hudPanel(px, bx, by, bw, bh);
-  px(bx+9, by+5, 3, bh-10, '#e6eef7');
-  px(bx+15, by+5, 3, bh-10, '#e6eef7');
+  px(bx+8, by+4, 3, bh-8, '#e6eef7');
+  px(bx+13, by+4, 3, bh-8, '#e6eef7');
   HUD.pause = { x:bx*u, y:by*u, w:bw*u, h:bh*u };
-  HUD.mapBox = { x:bx + bw - 74, y:by + bh + 4, w:74, h:66 };
+  var mapS = Math.round(clamp(Math.min(view.w, view.h)/u*0.20, 44, 84));
+  HUD.mapBox = { x:bx + bw - mapS, y:by + bh + 4, w:mapS, h:mapS };
 }
 
 /* ----------------------------------------------------------- minimap
@@ -4082,8 +4110,9 @@ function drawMinimap(g, r){
     r.mapBox = {minx:minx,maxx:maxx,miny:miny,maxy:maxy};
   }
   var bb = r.mapBox;
-  var s = Math.min((B.w-8)/Math.max(1,bb.maxx-bb.minx),
-                   (B.h-8)/Math.max(1,bb.maxy-bb.miny));
+  var padIn = 7;                                   /* keeps the route clear of the rim */
+  var s = Math.min((B.w-padIn*2)/Math.max(1,bb.maxx-bb.minx),
+                   (B.h-padIn*2)/Math.max(1,bb.maxy-bb.miny));
   var ox = B.x + B.w/2 - ((bb.minx+bb.maxx)/2)*s;
   var oy = B.y + B.h/2 - ((bb.miny+bb.maxy)/2)*s;
   var P = function(n){ return [ox + n.x*s, oy + n.y*s]; };
@@ -4125,7 +4154,7 @@ function drawPacenote(g, r){
   var fade = clamp(r.noteTimer/0.4, 0, 1);
   var s = 2;
   var tw = PF.textBoldW(n.text, s, 1);
-  var y = (safeInsets().t/u) + 46;
+  var y = (HUD.clockBottom || (safeInsets().t/u) + 40) + 9;
   var ax = Math.round(Wg/2 - tw/2) - 14;
   if(fade < 1 && (Math.floor(perfNow()/90) & 1)) return;
 
@@ -4159,7 +4188,8 @@ function drawBigMsg(g, r, focal, carDrop){
   var pop = m.kind === 'count' ? clamp(1 - age*3.2, 0, 1) : 0;
   var s = Math.max(2, Math.round((m.big ? 6 : 3.4) * (1 + pop*0.28)));
   var carY = (focal + carDrop)/u;
-  var y = Math.round(clamp(carY - (m.big ? 26 : 18)*s*0.5 - 10, (safeInsets().t/u) + 60, Wg));
+  var y = Math.round(clamp(carY - (m.big ? 26 : 18)*s*0.5 - 10,
+                           (HUD.clockBottom || 40) + 24, Wg));
 
   /* a flash of light behind the numeral on the frame it changes */
   if(pop > 0.6){
