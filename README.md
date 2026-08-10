@@ -82,6 +82,10 @@ throttle and brake pads under the right thumb. A strip of tell-tales runs along 
 indicators, headlights, seatbelt, parking brake, traction, differential — and they all follow
 what the car is actually doing.
 
+The instruments sit on a raised centre binnacle that stands above the panel line and chamfers
+back down at each end, and the paddles are bolted to it on cast mounting blocks — the dash is
+a shaped moulding rather than a flat slab, which is most of its silhouette.
+
 It is laid out on a fixed grid 128 rows deep, with a further 46 rows above it for the paddle
 shifters, which stand proud of the dash top edge. One grid unit is a whole number of device
 pixels, so a phone and a desktop get the same composition rather than the same art scaled by

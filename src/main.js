@@ -1448,12 +1448,12 @@ function getCarSide(carId, opts){
    and the dashboard bezels use, which is most of what makes the three look
    like they belong in one picture. */
 var TREE_PALS = {
-  forest:  [['#0d2210','#1d4020','#2f6330','#468b41','#5da84e'],
-            ['#0b1d0e','#193619','#28542a','#3c7638','#519145']],
-  mountain:[['#0f2412','#20421f','#33612e','#48803f','#5c9a4d'],
-            ['#101f13','#1d3a22','#2d5734','#40763f','#548d4c']],
-  snowpass:[['#0d1f18','#1c3a2c','#2f5a44','#8fb6c2','#e8f4fb'],
-            ['#0b1a14','#183226','#28503c','#7ea6b4','#dbeaf4']]
+  forest:  [['#0b1e0d','#1a3b1c','#2c5f2d','#458c40','#63b053'],
+            ['#091a0c','#163217','#265127','#3a7636','#57994a']],
+  mountain:[['#0d2210','#1e3f1d','#31602c','#4a833f','#61a24f'],
+            ['#0e1d11','#1b3720','#2b5532','#427a41','#5a9550']],
+  snowpass:[['#0b1d16','#1a3729','#2d5842','#95bcc8','#eef7fc'],
+            ['#091812','#163024','#264e3a','#84acba','#e0eef7']]
 };
 
 function drawProp(g, p, theme, onScreen){
@@ -1487,18 +1487,35 @@ function drawProp(g, p, theme, onScreen){
        neighbours therefore never share a silhouette, which is the difference
        between a forest and a tiled wallpaper. */
     var j1 = (v*97) % 1, j2 = (v*173) % 1, j3 = (v*311) % 1;
-    g.fillStyle = '#0c1e0e';                        /* outline */
-    g.fillRect(-s*(0.54+j1*0.05), -s*(0.54+j2*0.05), s*(1.08+j1*0.07), s*(1.08+j2*0.07));
+    /* The tree is drawn as a stack of blocks, not as a flat stamp. Each ring
+       gets an EXTRUDED SIDE first — the same rectangle pushed down and to the
+       right in a much darker green — and then its lit top face on top of
+       that. The result is a silhouette with visible thickness, which is what
+       makes the reference's forest read as objects standing up out of the
+       ground rather than as a pattern printed on it. */
+    var dep = s*0.13;                               /* how tall a block is */
     var rings = [[0.50,0.00,0], [0.40,-0.05,1], [0.30,-0.10,2], [0.20,-0.15,3], [0.10,-0.19,4]];
-    for(var i=0;i<rings.length;i++){
-      var k2 = i/(rings.length-1);
-      var rw = rings[i][0] * (1 + (j1-0.5)*0.22*k2);
-      var rh = rings[i][0] * (1 + (j2-0.5)*0.22*k2);
-      var ox = rings[i][1]*s + (j3-0.5)*s*0.06*k2;
-      var oy = rings[i][1]*s + (j1-0.5)*s*0.06*k2;
+    var i, k2, rw, rh, ox, oy;
+    /* one outline round the whole mass, so neighbours stay separate */
+    g.fillStyle = '#08160a';
+    g.fillRect(-s*(0.55+j1*0.05), -s*(0.55+j2*0.05), s*(1.10+j1*0.07), s*(1.10+j2*0.07) + dep);
+    for(i=0;i<rings.length;i++){
+      k2 = i/(rings.length-1);
+      rw = rings[i][0] * (1 + (j1-0.5)*0.22*k2);
+      rh = rings[i][0] * (1 + (j2-0.5)*0.22*k2);
+      ox = rings[i][1]*s + (j3-0.5)*s*0.06*k2;
+      oy = rings[i][1]*s + (j1-0.5)*s*0.06*k2;
+      /* side face, dropped by the block depth */
+      g.fillStyle = pal[Math.max(0, rings[i][2]-1)];
+      g.fillRect(-s*rw + ox, -s*rh + oy + dep*(0.5 + k2*0.9), s*rw*2, s*rh*2);
+      /* lit top face */
       g.fillStyle = pal[rings[i][2]];
       g.fillRect(-s*rw + ox, -s*rh + oy, s*rw*2, s*rh*2);
     }
+    /* the brightest chip, catching the sun on the very top of the stack */
+    g.fillStyle = pal[4];
+    g.fillRect(-s*(0.09 + j2*0.03) + ox, -s*(0.09 + j1*0.03) + oy - dep*0.3,
+               s*0.13, s*0.13);
   } else if(p.type===1){                            /* boulder */
     g.fillStyle = 'rgba(0,0,0,.34)';
     g.fillRect(-s*0.36, -s*0.28, s*0.86, s*0.76);
@@ -2207,9 +2224,9 @@ function dashLayout(){
               h:stripH };
 
   /* ---- paddles, standing above the dash top edge ---- */
-  var kw = clamp(D*0.50, 24, 60), kh = clamp(DASH_OVER*0.94, 22, 54);
-  reg('padDn', L.leftEnd + 6,          4 - kh, kw, kh, 7);
-  reg('padUp', L.rightStart - 6 - kw,  4 - kh, kw, kh, 7);
+  var kw = clamp(D*0.62, 28, 74), kh = clamp(DASH_OVER*1.02, 26, 60);
+  reg('padDn', L.leftEnd + 5,          6 - kh, kw, kh, 8);
+  reg('padUp', L.rightStart - 5 - kw,  6 - kh, kw, kh, 8);
 
   return L;
 }
@@ -2237,13 +2254,13 @@ function drawGauge(g, px, L, gcx, gcy, gR, o){
      dark through the middle, a weaker second catch bottom right --- */
   var bw = Math.max(2.5, R*0.115);
   var bez = g.createLinearGradient(cx-R*0.75, cy-R*0.85, cx+R*0.68, cy+R*0.82);
-  bez.addColorStop(0.00,'#ffffff'); bez.addColorStop(0.12,'#dbe3ea');
-  bez.addColorStop(0.30,'#a9b5c1'); bez.addColorStop(0.48,'#69747f');
-  bez.addColorStop(0.63,'#3a434c'); bez.addColorStop(0.80,'#93a0ad');
-  bez.addColorStop(0.92,'#586371'); bez.addColorStop(1.00,'#252d36');
+  bez.addColorStop(0.00,'#aeb7c0'); bez.addColorStop(0.12,'#8d959e');
+  bez.addColorStop(0.30,'#6a727a'); bez.addColorStop(0.48,'#4a5158');
+  bez.addColorStop(0.63,'#2e343a'); bez.addColorStop(0.80,'#616a73');
+  bez.addColorStop(0.92,'#3c434a'); bez.addColorStop(1.00,'#191d22');
   g.beginPath(); g.arc(cx,cy,R,0,TAU); g.fillStyle = bez; g.fill();
-  g.beginPath(); g.arc(cx,cy,R-bw*0.22,Math.PI*1.02,Math.PI*1.82);
-  g.lineWidth = Math.max(0.8, bw*0.20); g.strokeStyle = 'rgba(255,255,255,.72)'; g.stroke();
+  g.beginPath(); g.arc(cx,cy,R-bw*0.22,Math.PI*1.06,Math.PI*1.70);
+  g.lineWidth = Math.max(0.7, bw*0.16); g.strokeStyle = 'rgba(226,236,246,.42)'; g.stroke();
   g.beginPath(); g.arc(cx,cy,R-bw*0.82,0,TAU);
   g.lineWidth = Math.max(0.9, bw*0.28); g.strokeStyle = 'rgba(6,9,14,.8)'; g.stroke();
 
@@ -2426,6 +2443,24 @@ function buildDashBase(L){
       px(wx+2, wy+2, 2, 2, lit ? 'rgba(255,255,255,.030)' : 'rgba(0,0,0,.16)');
     }
   }
+  /* The raised centre binnacle the instruments sit on. Five stepped rows
+     rising above the panel line, chamfered back down at both ends, which is
+     what gives the reference dash its shape rather than a flat edge. */
+  var bnH = 6, bnX0 = L.leftEnd - 2, bnX1 = L.rightStart + 2;
+  for(var br=0; br<bnH; br++){
+    var inset = Math.round((bnH - br) * 1.6);
+    var by2 = -bnH + br;
+    var bx0 = bnX0 + inset, bx1 = bnX1 - inset;
+    px(bx0, by2, bx1-bx0, 1, br === 0 ? '#6d7a89' : (br < 2 ? '#39424d' : '#20262d'));
+    px(bx0, by2, 1, 1, '#7e8b99');
+    px(bx1-1, by2, 1, 1, '#11151a');
+  }
+  /* the carbon weave carries on over the raised part */
+  for(var cy2=-bnH+1; cy2<0; cy2+=4){
+    for(var cx2=bnX0; cx2<bnX1; cx2+=4)
+      px(cx2, cy2, 2, 2, (((cx2>>2)+(cy2>>2)) & 1) ? 'rgba(0,0,0,.16)' : 'rgba(255,255,255,.03)');
+  }
+
   /* panel seams framing the instrument bay */
   px(L.leftEnd + 1, 2, 1, DASH_GH-4, DC.seam);
   px(L.leftEnd + 2, 2, 1, DASH_GH-4, 'rgba(255,255,255,.06)');
@@ -2642,15 +2677,14 @@ function drawDash(r){
   /* the little strip above them: four lamps that track what the car is
      actually doing — drive, slip, off-road, damage */
   var T0 = L.tell;
-  var tl = [ driving && Math.abs(r.car.fwd) > 4,
-             driving && r.slipNow > 0.32,
-             driving && r.offtrack,
-             driving && r.car.damage > 45 ];
-  var tcol = [DC.green, DC.amber, DC.blue, DC.red];
-  var tw = (T0.w - 6)/4;
-  for(i=0;i<4;i++){
-    px(T0.x + 3 + i*tw, T0.y + 3, tw - 2, T0.h - 6, tl[i] ? tcol[i] : DC.off);
-    if(tl[i]) px(T0.x + 3 + i*tw, T0.y + 3, tw - 2, 1, DC.white);
+  var nLed = 5;
+  var lit = driving ? 1 + Math.round(clamp(rpm/1.02, 0, 1)*(nLed-1)) : 1;
+  var tw = (T0.w - 6)/nLed;
+  for(i=0;i<nLed;i++){
+    var on2 = i < lit;
+    var col2 = i < nLed-2 ? DC.green : (i < nLed-1 ? DC.amber : DC.red);
+    px(T0.x + 3 + i*tw, T0.y + 3, tw - 2, T0.h - 6, on2 ? col2 : DC.off);
+    if(on2) px(T0.x + 3 + i*tw, T0.y + 3, tw - 2, 1, DC.white);
   }
 
   /* ---------------- throttle / brake pads ---------------- */
@@ -2717,37 +2751,56 @@ function drawPad(px, P, v, col, lo){
   var n = 5, bh = (ih - 2)/n, litN = Math.round(v*n);
   for(var i=0;i<n;i++){
     var on = i < litN;
-    px(ix+2, iy + ih - 1 - (i+1)*bh, iw-4, bh-1, on ? col : DC.offLo);
-    if(on) px(ix+2, iy + ih - 1 - (i+1)*bh, iw-4, 1, DC.white);
+    px(ix+2, iy + ih - 1 - (i+1)*bh, iw-4, bh-1, on ? col : '#1e262e');
+    px(ix+2, iy + ih - 1 - (i+1)*bh, iw-4, 1, on ? DC.white : '#2b343d');
   }
   px(ix, iy, iw, 1, down ? col : '#242c36');
   px(ix, iy+ih-1, iw, 1, DC.seam);
 }
 
-/* the lever: a chrome arm on a pivot that swings up towards vertical, with a
-   rubber gaiter at its foot and a release button in the grip */
+/* The lever, as on the reference: a machined shaft standing up out of a
+   slotted gate in the console, with a knurled cylindrical grip on top. It
+   travels BACK along the gate when pulled rather than swinging round a
+   pivot, which is both what a fly-off handbrake does and much easier to
+   read at this size than a rotating stick. */
 function drawLever(px, HB, v){
   var on = v > 0.45;
-  var pivotX = HB.x + HB.w*0.32, pivotY = HB.y + HB.h - 11;
-  var len = Math.max(8, HB.h*0.66);
-  var ang = (46 + v*40) * Math.PI/180;
-  var dx = Math.cos(ang), dy = -Math.sin(ang);
-  px(pivotX - 4, pivotY - 3, 8, 5, '#0a0e13');             /* gaiter */
-  px(pivotX - 3, pivotY - 3, 6, 1, '#2f3841');
-  var i;
-  for(i=0;i<=len;i++){
-    var lx = pivotX + dx*i, ly = pivotY + dy*i;
-    px(lx - 1, ly - 1, 3, 3, DC.steel);
-    px(lx - 1, ly - 1, 1, 1, DC.steelHi);
-    px(lx + 1, ly + 1, 1, 1, DC.steelDk);
-  }
-  px(pivotX - 2, pivotY - 2, 4, 4, DC.steelLo);            /* pivot boss */
-  px(pivotX - 1, pivotY - 1, 2, 2, '#05070a');
-  var gx = pivotX + dx*len, gy = pivotY + dy*len;          /* grip */
-  px(gx - 3, gy - 5, 7, 9, '#05070a');
-  px(gx - 2, gy - 4, 5, 7, on ? '#8a5a12' : '#2b3138');
-  px(gx - 2, gy - 4, 5, 1, on ? DC.amber : '#454e57');
-  px(gx - 1, gy - 6, 3, 2, on ? DC.amber : '#5d6772');     /* release button */
+  /* the gate sits low in the housing so the shaft and grip rising out of it
+     stay inside the panel, with the caption clear underneath */
+  var gx0 = HB.x + 4, gy0 = HB.y + Math.round(HB.h*0.60);
+  var gw = HB.w - 8, gh = Math.max(5, Math.round(HB.h*0.18));
+
+  /* the gate: a dark slot cut into the console plate */
+  px(gx0-1, gy0-1, gw+2, gh+2, '#05070a');
+  px(gx0, gy0, gw, gh, '#0e1319');
+  px(gx0, gy0, gw, 1, '#242c34');
+  px(gx0, gy0+gh-1, gw, 1, '#020406');
+  /* travel marks either end of the slot */
+  px(gx0+1, gy0+2, 1, gh-4, on ? DC.amberLo : '#1b222a');
+  px(gx0+gw-2, gy0+2, 1, gh-4, on ? DC.amber : '#1b222a');
+
+  /* the shaft rises from a carrier that slides along the gate */
+  var travel = gw - 13;
+  var cxs = gx0 + 4 + Math.round(v*travel);
+  var shaftH = Math.round(HB.h*0.34);
+  var topY = gy0 - shaftH;
+  px(cxs-2, gy0+1, 9, gh-2, '#3a434c');                    /* carrier */
+  px(cxs-2, gy0+1, 9, 1, '#69737d');
+  px(cxs-1, topY, 7, shaftH + 2, DC.steelLo);              /* shaft */
+  px(cxs-1, topY, 2, shaftH + 2, DC.steelHi);
+  px(cxs+4, topY, 2, shaftH + 2, DC.steelDk);
+
+  /* knurled grip across the top of the shaft */
+  var grW = Math.max(7, Math.round(HB.w*0.42)), grH = Math.max(4, Math.round(HB.h*0.11));
+  var grX = cxs + 2 - Math.round(grW/2), grY = topY - grH;
+  px(grX-1, grY-1, grW+2, grH+2, '#05070a');
+  px(grX, grY, grW, grH, on ? '#8a5a12' : '#2f363e');
+  px(grX, grY, grW, 1, on ? DC.amber : '#79838d');
+  px(grX, grY+grH-1, grW, 1, '#131920');
+  for(var k=2; k<grW-1; k+=2) px(grX+k, grY+1, 1, grH-2, on ? '#a9711b' : '#404950');
+  /* release button in the end of the grip */
+  px(grX+grW-2, grY+1, 2, grH-2, on ? DC.amber : DC.steel);
+
   if(on) px(HB.x+3, HB.y+3, HB.w-6, 1, DC.amber);
 }
 
@@ -2796,18 +2849,25 @@ function drawStrip(px, L, r){
    edge. The rake runs outward, so the pair frames the instrument bay. */
 function drawPaddle(px, P, up, press, active){
   var down = press > 0.35, drop = down ? 1 : 0;
-  var y, x, wide = Math.max(5, Math.round(P.w*0.72));
-  /* mounting stalk and pivot, on the screen-inward side */
-  var sx = up ? P.x + P.w - 3 : P.x;
-  px(sx, P.y + P.h*0.40, 3, P.h*0.34, '#05070a');
-  px(sx + (up ? 1 : 0), P.y + P.h*0.42, 2, P.h*0.30, '#333c46');
-  px(sx - (up ? 1 : -2), P.y + P.h*0.46, 2, 3, '#8d97a2');
+  var y, x, wide = Math.max(5, Math.round(P.w*0.70));
+  /* The mounting block the blade is bolted to. On the reference this is a
+     chunky pale-grey casting sitting on the dash face, and it is what stops
+     the paddle looking like a decal floating above the panel. */
+  var mbW = Math.round(P.w*0.52), mbH = Math.round(P.h*0.26);
+  var mbX = P.x + (up ? P.w - mbW - 1 : 1), mbY = P.y + P.h - mbH;
+  px(mbX-1, mbY-1, mbW+2, mbH+2, '#05070a');
+  px(mbX, mbY, mbW, mbH, '#6a737d');
+  px(mbX, mbY, mbW, 1, '#aab3bc');
+  px(mbX, mbY, 1, mbH, '#8b949d');
+  px(mbX+mbW-1, mbY, 1, mbH, '#2b323a');
+  px(mbX, mbY+mbH-1, mbW, 1, '#1b2027');
+  px(mbX + (up?1:mbW-3), mbY+2, 2, 2, '#c3ccd4');           /* bolt head */
   for(y=1; y<P.h-1; y++){
     var t = y/(P.h-1);
     /* the blade bows away from the wheel and narrows towards its tip, the
        way a cast paddle actually does */
     var faceW = Math.max(4, Math.round(wide*(1 - t*0.30)));
-    var lean = Math.round((t*t - 0.22) * P.w*0.42) * (up ? 1 : -1);
+    var lean = Math.round((t*t - 0.22) * P.w*0.17) * (up ? 1 : -1);
     var x0 = P.x + (P.w - faceW)/2 + lean;
     px(x0-1, P.y + y + drop, faceW+2, 1, '#04060a');
     for(x=0; x<faceW; x++){
@@ -2829,9 +2889,12 @@ function drawPaddle(px, P, up, press, active){
     }
   }
   /* stamped + / − at the foot of the blade */
-  var ink = down ? '#3a2a06' : '#e6edf5';
-  var bw2 = Math.max(4, Math.round(faceW*0.55)), bt = Math.max(1, Math.round(P.h*0.045));
-  var bx = P.x + P.w/2, by = P.y + P.h - 5 - bt + drop;
+  /* the stamped + / -, set in the middle of the blade where the mounting
+     block cannot cover it */
+  var ink = down ? '#3a2a06' : '#f2f7fc';
+  var bw2 = Math.max(5, Math.round(P.w*0.34)), bt = Math.max(1, Math.round(P.h*0.055));
+  var bt2 = Math.round((0.52*0.52 - 0.22)*P.w*0.17) * (up ? 1 : -1);
+  var bx = P.x + P.w/2 + bt2, by = P.y + P.h*0.52;
   px(bx - bw2/2, by, bw2, bt, ink);
   if(up) px(bx - bt/2, by - bw2/2 + bt/2, bt, bw2, ink);
 }
