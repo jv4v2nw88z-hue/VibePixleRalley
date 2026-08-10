@@ -5,7 +5,7 @@ import * as PF from './pixfont.js';
 (function(){
 'use strict';
 /* =========================================================================
-   RALLY PIXEL — data: cars, upgrades, tires, stages, persistence
+   RALLY PIXEL - data: cars, upgrades, tires, stages, persistence
    ========================================================================= */
 
 var SAVE_KEY = 'rallypixel.save.v1';
@@ -182,7 +182,7 @@ function stageDef(id){ for(var i=0;i<STAGES.length;i++){ if(STAGES[i].id===id) r
    magic numbers scattered through the renderer, so changing tier is one
    lookup and nothing has to be rebuilt.
 
-     px         css pixels per world-buffer pixel — the internal render
+     px         css pixels per world-buffer pixel - the internal render
                 resolution, and by far the biggest lever on both frame rate
                 and how chunky the pixel art reads
      parts      particle ceiling
@@ -294,7 +294,7 @@ function carIndex(id){ for(var i=0;i<CARS.length;i++) if(CARS[i].id===id) return
 /* ------------------------------------------------------- shop preview
    Tapping something in the garage equips it as a preview instead of buying
    it: a shadow copy of that car's save entry with the one item already
-   applied. Nothing reaches `save` — or localStorage — until PURCHASE is
+   applied. Nothing reaches `save` - or localStorage - until PURCHASE is
    confirmed, so CANCEL and backing out of the garage both just drop the
    copy and the car snaps back to its last paid-for state.
 
@@ -303,13 +303,13 @@ function carIndex(id){ for(var i=0;i<CARS.length;i++) if(CARS[i].id===id) return
    `cs` is the shadow car entry and `current` is which car would be in use,
    which is how an unowned car can stand in the bay before it is bought.
    Because the preview IS the post-purchase state, committing is a straight
-   hand-over of the copy — the preview and the thing you pay for can never
+   hand-over of the copy - the preview and the thing you pay for can never
    drift apart. */
 var preview = null;
 
 function cloneCarSave(cs){ return JSON.parse(JSON.stringify(cs)); }
 
-/* the car the garage should show — previewed if there is one, else in use */
+/* the car the garage should show - previewed if there is one, else in use */
 function shopCarId(){ return preview ? preview.current : save.current; }
 /* a car's entry as the garage should show it, preview folded in */
 function shopCarSave(carId){
@@ -380,7 +380,7 @@ function fmtDelta(d){
 }
 function fmtMoney(n){ return 'CR ' + Math.round(n).toLocaleString('en-US'); }
 /* =========================================================================
-   TRACK BUILDER — walks the segment list into a centreline of nodes,
+   TRACK BUILDER - walks the segment list into a centreline of nodes,
    then scatters scenery, hazards and pacenotes along it.
    ========================================================================= */
 
@@ -498,7 +498,7 @@ function buildScenery(track){
       }
     }
 
-    /* loose rocks / stumps just off the racing line — genuine hazards */
+    /* loose rocks / stumps just off the racing line - genuine hazards */
     if(rand() < 0.055){
       var side = rand()<0.5 ? -1 : 1;
       var lat = nd.hw + 28 + rand()*30;
@@ -510,7 +510,7 @@ function buildScenery(track){
        FAR out it goes, and how much the sizes vary.
 
        The scatter used to stop 200 units from the centreline, which is inside
-       the frame at this zoom — so the outer thirds of the screen were bare
+       the frame at this zoom - so the outer thirds of the screen were bare
        grass. It now reaches past the far edge of the view. And the depth is
        biased towards the verge (u squared), so the near band packs into a
        wall of trees the way a forest stage looks, thinning out behind it
@@ -530,7 +530,7 @@ function buildScenery(track){
       var solid = lat2 < nd.hw + 96;   /* only the near ones can be clipped */
       props.push(mkProp(nd.x+nx*lat2*s2, nd.y+ny*lat2*s2, type, size, i, solid, rand()));
     }
-    /* loose ground litter — small stones and tufts, never solid. Cheap, and
+    /* loose ground litter - small stones and tufts, never solid. Cheap, and
        it is what stops the grass reading as flat colour under the trees. */
     if(rand() < 0.55){
       var s3 = rand() < 0.5 ? -1 : 1;
@@ -605,20 +605,20 @@ function angDiff(a,b){
   return d;
 }
 /* =========================================================================
-   PIXEL SPRITES — everything is drawn with canvas primitives, so there are
+   PIXEL SPRITES - everything is drawn with canvas primitives, so there are
    still no external asset files.
 
    Each car has TWO sprite sets:
 
-     1. TOP-DOWN  — built by src/carsprite.js. A pseudo-3D body: silhouette,
+     1. TOP-DOWN  - built by src/carsprite.js. A pseudo-3D body: silhouette,
         curvature ramp, then the panels that stand proud of it (hood, glass,
         roof, boot, spoiler, mirrors, lamps). Authored in sprite pixels and
         blitted into the low-resolution world buffer at roughly 1:1, so a
         sprite pixel is a world pixel.
 
-     2. SIDE VIEW — built from independent, individually swappable layers
+     2. SIDE VIEW - built from independent, individually swappable layers
         (chassis / wheels / hood / livery / glass / trim). A later pass can
-        replace one layer — say WHEEL_STYLES.rally or SIDE_LAYERS.hood —
+        replace one layer - say WHEEL_STYLES.rally or SIDE_LAYERS.hood -
         or nudge opts.rideHeight, without touching any of the others.
    ========================================================================= */
 
@@ -633,8 +633,8 @@ function shade(hex, amt){
 }
 
 /* One palette derived from the chosen paint, shared by both sprite sets.
-   The top-down renderer needs a few extra steps on the ramp — a roof that
-   sits above the body, a third glass tone, a specular catch — so they live
+   The top-down renderer needs a few extra steps on the ramp - a roof that
+   sits above the body, a third glass tone, a specular catch - so they live
    here too and both sets keep reading one palette. */
 function carPalette(paint, damageTier){
   return {
@@ -669,7 +669,7 @@ function liveryColorAt(livery, px, py, w, h, accent, halfw){
   if(livery===1){                                   /* twin bonnet-to-boot stripes */
     var ad = Math.abs(d);
     if(ad >= 1.2 && ad <= 3.2) return accent;
-  } else if(livery===2){                            /* rally #7 — side panels */
+  } else if(livery===2){                            /* rally #7 - side panels */
     if(halfw && Math.abs(d) >= halfw - 2.2) return accent;
     if(t > 0.44 && t < 0.62 && halfw && Math.abs(d) >= halfw - 4.2) return accent;
   } else if(livery===3){                            /* chevron */
@@ -681,7 +681,7 @@ function liveryColorAt(livery, px, py, w, h, accent, halfw){
   return null;
 }
 
-/* Returns {canvas, shadow, w, h, pw, ph, lamps} — a car pointing UP (-Y). */
+/* Returns {canvas, shadow, w, h, pw, ph, lamps} - a car pointing UP (-Y). */
 var spriteCache = {}, spriteCacheN = 0;
 function getCarSprite(carId, paint, livery, damageTier, scale){
   var key = carId+'|'+paint+'|'+livery+'|'+damageTier+'|'+scale;
@@ -695,7 +695,7 @@ function getCarSprite(carId, paint, livery, damageTier, scale){
 }
 
 /* =========================================================================
-   SIDE VIEW — modular, layered, nose to the right.
+   SIDE VIEW - modular, layered, nose to the right.
 
    Geometry lives in CAR_SIDE as a pixel grid: a roofline profile, a sill,
    wheel positions and a few named regions. Layers read that spec, so a part
@@ -795,7 +795,7 @@ function buildSideModel(spec, o, sg){
 /* --------------------------------------------------- round-shape helpers
    Everything circular in the side view (tyres, rims, turbo housings) is
    plotted from angles so the stair-stepping stays consistent. Canvas Y
-   grows downward, so PI..1.5PI is the upper-left quadrant — the lit side. */
+   grows downward, so PI..1.5PI is the upper-left quadrant - the lit side. */
 function ringPx(m, cx, cy, ang, rad, col, w, h){
   m.px(cx + Math.round(Math.cos(ang)*rad),
        cy + Math.round(Math.sin(ang)*rad), w||1, h||1, col);
@@ -811,8 +811,8 @@ var SHD_A0 = Math.PI*0.10, SHD_A1 = Math.PI*0.56;         /* lower-right, dark *
    spent on tyres). WHEEL_STYLES stays as whole-wheel presets so anything
    selecting via opts.wheels keeps working.
 
-   Treads share one carcass — black outer wall, rubber inner, a sheen on the
-   lit side and a shadow opposite — then lay their own block pattern over it,
+   Treads share one carcass - black outer wall, rubber inner, a sheen on the
+   lit side and a shadow opposite - then lay their own block pattern over it,
    so a compound reads by its texture and not just by its tint. */
 function tyreCarcass(m, w, rubber, sheen, shadow){
   m.disc(w.cx, w.axleY, w.r,   m.colors.black);
@@ -821,7 +821,7 @@ function tyreCarcass(m, w, rubber, sheen, shadow){
   arcRun(m, w.cx, w.axleY, w.r-1, SHD_A0, SHD_A1, 12, shadow);
   arcRun(m, w.cx, w.axleY, w.r-2, LIT_A0+0.4, LIT_A1-0.4, 6, sheen);
 }
-/* repeated marks around the circumference — the tread blocks */
+/* repeated marks around the circumference - the tread blocks */
 function treadBlocks(m, w, n, rad, col, bw, bh, phase){
   for(var a=0;a<n;a++)
     ringPx(m, w.cx, w.axleY, a*TAU/n + (phase||0), rad, col, bw||1, bh||1);
@@ -856,7 +856,7 @@ var WHEEL_TREADS = {
 };
 
 /* ------------------------------------------------------------ rim helpers
-   Race rims take the car's accent, except when that accent is near-white —
+   Race rims take the car's accent, except when that accent is near-white -
    a white rim on a light car vanishes, so those fall back to rally gold. */
 function rimLipColor(accent){
   var c = accent.replace('#','');
@@ -995,7 +995,7 @@ function drawSideChassis(g, m){
   /* nose and tail turn away from the light, so both ends darken off */
   for(x=s.x0;x<=s.x0+2;x++) shadeEnd(m, x, (s.x0+3-x)/4);
   for(x=s.x1-2;x<=s.x1;x++) shadeEnd(m, x, (x-s.x1+3)/4);
-  /* panel shut lines — only below the glass, so they read as door gaps */
+  /* panel shut lines - only below the glass, so they read as door gaps */
   for(var k=0;k<s.shuts.length;k++){
     var sx = s.shuts[k], t = Math.max(s.belt-1, m.topAt(sx)+1), b = m.bottomAt(sx);
     if(b - t > 2) m.px(sx, t+dy, 1, b-t-2, c.dark);
@@ -1019,7 +1019,7 @@ function drawSideChassis(g, m){
 /* --------------------------------------------------------------- glass */
 function drawSideGlass(g, m){
   var s = m.spec, c = m.colors, dy = m.dy;
-  /* "strip the interior, lexan glass" — so at higher weight tiers it is */
+  /* "strip the interior, lexan glass" - so at higher weight tiers it is */
   var gMain = m.opts.lexan ? '#9db2c0' : c.glass;
   var gLite = m.opts.lexan ? '#c0d2dc' : c.glassLite;
   for(var i=0;i<s.windows.length;i++){
@@ -1309,7 +1309,7 @@ function drawSideShadow(g, m){
   m.px(s.x0+8, s.ground+2, s.x1-s.x0-15, 1, 'rgba(0,0,0,.14)');
 }
 
-/* Layer table and draw order — either can be re-pointed by a later pass. */
+/* Layer table and draw order - either can be re-pointed by a later pass. */
 var SIDE_LAYERS = {
   shadow:  drawSideShadow,
   wells:   drawSideWells,
@@ -1323,7 +1323,7 @@ var SIDE_LAYERS = {
 };
 var SIDE_LAYER_ORDER = ['shadow','wells','wheels','chassis','hood','livery','glass','kit','trim'];
 
-/* Returns {canvas, w, h, pw, ph, spec, opts} — a side-on car facing RIGHT. */
+/* Returns {canvas, w, h, pw, ph, spec, opts} - a side-on car facing RIGHT. */
 function renderCarSide(carId, opts){
   var def = carDef(carId), spec = CAR_SIDE[def.sprite];
   opts = opts || {};
@@ -1362,7 +1362,7 @@ function renderCarSide(carId, opts){
 }
 
 /* ---------------------------------------------------------------------
-   Upgrade reflection — turns a car's equipped upgrades into side-view
+   Upgrade reflection - turns a car's equipped upgrades into side-view
    sprite options. Presentational only: nothing here feeds back into
    stats, pricing or handling, it just picks which layers get drawn.
      suspension -> chassis ride height: stock sits tall on its springs, each
@@ -1383,7 +1383,7 @@ var SUSP_RIDE   = [3, 2, 1, -1];      /* +ve lifts the body off the wheels */
 
 function carSideOpts(carId, extra){
   /* shopCarSave, not save.cars, so an unpaid shop preview shows on the car
-     through this same renderer — there is no second preview sprite path */
+     through this same renderer - there is no second preview sprite path */
   var def = carDef(carId), cs = shopCarSave(carId), u = cs.up;
   var spec = CAR_SIDE[def.sprite];
   var tyreLvl = clamp(cs.tires[cs.fitted]|0, 0, 3);
@@ -1444,7 +1444,7 @@ function getCarSide(carId, opts){
    and brighter than the last, so the eye reads a stack of blocks rising out
    of the ground rather than a flat decal.
 
-   The light direction — up and to the left — is the same one the car sprite
+   The light direction - up and to the left - is the same one the car sprite
    and the dashboard bezels use, which is most of what makes the three look
    like they belong in one picture. */
 var TREE_PALS = {
@@ -1488,8 +1488,8 @@ function drawProp(g, p, theme, onScreen){
        between a forest and a tiled wallpaper. */
     var j1 = (v*97) % 1, j2 = (v*173) % 1, j3 = (v*311) % 1;
     /* The tree is drawn as a stack of blocks, not as a flat stamp. Each ring
-       gets an EXTRUDED SIDE first — the same rectangle pushed down and to the
-       right in a much darker green — and then its lit top face on top of
+       gets an EXTRUDED SIDE first - the same rectangle pushed down and to the
+       right in a much darker green - and then its lit top face on top of
        that. The result is a silhouette with visible thickness, which is what
        makes the reference's forest read as objects standing up out of the
        ground rather than as a pattern printed on it. */
@@ -1548,10 +1548,10 @@ function drawProp(g, p, theme, onScreen){
   g.restore();
 }
 /* =========================================================================
-   ENGINE — canvas, input, physics, camera, rendering, race loop
+   ENGINE - canvas, input, physics, camera, rendering, race loop
    ========================================================================= */
 
-/* on-track car length in world units — held constant so sprite-grid
+/* on-track car length in world units - held constant so sprite-grid
    changes stay purely visual and never alter the driving footprint */
 var CAR_WORLD_LEN = 72;
 
@@ -1561,7 +1561,7 @@ var view = { w:0, h:0, dpr:1 };
 
 /* ------------------------------------------------------- world buffer
    The stage is not drawn straight to the screen. It goes into a small
-   offscreen canvas — a few hundred pixels across — which is then blitted
+   offscreen canvas - a few hundred pixels across - which is then blitted
    up with nearest-neighbour filtering. That one change does three things
    at once:
 
@@ -1572,7 +1572,7 @@ var view = { w:0, h:0, dpr:1 };
      * it cuts the fill cost by the square of the scale factor, which is
        most of the reason this runs at 60fps on a phone;
      * it gives the graphics-quality setting something meaningful to
-       change — `px` is css pixels per buffer pixel.
+       change - `px` is css pixels per buffer pixel.
 
    The HUD, the dashboard and the countdown are drawn AFTER the blit, at
    full device resolution, so nothing the player has to read is ever
@@ -1584,8 +1584,8 @@ function ensureWorld(){
   var ps = gfx.px;
   var bw = Math.max(80, Math.round(view.w/ps));
   /* An absolute ceiling on the internal resolution. Pixel art does not get
-     better by rendering a 1440-wide window at 720 internal pixels — it gets
-     smoother, which is the opposite of the point — and the fill cost grows
+     better by rendering a 1440-wide window at 720 internal pixels - it gets
+     smoother, which is the opposite of the point - and the fill cost grows
      with the area of the window for no visual gain. Above the cap the blit
      simply scales up further and the pixels get chunkier, which is correct. */
   if(bw > gfx.maxW){ ps = view.w/gfx.maxW; bw = gfx.maxW; }
@@ -1618,7 +1618,7 @@ function ensureWorld(){
 
    So: one measurement of #app's real box, both canvases given an explicit
    CSS size to match it, and a ResizeObserver plus the visualViewport events
-   to catch every later change — including the ones that fire no window
+   to catch every later change - including the ones that fire no window
    `resize` at all. */
 var appEl = document.getElementById('app');
 var pendingResize = false, resizeCheck = 0;
@@ -1682,7 +1682,7 @@ if(window.ResizeObserver){
 
    The dashboard is the controller. Every touch control is a region of the
    dash canvas rather than a DOM node, so there is one hit map, one piece of
-   art and nothing to keep in sync — and no browser buttons floating over a
+   art and nothing to keep in sync - and no browser buttons floating over a
    pixel-art cockpit.
 
    Pointer Events give multi-touch for free: both thumbs down at once is the
@@ -1697,7 +1697,7 @@ var input = { left:false, right:false, gas:false, brake:false, hbrake:false,
 
 /* held regions, by pointer id */
 var pointers = {};
-/* how many pointers are holding each region — a region stays down until the
+/* how many pointers are holding each region - a region stays down until the
    last finger on it lifts */
 var held = {};
 
@@ -1768,7 +1768,7 @@ function bindDashInput(el){
   el.addEventListener('contextmenu', function(e){ e.preventDefault(); });
 }
 
-/* Everything still held is released when the game is interrupted — pausing
+/* Everything still held is released when the game is interrupted - pausing
    with the throttle down must not leave it stuck open. */
 function releaseAllInput(){
   pointers = {}; held = {};
@@ -1915,7 +1915,7 @@ function audioEngine(rpm, load, slip, running, boost){
     oscBody.frequency.setTargetAtTime(f, t, 0.035);
     oscSub.frequency.setTargetAtTime(f*0.5, t, 0.035);
     oscWhine.frequency.setTargetAtTime(f*3.02, t, 0.035);
-    /* filter opens with revs — flat drone at idle, growl at the top */
+    /* filter opens with revs - flat drone at idle, growl at the top */
     toneFilter.frequency.setTargetAtTime(260 + r*r*2600, t, 0.05);
     /* the turbo rides on the gear whine: more pressure, more of it, and it
        climbs in pitch as the impeller spools */
@@ -2019,15 +2019,15 @@ function audioBlowoff(power){
    with DASH_OVER further rows ABOVE the panel for the paddles. One grid unit
    is `u` device pixels; the painter rounds every edge to a whole device pixel
    so the art stays crisp at any scale, and the layout itself is resolution
-   independent — a phone and a desktop get the same composition, not the same
+   independent - a phone and a desktop get the same composition, not the same
    art scaled by CSS.
 
    SAFE AREAS. The moulding is drawn full bleed so the dash reaches the screen
    edges, but the layout box is inset by the device's safe-area insets, so no
    control ever ends up under a notch or the home indicator.
 
-   COST. Everything that never moves — moulding, bezels, dial faces, every
-   label — is painted once into an offscreen bitmap at device resolution. A
+   COST. Everything that never moves - moulding, bezels, dial faces, every
+   label - is painted once into an offscreen bitmap at device resolution. A
    frame is one blit plus the needles, digits, lamps and whichever controls
    are currently pressed.
 
@@ -2082,7 +2082,7 @@ function raised(px, x, y, w, h, face, hi, lo){
   px(x, y+h-1, w, 1, lo || DC.seam);
   px(x+w-1, y, 1, h, lo || DC.seam);
 }
-/* a recess cut into the moulding — the same bevel, inverted */
+/* a recess cut into the moulding - the same bevel, inverted */
 function sunken(px, x, y, w, h, face){
   px(x, y, w, h, face || DC.face);
   px(x, y, w, 1, DC.seam);
@@ -2105,7 +2105,7 @@ function fitScale(str, maxW, maxH){
 }
 function textH(scale){ return 7*scale; }
 
-/* a run of segment lamps — rev lights, throttle bar, boost bar */
+/* a run of segment lamps - rev lights, throttle bar, boost bar */
 function lampRow(px, x, y, w, h, n, lit, on, off, gap){
   gap = gap == null ? 1 : gap;
   var sw = (w - (n-1)*gap)/n;
@@ -2135,8 +2135,8 @@ function safeInsets(){
            b:parseFloat(cs.paddingBottom)||0, l:parseFloat(cs.paddingLeft)||0 };
 }
 
-/* How tall the panel is in CSS pixels. Deep enough to read as a cockpit —
-   the reference gives the dash better than half the frame — but capped
+/* How tall the panel is in CSS pixels. Deep enough to read as a cockpit -
+   the reference gives the dash better than half the frame - but capped
    against the width too, so an ultra-wide phone in landscape does not end
    up with a dash so deep there is no road left to look at. */
 function dashPanelH(){
@@ -2153,7 +2153,7 @@ function dashBandH(){ return dash.L ? dash.L.panelCss : dashPanelH(); }
 function dashLayout(){
   var dpr = view.dpr;
   var panelCss = dashPanelH();
-  /* grid units per CSS pixel — the layout is defined in these and is
+  /* grid units per CSS pixel - the layout is defined in these and is
      independent of how many device pixels each one is painted with */
   var gpc = DASH_GH/panelCss;
   var u = clamp((panelCss*dpr)/DASH_GH, 1, DASH_U_MAX);
@@ -2196,7 +2196,7 @@ function dashLayout(){
   /* ---- centre: gear, tacho, shift block, speedo, boost ----
      The dial size is whatever the width between the two thumb blocks allows.
      On a narrow phone that leaves vertical slack, which goes to centring the
-     instruments rather than to inflating the tell-tale strip — the strip has
+     instruments rather than to inflating the tell-tale strip - the strip has
      a height of its own so its glyphs stay the same size everywhere. */
   var avail = Math.max(90, L.rightStart - L.leftEnd - 8);
   var stripH = clamp(UH*0.19, 11, 27);
@@ -2231,7 +2231,7 @@ function dashLayout(){
 }
 
 /* =========================================================================
-   GAUGES — the dial faces. Circles and needles are the one place the dash
+   GAUGES - the dial faces. Circles and needles are the one place the dash
    is not pixel art: a stepped circle at this size reads as a mistake rather
    than a style, and the reference cluster's bezels are smooth too. The
    numerals are the bitmap face, so the lettering still matches the HUD.
@@ -2368,7 +2368,7 @@ function drawNeedle(g, cx, cy, R, ang, col){
 }
 
 /* =========================================================================
-   TELL-TALE ICONS — small pixel glyphs for the status strip. Each draws
+   TELL-TALE ICONS - small pixel glyphs for the status strip. Each draws
    into a box of its own and takes the ink colour, so the strip only has to
    decide what is lit.
    ========================================================================= */
@@ -2411,7 +2411,7 @@ function iconDiff(px, x, y, s, col){                      /* axle with a centre 
 }
 
 /* =========================================================================
-   STATIC BASE — painted once per layout
+   STATIC BASE - painted once per layout
    ========================================================================= */
 function buildDashBase(L){
   var u = L.u, oy = L.over;
@@ -2651,7 +2651,7 @@ function drawDash(r){
   drawShiftTri(px, L.shiftDn, false, ctl.shiftDn > 0.1 || ctl.padDn > 0.1, manual);
   drawShiftTri(px, L.shiftUp, true,  ctl.shiftUp > 0.1 || ctl.padUp > 0.1, manual);
   /* rev lights: green, then amber, then the whole bar flashing red on the
-     limiter — the cue to pull the paddle */
+     limiter - the cue to pull the paddle */
   var revN = 6, revLit = Math.round(clamp(rpm/1.06, 0, 1)*revN);
   var limiter = rpm >= 1.02 && (Math.floor(perfNow()/80) & 1);
   lampRow(px, L.revBar.x, L.revBar.y, L.revBar.w, L.revBar.h, revN,
@@ -2670,7 +2670,7 @@ function drawDash(r){
   drawRocker(px, L.steerL, false, ctl.steerL);
   drawRocker(px, L.steerR, true,  ctl.steerR);
   /* the little strip above them: four lamps that track what the car is
-     actually doing — drive, slip, off-road, damage */
+     actually doing - drive, slip, off-road, damage */
   var T0 = L.tell;
   var nLed = 5;
   var lit = driving ? 1 + Math.round(clamp(rpm/1.02, 0, 1)*(nLed-1)) : 1;
@@ -2901,7 +2901,7 @@ function drawPaddle(px, P, up, press, active){
 }
 
 /* =========================================================================
-   HIT TESTING — one pointer map derived from the same layout the art uses
+   HIT TESTING - one pointer map derived from the same layout the art uses
    ========================================================================= */
 function dashHit(cssX, cssY){
   var L = dash.L;
@@ -2938,7 +2938,7 @@ function updateHudControls(dt){
   ctl.shiftDn = Math.max(0, ctl.shiftDn - dt*4.5);
   ctl.flashGear = Math.max(0, ctl.flashGear - dt*2.5);
 
-  /* the needles chase the live values with a short mechanical lag — quick
+  /* the needles chase the live values with a short mechanical lag - quick
      enough to be accurate, damped enough not to twitch. Nothing here feeds
      back into the physics; it is all readout. */
   if(race){
@@ -2962,7 +2962,7 @@ function resetHudControls(){
 
 /* ------------------------------------------------------------- gearbox
    Six speeds. GEAR_SPANS is the fraction of the car's top speed reached at
-   the redline in each gear, so engine revs are speed/(top*span) — revs fall
+   the redline in each gear, so engine revs are speed/(top*span) - revs fall
    on an upshift and climb on a downshift, the way they should.
 
    The spans are exactly the bands the automatic box has always used, so
@@ -3122,7 +3122,7 @@ function startRace(stageId){
    An arcade turbo, so the boost gauge on the dash reads something real.
    Pressure builds while the throttle is open and the engine is on the cam,
    bleeds away off throttle, and dumps on an upshift. What it buys is a
-   modest torque multiplier — enough to reward holding a gear and staying on
+   modest torque multiplier - enough to reward holding a gear and staying on
    the power, not enough to rewrite the car's stats. Cars with more turbo
    fitted spool faster and hold more. */
 function turboSpec(S, cs){
@@ -3179,7 +3179,7 @@ function stepRace(dt){
     if(input.right) target += 1;
   }
   /* Steering builds a touch faster than it used to and centres quicker, so
-     a tap of the rocker is a real correction rather than a suggestion — the
+     a tap of the rocker is a real correction rather than a suggestion - the
      single biggest thing that made the old buttons feel floaty. It still
      slows down with speed, further down, so it never becomes twitchy. */
   var rate = (Math.abs(target) > Math.abs(c.steer)) ? 6.4 : 9.5;
@@ -3208,7 +3208,7 @@ function stepRace(dt){
   var accel = S.accel * dmgPenalty;
 
   /* Brake and handbrake are now separate controls. The brake is the one you
-     use into every corner — strong, stable, and it does not upset the car.
+     use into every corner - strong, stable, and it does not upset the car.
      The handbrake is the rally tool: it locks the rears, so it scrubs speed
      AND lets the tail come round, and it reverses once you are stopped. */
   var brakeOn = driving && input.brake;
@@ -3244,7 +3244,7 @@ function stepRace(dt){
   /* rolling resistance + aero */
   c.fwd -= c.fwd * roll * 0.30 * dt;
   c.fwd -= c.fwd * Math.abs(c.fwd) * 0.00022 * dt;
-  /* sliding sideways scrubs speed — the rally trade-off */
+  /* sliding sideways scrubs speed - the rally trade-off */
   if(Math.abs(c.fwd) > 1){
     var scrub = Math.abs(c.lat) * 0.55 * dt;
     c.fwd -= Math.min(Math.abs(c.fwd), scrub) * Math.sign(c.fwd);
@@ -3256,7 +3256,7 @@ function stepRace(dt){
   var speedFrac = clamp(spd/260, 0, 1.4);
   var grab = clamp(spd/45, 0, 1);
   var handFactor = S.handling/46;
-  /* how hard the fronts can bite depends on the surface and the tyres —
+  /* how hard the fronts can bite depends on the surface and the tyres -
      this is what makes ice feel like ice and gravel tyres worth buying */
   var bite = clamp(0.52 + 0.48*grip, 0.48, 1.32);
   var yawRate = c.steer * 2.05 * handFactor * bite * grab / (1 + spd/430);
@@ -3268,7 +3268,7 @@ function stepRace(dt){
   var latGrip = grip * (hb ? 0.26 : 1) * (1 - c.wheelSpin*0.28);
   var latK = 4.4 * latGrip;
   c.lat *= Math.exp(-latK*dt);
-  /* the car is pushed sideways as it rotates — that is what makes the slide */
+  /* the car is pushed sideways as it rotates - that is what makes the slide */
   c.lat -= yawRate * c.fwd * dt * (1.0 - Math.min(0.55, latGrip*0.32));
 
   /* limit total slide so it never becomes uncontrollable */
@@ -3420,8 +3420,8 @@ function checkCollisions(r, dt){
 }
 
 /* -------------------------------------------------------------- effects
-   Everything the car throws up. All of it is pixel-scale — square puffs and
-   chips, no soft gradients — so it sits in the same grid as the scenery
+   Everything the car throws up. All of it is pixel-scale - square puffs and
+   chips, no soft gradients - so it sits in the same grid as the scenery
    instead of looking like a particle system bolted onto a pixel-art game.
 
    The budget comes from the quality tier: LOW thins the emission rate as
@@ -3536,13 +3536,13 @@ function spawnImpact(r, x, y, power, surf){
 
    1. THE STAGE goes into the low-resolution world buffer: ground, road,
       tyre marks, particles, scenery, headlights, the car. Everything here
-      is deliberately coarse — it is what gives the game its pixel grid —
+      is deliberately coarse - it is what gives the game its pixel grid -
       and it is blitted up to the screen with nearest-neighbour filtering.
 
    2. THE READOUTS are drawn straight onto the screen canvas afterwards at
       full device resolution: stage panel, timer, minimap, pacenotes,
       countdown. Nothing the player has to read is ever resampled, which is
-      the rule the whole presentation is built around — the world may be
+      the rule the whole presentation is built around - the world may be
       chunky and motion-blurred, the instruments never are.
    ========================================================================= */
 
@@ -3561,7 +3561,7 @@ function renderRace(){
   /* Framing. The camera aims at a point ahead of the car, so the car is
      drawn that far down the screen and rides lower the faster you go. Left
      unchecked it disappears behind the dash, so the focal point lifts only
-     as far as it takes to keep the car above the panel — at low speed the
+     as far as it takes to keep the car above the panel - at low speed the
      framing is untouched. */
   var playH = H - dashBandH();
   var scaleCss = (playH*0.36/CAR_WORLD_LEN)/r.camZoom;
@@ -3592,7 +3592,7 @@ function renderRace(){
   /* Culling box, in camera space rather than as a radius.
 
      A radius around the camera is the diagonal of the view, and the view is
-     wide and shallow — the dash eats the bottom of it — so a radius selects
+     wide and shallow - the dash eats the bottom of it - so a radius selects
      roughly twice the objects that can actually be seen. These are the real
      screen edges expressed in world units, which is four multiplies per
      object and halves the number of trees the renderer touches. */
@@ -3665,7 +3665,7 @@ function drawGroundDetail(g, r, viewR, theme, gfx){
       g.fillStyle = pal[3];
       g.fillRect(px, py, s, s*0.18);
       /* a second, smaller clump off the same cell doubles the density for
-         one extra fill — cheap texture rather than twice the loop */
+         one extra fill - cheap texture rather than twice the loop */
       var s2 = 7 + rnd2(gx,gy,29)*13;
       g.fillStyle = pal[Math.floor(rnd2(gx,gy,31)*4)%4];
       g.fillRect(px + cell*0.45, py + cell*0.38, s2, s2*0.72);
@@ -4066,7 +4066,7 @@ function drawRush(g, r, w){
 }
 
 /* =========================================================================
-   CRISP LAYER — the HUD, at full device resolution.
+   CRISP LAYER - the HUD, at full device resolution.
 
    Painted with the bitmap font through a painter that snaps to whole device
    pixels, so it is genuine pixel art rather than a scaled-down web overlay.
@@ -4225,7 +4225,7 @@ function drawMinimap(g, r){
     var cp = P(n2);
     px(cp[0], cp[1]-1, 1, 3, 'rgba(255,180,50,.75)');
   }
-  /* the car — blinking so it is findable at a glance */
+  /* the car - blinking so it is findable at a glance */
   var cp2 = [ox + r.car.x*s, oy + r.car.y*s];
   px(cp2[0]-2, cp2[1]-2, 4, 4, '#08100a');
   px(cp2[0]-1, cp2[1]-1, 3, 3, '#ffb432');
@@ -4262,7 +4262,7 @@ function drawPacenote(g, r){
 
 /* -------------------------------------------------------- big messages
    Countdown and stage calls, in large outlined bitmap type placed above
-   the car rather than in the middle of the screen — the reference frames
+   the car rather than in the middle of the screen - the reference frames
    the countdown right over the bonnet. */
 function drawBigMsg(g, r, focal, carDrop){
   if(!r.msg || r.msg.t <= 0) return;
@@ -4384,7 +4384,7 @@ function drawRotatePrompt(dt){
 }
 
 /* =========================================================================
-   SCENES — canvas-drawn backdrops for the garage and the parking lot.
+   SCENES - canvas-drawn backdrops for the garage and the parking lot.
 
    Both are painted once into a small offscreen canvas at chunky "scene
    pixel" resolution, then blitted up with smoothing off, so they sit at the
@@ -4395,7 +4395,7 @@ function drawRotatePrompt(dt){
 
 var sceneCache = {};
 
-/* one scene pixel, in CSS px — also the scale the side-view car is drawn at */
+/* one scene pixel, in CSS px - also the scale the side-view car is drawn at */
 function scenePx(){ return clamp(Math.round(view.h/96), 3, 6); }
 
 function sceneLayer(key, w, h, paint){
@@ -4668,7 +4668,7 @@ function drawLotScene(dt){
 }
 
 /* =========================================================================
-   UI — screens, stage select, garage, parking lot, settings, results
+   UI - screens, stage select, garage, parking lot, settings, results
    ========================================================================= */
 
 var SCREENS = ['menu','stages','garage','lot','settings','results'];
@@ -4676,7 +4676,7 @@ var currentScreen = 'menu';
 
 var screenTimers = {};
 function showScreen(name){
-  /* leaving the garage at all — BACK, parking lot, starting a stage — counts
+  /* leaving the garage at all - BACK, parking lot, starting a stage - counts
      as cancelling: the preview is dropped and nothing was ever charged */
   if(name !== 'garage') clearPreview();
   for(var i=0;i<SCREENS.length;i++){
@@ -4825,13 +4825,13 @@ var garageTab = 'upgrades';
 /* --------------------------------------------------- preview lifecycle */
 
 /* Equip a shop item as an unpaid preview. Only one runs at a time, so
-   picking something else silently drops the previous one — still no charge. */
+   picking something else silently drops the previous one - still no charge. */
 function startPreview(pv){
   preview = pv;
   audioBeep(620, 0.05);
   renderGarage();
 }
-/* drop the preview without a sound — used when the screen changes under us */
+/* drop the preview without a sound - used when the screen changes under us */
 function clearPreview(){ preview = null; }
 
 function cancelPreview(){
@@ -4856,8 +4856,8 @@ function commitPreview(){
   renderGarage();
 }
 
-/* Free, instantly reversible actions — fitting tyres, taking another car
-   out, gear ratios — drop any preview first, so a pending purchase can
+/* Free, instantly reversible actions - fitting tyres, taking another car
+   out, gear ratios - drop any preview first, so a pending purchase can
    never be committed on top of a car entry that moved underneath it. */
 function shopAction(fn){
   return function(e){
@@ -5024,7 +5024,7 @@ function renderUpgrades(body){
         if(on){ btn.textContent = 'FITTED'; btn.classList.add('pv'); }
         else {
           btn.textContent = fmtMoney(cost);
-          /* still tappable when it is out of reach — you can look at it,
+          /* still tappable when it is out of reach - you can look at it,
              the PURCHASE button in the bar is what locks out */
           if(save.money < cost) btn.classList.add('cant'); else btn.classList.add('primary');
         }
@@ -5052,7 +5052,7 @@ function renderUpgrades(body){
    stats used for stage gating. */
 function renderGearing(body){
   /* ratios are a free setting, written straight to the save, so this reads
-     the real entry — the steppers cancel any preview before they write */
+     the real entry - the steppers cancel any preview before they write */
   var carId = shopCarId(), cs = save.cars[carId], st = computeStats(carId, shopCarSave(carId));
 
   var head = document.createElement('div');
@@ -5211,7 +5211,7 @@ function renderPaint(body){
   var hint = document.createElement('div');
   hint.className = 'up-desc';
   hint.style.marginTop = '10px';
-  hint.textContent = 'Paint and decals are free, but they still go on as a preview — try them on the car, then APPLY to keep it or CANCEL to go back.';
+  hint.textContent = 'Paint and decals are free, but they still go on as a preview - try them on the car, then APPLY to keep it or CANCEL to go back.';
   wrap.appendChild(hint);
   body.appendChild(wrap);
 }
@@ -5365,7 +5365,7 @@ function renderSettings(){
 
   b.appendChild(segRow('GRAPHICS',
     'How much work each frame is worth. LOW renders the stage at a coarser ' +
-    'pixel size and thins out dust, lighting and scenery — pick it if the game ' +
+    'pixel size and thins out dust, lighting and scenery - pick it if the game ' +
     'stutters or the phone gets hot. MEDIUM is the mobile default. HIGH adds ' +
     'headlight cones, more particles and a finer pixel grid.',
     [['low','LOW'],['medium','MEDIUM'],['high','HIGH']], save.settings.quality, function(v){
@@ -5501,7 +5501,7 @@ function finishRace(){
   var bts = document.getElementById('res-buttons');
   bts.innerHTML = '';
   bts.appendChild(mkBtn('RETRY','primary', function(){ startRace(st.id); }));
-  /* the next stage, when it is open — the natural thing to want next */
+  /* the next stage, when it is open - the natural thing to want next */
   var idx = 0, i;
   for(i=0;i<STAGES.length;i++) if(STAGES[i].id === st.id) idx = i;
   var next = STAGES[idx+1];

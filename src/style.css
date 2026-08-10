@@ -167,7 +167,7 @@ canvas#game{position:absolute;left:0;top:0;width:100%;height:100%;display:block;
    One canvas pinned to the bottom edge. The art is drawn full bleed so the
    moulding reaches the screen edges; the layout inside it is inset by the
    safe-area insets, so nothing interactive sits under a notch or the home
-   indicator. Nothing here scales the canvas — it is sized in device pixels
+   indicator. Nothing here scales the canvas - it is sized in device pixels
    by the game, so the pixel art stays 1:1 with the display. */
 canvas#dash-cv{
   position:absolute;left:0;bottom:0;z-index:25;display:block;

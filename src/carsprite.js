@@ -1,11 +1,11 @@
 /* =========================================================================
-   TOP-DOWN CAR SPRITE — a pseudo-3D rally car rendered through a low
+   TOP-DOWN CAR SPRITE - a pseudo-3D rally car rendered through a low
    resolution pixel pipeline.
 
    The old sprite was a flat character map. This one is built the way a
    pre-rendered 3D sprite would be: a body silhouette with a curvature
-   shading ramp across it, then the panels that stand proud of it — hood,
-   glasshouse, roof, boot — each stepped one shade brighter or darker so the
+   shading ramp across it, then the panels that stand proud of it - hood,
+   glasshouse, roof, boot - each stepped one shade brighter or darker so the
    car reads as a solid object with height rather than a decal.
 
    Everything is authored in SPRITE PIXELS. The renderer paints into a
@@ -68,7 +68,7 @@ function profileAt(pts, t){
 
 /* Shading ramp across the width of the body. `d` is the signed distance
    from the centreline in px, negative to the left. The light is up and to
-   the left, so the left shoulder catches it and the right one falls away —
+   the left, so the left shoulder catches it and the right one falls away -
    the same convention the scenery and the dash bezels use. */
 function bodyBand(pal, d, half){
   var f = d/Math.max(0.5, half);          /* -1 .. 1 */
@@ -111,7 +111,7 @@ function buildBuffer(spec, pal, livery, liveryAt, dmg){
 
   /* ---------------------------------------------------------- wheels
      Drawn first: the body and its arches are painted over the inner half,
-     so only the tyre shoulder shows past the flare — the way a rally car
+     so only the tyre shoulder shows past the flare - the way a rally car
      looks from directly above. */
   var wl = Math.max(3, Math.round(spec.wheelL*ph));
   var ww = Math.max(2, Math.round(spec.wheelW));
@@ -166,7 +166,7 @@ function buildBuffer(spec, pal, livery, liveryAt, dmg){
   var noseEnd = R(0.055), tailStart = R(0.945);
   for(y=0;y<=noseEnd;y++) row(y, cx-halfAt(y)+1, cx+halfAt(y)-1, y===0 ? pal.black : pal.darker);
   for(y=tailStart;y<ph;y++) row(y, cx-halfAt(y)+1, cx+halfAt(y)-1, y===ph-1 ? pal.black : pal.darker);
-  /* front splitter — one black lip proud of the bumper */
+  /* front splitter - one black lip proud of the bumper */
   row(0, cx-halfAt(0)+2, cx+halfAt(0)-2, pal.black);
 
   /* -------------------------------------------------------------- hood */
@@ -228,7 +228,7 @@ function buildBuffer(spec, pal, livery, liveryAt, dmg){
     set(cx-rh2-1, y, pal.hi);                                 /* lit gutter */
     set(cx+rh2+1, y, pal.deep);                               /* shaded gutter */
   }
-  /* roof vents — the pair of dark slots the reference car carries */
+  /* roof vents - the pair of dark slots the reference car carries */
   if(spec.roofVent){
     var mid = Math.round((r0+r1)/2);
     for(var rv=0; rv<spec.roofVent; rv++){

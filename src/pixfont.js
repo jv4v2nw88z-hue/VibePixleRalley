@@ -1,5 +1,5 @@
 /* =========================================================================
-   PIXEL FONT — a 5x7 bitmap face, drawn through a pixel painter so every
+   PIXEL FONT - a 5x7 bitmap face, drawn through a pixel painter so every
    glyph lands on the same grid as the rest of the art.
 
    The whole HUD and dashboard letter forms come from here rather than from
@@ -8,7 +8,7 @@
    is whole pixels only.
 
    A painter is any `function(x, y, w, h, colour)` that fills a rectangle in
-   grid units — the dash, the HUD and the sprite renderers each supply their
+   grid units - the dash, the HUD and the sprite renderers each supply their
    own, so the same glyphs come out at whatever pixel size that surface uses.
    ========================================================================= */
 
@@ -134,7 +134,7 @@ export function textBold(px, str, x, y, col, scale, track){
 export function textBoldW(str, scale, track){ return textW(str, scale, track) + (scale||1); }
 
 /* Headline type with a hard pixel outline, for anything that has to read
-   over the road — the countdown, FINISH, recovery calls. */
+   over the road - the countdown, FINISH, recovery calls. */
 export function textOutlineC(px, str, cx, y, col, edge, scale, track){
   var w = textBoldW(str, scale, track);
   var x = Math.round(cx - w/2);
