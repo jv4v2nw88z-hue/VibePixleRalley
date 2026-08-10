@@ -3615,6 +3615,15 @@ function renderRace(){
 
   g.restore();
 
+  /* Exposure and vignette.
+
+     The world is knocked down about a quarter of a stop and then lifted
+     again only where the car is, so the lit gravel around the car is the
+     brightest thing on screen and grass further away falls off. Both passes
+     are one gradient fill each on the low resolution buffer, which is a few
+     thousand pixels, so this is close to free. */
+  gradeScene(g, r, w, focal + shakeY + lean, W, shakeX);
+
   /* speed streaks: a few short strokes rushing past the edges of the
      frame. Subtle, cheap, and confined to the world buffer so the dash and
      the HUD stay perfectly sharp. */
@@ -3696,6 +3705,25 @@ function drawRoad(g, r, viewR){
     g.fillStyle = S.verge || S.edge;
     g.fill();
 
+    /* contact shadow where the grass meets the verge. A thin band darker
+       than either surface is what seats the road into the ground instead of
+       leaving it pasted on top. */
+    g.save();
+    g.globalAlpha = 0.38;
+    g.lineWidth = 5;
+    g.strokeStyle = '#000000';
+    for(var ao=-1; ao<=1; ao+=2){
+      g.beginPath();
+      for(k=i;k<=end;k++){
+        var an = nodes[k], ax2 = Math.cos(an.a), ay2 = Math.sin(an.a);
+        var ae = (an.hw + 10)*ao;
+        if(k===i) g.moveTo(an.x + ax2*ae, an.y + ay2*ae);
+        else g.lineTo(an.x + ax2*ae, an.y + ay2*ae);
+      }
+      g.stroke();
+    }
+    g.restore();
+
     /* the trees throw a band of shade across the outside of the verge,
        which is what gives a forest stage its corridor */
     g.save();
@@ -3730,16 +3758,21 @@ function drawRoad(g, r, viewR){
     g.closePath(); g.fill();
     g.restore();
 
-    /* the road surface */
+    /* The road surface. Its drawn edge wobbles a few units either side of
+       the true half width, keyed off the node index so it is identical every
+       run and never crawls. The physics reads the unwobbled half width, so
+       the road looks irregular without driving irregularly. */
     g.beginPath();
     for(k=i;k<=end;k++){
       var nd = nodes[k], nx = Math.cos(nd.a), ny = Math.sin(nd.a);
-      var x = nd.x - nx*nd.hw, y = nd.y - ny*nd.hw;
+      var wl2 = nd.hw + (rnd2(k,0,41)*2-1)*4.5;
+      var x = nd.x - nx*wl2, y = nd.y - ny*wl2;
       if(k===i) g.moveTo(x,y); else g.lineTo(x,y);
     }
     for(m=end;m>=i;m--){
       var nd2 = nodes[m], nx2 = Math.cos(nd2.a), ny2 = Math.sin(nd2.a);
-      g.lineTo(nd2.x + nx2*nd2.hw, nd2.y + ny2*nd2.hw);
+      var wr2 = nd2.hw + (rnd2(m,1,43)*2-1)*4.5;
+      g.lineTo(nd2.x + nx2*wr2, nd2.y + ny2*wr2);
     }
     g.closePath();
     g.fillStyle = S.color;
@@ -3772,19 +3805,34 @@ function drawRoad(g, r, viewR){
         g.fillRect(n4.x + bx*l2, n4.y + by*l2, sz, sz);
       }
     }
+    /* tufts of the verge growing over the edge of the surface */
+    var off2 = r.track.off;
+    for(var tf=i;tf<end;tf+=3){
+      if(rnd2(tf,7,53) > 0.55) continue;
+      var tn = nodes[tf];
+      var tx4 = Math.cos(tn.a), ty4 = Math.sin(tn.a);
+      var tsd = rnd2(tf,8,59) < 0.5 ? -1 : 1;
+      var tlat = tsd*(tn.hw - 1 + rnd2(tf,9,61)*7);
+      var tsz = 3 + rnd2(tf,10,67)*5;
+      g.fillStyle = off2.color;
+      g.fillRect(tn.x + tx4*tlat, tn.y + ty4*tlat, tsz, tsz);
+    }
+
     /* the edges, which is what you aim at when you are going well */
     g.lineWidth = 4; g.strokeStyle = S.edge;
     g.beginPath();
     for(var e3=i;e3<=end;e3++){
       var n5 = nodes[e3], cx2 = Math.cos(n5.a), cy2 = Math.sin(n5.a);
-      var ex = n5.x - cx2*n5.hw, ey = n5.y - cy2*n5.hw;
+      var w5 = n5.hw + (rnd2(e3,0,41)*2-1)*4.5;
+      var ex = n5.x - cx2*w5, ey = n5.y - cy2*w5;
       if(e3===i) g.moveTo(ex,ey); else g.lineTo(ex,ey);
     }
     g.stroke();
     g.beginPath();
     for(var e4=i;e4<=end;e4++){
       var n6 = nodes[e4], dx2 = Math.cos(n6.a), dy2 = Math.sin(n6.a);
-      var fx = n6.x + dx2*n6.hw, fy = n6.y + dy2*n6.hw;
+      var w6 = n6.hw + (rnd2(e4,1,43)*2-1)*4.5;
+      var fx = n6.x + dx2*w6, fy = n6.y + dy2*w6;
       if(e4===i) g.moveTo(fx,fy); else g.lineTo(fx,fy);
     }
     g.stroke();
@@ -3954,6 +4002,46 @@ function drawCar(g, r, scale){
     }
   }
   g.restore();
+}
+
+/* -------------------------------------------------------------- grading
+   One multiply pass to pull the overall exposure down, one additive pool of
+   warm light centred on the car, and a corner vignette. Everything here is
+   in BUFFER space, so it costs the same regardless of screen size. */
+function gradeScene(g, r, w, focalCss, W, shakeX){
+  var gfx = GFX();
+  var cx = (W/2 + shakeX)/w.scale, cy = focalCss/w.scale;
+  g.setTransform(1,0,0,1,0,0);
+
+  /* exposure down. Warm shadows rather than neutral grey, so the forest
+     stays green instead of going flat and dead. */
+  g.globalCompositeOperation = 'source-over';
+  g.globalAlpha = 0.34;
+  g.fillStyle = '#0b1710';
+  g.fillRect(0, 0, w.w, w.h);
+  g.globalAlpha = 1;
+
+  /* and back up around the car, so the lit area reads as the light source */
+  if(gfx.glow){
+    var lr = w.h*0.72;
+    g.globalCompositeOperation = 'lighter';
+    var lift = g.createRadialGradient(cx, cy, lr*0.05, cx, cy, lr);
+    lift.addColorStop(0.00, 'rgba(255,238,196,.30)');
+    lift.addColorStop(0.35, 'rgba(214,184,124,.14)');
+    lift.addColorStop(1.00, 'rgba(90,74,44,0)');
+    g.fillStyle = lift;
+    g.fillRect(cx-lr, cy-lr, lr*2, lr*2);
+    g.globalCompositeOperation = 'source-over';
+  }
+
+  /* corner vignette, no more than a third at the extremes */
+  var vr = Math.max(w.w, w.h)*0.78;
+  var vg = g.createRadialGradient(w.w/2, w.h*0.45, vr*0.42, w.w/2, w.h*0.45, vr);
+  vg.addColorStop(0.00, 'rgba(0,0,0,0)');
+  vg.addColorStop(0.72, 'rgba(0,0,0,.12)');
+  vg.addColorStop(1.00, 'rgba(4,7,5,.34)');
+  g.fillStyle = vg;
+  g.fillRect(0, 0, w.w, w.h);
 }
 
 /* ---------------------------------------------------------------- rush */
