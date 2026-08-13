@@ -322,6 +322,23 @@ function buildBuffer(spec, pal, livery, liveryAt, dmg){
     }
   }
 
+  /* ------------------------------------------------------- bounce light */
+  var bounceRows = Math.max(2, Math.round(ph*0.10));
+  for(y=1; y<bounceRows; y++){
+    var bh2 = halfAt(y);
+    for(x=Math.round(cx-bh2+1); x<=Math.round(cx+bh2-1); x++){
+      var cur2 = buf[y*pw+x];
+      if(cur2 === pal.black || cur2 === pal.lamp || cur2 === pal.lampHot) continue;
+      buf[y*pw+x] = y < bounceRows*0.5 ? pal.bounceHot : pal.bounce;
+    }
+  }
+  /* and a touch along the outer shoulders of the bonnet */
+  for(y=bounceRows; y<R(spec.hood[1]); y++){
+    var sh3 = halfAt(y);
+    if((y - bounceRows) % 2) continue;
+    set(cx - sh3 + 1, y, pal.bounce);
+  }
+
   /* ------------------------------- specular: a short catch along the
      top-left shoulder, the highlight a glossy panel throws under a low sun */
   for(y=Math.round(ph*0.12); y<Math.round(ph*0.88); y++){

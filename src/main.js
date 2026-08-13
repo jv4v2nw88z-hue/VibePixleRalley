@@ -642,6 +642,10 @@ function carPalette(paint, damageTier){
     lite:   shade(paint, 0.13),
     hi:     shade(paint, 0.26),
     spec:   shade(paint, 0.40),
+    /* warm bounce off the lit gravel, mixed towards the headlight colour
+       rather than simply lightened, so it reads as reflected light */
+    bounce:    shade(paint, 0.22),
+    bounceHot: shade(paint, 0.34),
     roof:   shade(paint, 0.20),
     roofHi: shade(paint, 0.33),
     dark:   shade(paint,-0.15),
@@ -1598,6 +1602,7 @@ function ensureWorld(){
     world.key = key;
   }
   world.w = bw; world.h = bh;
+  if(gradeCache.key !== bw + 'x' + bh) gradeCache.key = '';
   /* the blit factor: one buffer pixel is this many css pixels */
   world.scale = view.w/bw;
   world.g.imageSmoothingEnabled = false;
@@ -2693,8 +2698,10 @@ function drawDash(r){
   var A = L.aux, th = (A.h - 3)/2;
   var tracOn = driving && (r.car.wheelSpin > 0.28 || r.slipNow > 0.42);
   var diffOn = driving && Math.abs(r.car.steer) > 0.35;
-  drawAuxTile(px, A.x, A.y, A.w, th, iconTraction, tracOn, DC.green, DC.amber);
-  drawAuxTile(px, A.x, A.y + th + 3, A.w, th, iconDiff, diffOn, DC.green, DC.blue);
+  drawAuxTile(px, A.x, A.y, A.w, th, iconTraction, tracOn, DC.green, DC.amber,
+              driving ? 1 - clamp(r.car.wheelSpin*1.4, 0, 1) : 1);
+  drawAuxTile(px, A.x, A.y + th + 3, A.w, th, iconDiff, diffOn, DC.green, DC.blue,
+              driving ? 0.5 + clamp(Math.abs(r.car.steer), 0, 1)*0.5 : 0.5);
 
   /* ---------------- tell-tale strip ---------------- */
   drawStrip(px, L, r);
@@ -2800,14 +2807,23 @@ function drawLever(px, HB, v){
 }
 
 /* label along the top of the tile, glyph centred in what is left */
-function drawAuxTile(px, x, y, w, h, icon, on, colOn, colOff){
+/* Caption along the top, then the glyph and its state bar side by side.
+   Stacking the bar under the glyph left the glyph too small to read at this
+   tile height, so they share the row instead. */
+function drawAuxTile(px, x, y, w, h, icon, on, colOn, colOff, level){
   var top = 9;                                     /* the static caption's row */
-  var free = Math.max(6, h - top - 2);
-  var s = Math.max(1, Math.floor(Math.min(free/8, (w-8)/9)));
-  var ox = x + (w - 9*s)/2, oy2 = y + top + (free - 8*s)/2;
+  var rowY = y + top, rowH = Math.max(6, h - top - 3);
+  var iconW = w*0.46;
+  var s = Math.max(1, Math.floor(Math.min(rowH/8, (iconW-3)/9)));
+  var ox = x + 3, oy2 = rowY + (rowH - 8*s)/2;
   if(on) px(x+2, y+top-1, w-4, h-top-1, 'rgba(79,228,99,.10)');
   icon(function(ix, iy, iw, ih, c){ px(ox + ix*s, oy2 + iy*s, iw*s, ih*s, c); },
        0, 0, s, on ? colOn : '#39434e');
+  var bx = x + iconW + 3, bw3 = w - iconW - 7;
+  var barH = Math.max(4, Math.round(rowH*0.52)), by3 = rowY + (rowH - barH)/2;
+  px(bx-1, by3-1, bw3+2, barH+2, '#05070a');
+  lampRow(px, bx, by3, bw3, barH, 4, Math.round(clamp(level, 0, 1)*4),
+          on ? colOn : DC.green, '#1a2129');
   if(on) px(x+2, y+2, w-4, 1, colOff);
 }
 
@@ -3986,6 +4002,21 @@ function drawCar(g, r, scale){
      sprite grid stays purely visual and never alters how big it drives */
   var wh = CAR_WORLD_LEN, ww = wh * sp.pw / sp.ph;
   var braking = ctl.brake > 0.25 || ctl.hbrake > 0.4;
+  if(GFX().glow){
+    var tg = braking ? 0.55 : 0.20;
+    var trad = braking ? 62 : 34;
+    var tx2 = c.x - Math.sin(c.a)*wh*0.55, ty2 = c.y + Math.cos(c.a)*wh*0.55;
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = tg;
+    var tgl = g.createRadialGradient(tx2, ty2, 2, tx2, ty2, trad);
+    tgl.addColorStop(0.00, 'rgba(255,90,68,.85)');
+    tgl.addColorStop(0.40, 'rgba(190,40,28,.30)');
+    tgl.addColorStop(1.00, 'rgba(90,16,10,0)');
+    g.fillStyle = tgl;
+    g.fillRect(tx2-trad, ty2-trad, trad*2, trad*2);
+    g.restore();
+  }
   g.save();
   g.translate(c.x, c.y);
   g.rotate(c.a);
@@ -4008,22 +4039,35 @@ function drawCar(g, r, scale){
    One multiply pass to pull the overall exposure down, one additive pool of
    warm light centred on the car, and a corner vignette. Everything here is
    in BUFFER space, so it costs the same regardless of screen size. */
+var gradeCache = { key:'', dim:null };
 function gradeScene(g, r, w, focalCss, W, shakeX){
   var gfx = GFX();
   var cx = (W/2 + shakeX)/w.scale, cy = focalCss/w.scale;
   g.setTransform(1,0,0,1,0,0);
 
-  /* exposure down. Warm shadows rather than neutral grey, so the forest
-     stays green instead of going flat and dead. */
+  /* Exposure and vignette in ONE fill. The exposure is the innermost stop of
+     the same radial the vignette uses, so the buffer is darkened once rather
+     than twice. Warm shadow rather than neutral grey, so the forest stays
+     green instead of going dead. The gradient is fixed in buffer space, so
+     it is built once per buffer size and not once per frame. */
+  var key = w.w + 'x' + w.h;
+  if(key !== gradeCache.key){
+    var vr = Math.max(w.w, w.h)*0.80;
+    var vg = g.createRadialGradient(w.w/2, w.h*0.45, vr*0.30, w.w/2, w.h*0.45, vr);
+    vg.addColorStop(0.00, 'rgba(11,23,16,.32)');
+    vg.addColorStop(0.62, 'rgba(9,18,13,.40)');
+    vg.addColorStop(1.00, 'rgba(4,8,6,.58)');
+    gradeCache.dim = vg;
+    gradeCache.key = key;
+  }
   g.globalCompositeOperation = 'source-over';
-  g.globalAlpha = 0.34;
-  g.fillStyle = '#0b1710';
+  g.fillStyle = gradeCache.dim;
   g.fillRect(0, 0, w.w, w.h);
-  g.globalAlpha = 1;
 
-  /* and back up around the car, so the lit area reads as the light source */
+  /* then lift it back up around the car, so the lit gravel reads as the
+     light source and everything else falls away from it */
   if(gfx.glow){
-    var lr = w.h*0.72;
+    var lr = w.h*0.66;
     g.globalCompositeOperation = 'lighter';
     var lift = g.createRadialGradient(cx, cy, lr*0.05, cx, cy, lr);
     lift.addColorStop(0.00, 'rgba(255,238,196,.30)');
@@ -4033,15 +4077,6 @@ function gradeScene(g, r, w, focalCss, W, shakeX){
     g.fillRect(cx-lr, cy-lr, lr*2, lr*2);
     g.globalCompositeOperation = 'source-over';
   }
-
-  /* corner vignette, no more than a third at the extremes */
-  var vr = Math.max(w.w, w.h)*0.78;
-  var vg = g.createRadialGradient(w.w/2, w.h*0.45, vr*0.42, w.w/2, w.h*0.45, vr);
-  vg.addColorStop(0.00, 'rgba(0,0,0,0)');
-  vg.addColorStop(0.72, 'rgba(0,0,0,.12)');
-  vg.addColorStop(1.00, 'rgba(4,7,5,.34)');
-  g.fillStyle = vg;
-  g.fillRect(0, 0, w.w, w.h);
 }
 
 /* ---------------------------------------------------------------- rush */
