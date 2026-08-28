@@ -652,10 +652,10 @@ function carPalette(paint, damageTier){
     darker: shade(paint,-0.28),
     deep:   shade(paint,-0.44),
     accent: ACCENTS[paint] || '#ffffff',
-    glass:      damageTier>=1 ? '#8ba0af' : '#3d5d7a',
-    glassLite:  damageTier>=1 ? '#a9bcc9' : '#6d90ad',
-    glassDark:  damageTier>=1 ? '#68808f' : '#1d3247',
-    glassSheen: damageTier>=1 ? '#dfe9f0' : '#9fc4e0',
+    glass:      damageTier>=1 ? '#7d919f' : '#25384b',
+    glassLite:  damageTier>=1 ? '#9aabb8' : '#3d566e',
+    glassDark:  damageTier>=1 ? '#5a7080' : '#111d2a',
+    glassSheen: damageTier>=1 ? '#cfdae2' : '#86aecb',
     tyre:'#171a1c', tyreLite:'#2b3034', tyreDark:'#0b0d0f',
     vent:'#2a2f34',
     chrome:'#b9bec4', chromeDark:'#767b82',
@@ -2431,13 +2431,33 @@ function buildDashBase(L){
   /* ---------------- the moulding itself ---------------- */
   /* a soft top rail so the dash reads as a shaped binnacle rather than a
      slab, then the carbon face, then the deep footwell shadow */
+  /* One continuous tonal ramp, a row at a time. The top third falls away
+     quickly from the lit edge, the rest drifts slowly into shadow, which is
+     how a curved plastic moulding actually reads under a single light. */
   px(0, 0, GW, DASH_GH, DC.shell);
-  var band = [[0,'#39424d'],[1,'#252d37'],[2,'#1c232b'],[4,'#191d23'],
-              [DASH_GH-10,'#141920'],[DASH_GH-5,'#0e1218'],[DASH_GH-2,'#080b0f']];
-  for(i=0;i<band.length-1;i++) px(0, band[i][0], GW, band[i+1][0]-band[i][0], band[i][1]);
-  px(0, band[band.length-1][0], GW, DASH_GH-band[band.length-1][0], band[band.length-1][1]);
-  px(0, 0, GW, 1, '#6d7a89');                            /* chrome catch */
-  px(0, 1, GW, 1, 'rgba(255,255,255,.10)');
+  for(i=0;i<DASH_GH;i++){
+    var tt = i/(DASH_GH-1);
+    var k3 = tt < 0.22 ? (tt/0.22)*0.62 : 0.62 + ((tt-0.22)/0.78)*0.38;
+    var lv = 1 - k3;
+    var rr = Math.round(11 + lv*44);
+    var gg = Math.round(14 + lv*50);
+    var bb = Math.round(18 + lv*58);
+    px(0, i, GW, 1, 'rgb('+rr+','+gg+','+bb+')');
+  }
+  px(0, 0, GW, 1, '#8593a3');                            /* lit top edge */
+  px(0, 1, GW, 1, '#5d6a78');
+  px(0, DASH_GH-1, GW, 1, '#04060a');
+
+  /* A sparse, irregular grain instead of a regular rib. Keyed off the row
+     and column so it never lines up into stripes or into what looks like a
+     border around a control. */
+  for(var ny=2; ny<DASH_GH-2; ny+=2){
+    for(var nx=0; nx<GW; nx+=7){
+      var jx = nx + Math.floor(rnd2(nx, ny, 71)*7);
+      px(jx, ny, 1, 1, rnd2(nx, ny, 73) < 0.5 ? 'rgba(0,0,0,.10)'
+                                              : 'rgba(255,255,255,.022)');
+    }
+  }
 
   /* Moulded texture: a fine rib running the width of the panel. Continuous
      lines, so nothing here can ever align into what looks like a dashed
@@ -2462,11 +2482,31 @@ function buildDashBase(L){
   for(var cy2=-bnH+2; cy2<0; cy2+=3)
     px(bnX0+2, cy2, bnX1-bnX0-4, 1, 'rgba(0,0,0,.13)');
 
-  /* panel seams framing the instrument bay */
-  px(L.leftEnd + 1, 2, 1, DASH_GH-4, DC.seam);
-  px(L.leftEnd + 2, 2, 1, DASH_GH-4, 'rgba(255,255,255,.06)');
-  px(L.rightStart - 2, 2, 1, DASH_GH-4, DC.seam);
-  px(L.rightStart - 1, 2, 1, DASH_GH-4, 'rgba(255,255,255,.06)');
+  /* The instrument bay is a recessed plate: darker than the moulding, with
+     the shadow along its top edge and the catch along its bottom, which is
+     the opposite of a raised part and is what makes it read as sunken. */
+  var bayX = L.leftEnd + 1, bayW = L.rightStart - L.leftEnd - 2;
+  px(bayX, 1, bayW, L.UH-2, 'rgba(0,0,0,.22)');
+  px(bayX, 1, bayW, 1, 'rgba(0,0,0,.55)');
+  px(bayX, 2, bayW, 1, 'rgba(0,0,0,.30)');
+  px(bayX, L.UH-3, bayW, 1, 'rgba(255,255,255,.07)');
+  px(bayX, 1, 1, L.UH-3, 'rgba(0,0,0,.45)');
+  px(bayX+bayW-1, 1, 1, L.UH-3, 'rgba(255,255,255,.05)');
+  /* Angular end plates. The reference moulding is faceted rather than
+     rounded: each end carries a chamfered panel with a lit upper edge and a
+     shadowed lower one. */
+  var fpW = Math.max(10, L.leftEnd*0.34);
+  for(var fs2=0; fs2<2; fs2++){
+    var fx0 = fs2 ? GW - fpW - 2 : 2;
+    for(var fy2=3; fy2<L.UH-3; fy2++){
+      var ft = (fy2-3)/Math.max(1, L.UH-6);
+      var cham = Math.round((1-ft)*(1-ft)*fpW*0.42);
+      var ax3 = fs2 ? fx0 + cham : fx0;
+      var aw3 = fpW - cham;
+      px(ax3, fy2, aw3, 1, fy2 < 5 ? '#4e5a68' : (ft < 0.5 ? 'rgba(255,255,255,.035)' : 'rgba(0,0,0,.14)'));
+    }
+    px(fs2 ? fx0 + fpW - 1 : fx0, 4, 1, L.UH-8, fs2 ? '#05070a' : '#5b6875');
+  }
   for(i=0;i<2;i++){
     screw(px, L.x0 - 2, 8 + i*(L.UH-22));
     screw(px, L.x1, 8 + i*(L.UH-22));
@@ -3626,7 +3666,7 @@ function renderRace(){
   drawParticles(g, r, false);
   if(gfx.lights) drawHeadlights(g, r, gfx);
   drawProps(g, r, viewR, theme, gfx, scale, cull);
-  drawCar(g, r, scale);
+  drawCarGround(g, r, scale);
   drawParticles(g, r, true);
 
   g.restore();
@@ -3648,6 +3688,9 @@ function renderRace(){
   /* ---- blit, then the crisp layer ---- */
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(w.cv, 0, 0, w.w, w.h, 0, 0, W, H);
+
+  /* the car itself, at full device resolution over the blitted world */
+  drawCarSharp(ctx, r, scaleCss, W, focal + shakeY + lean, shakeX);
 
   drawHudTop(ctx, r);
   drawMinimap(ctx, r);
@@ -3993,11 +4036,20 @@ function drawProps(g, r, viewR, theme, gfx, scale, cull){
   }
 }
 
-/* ------------------------------------------------------------------ car */
-function drawCar(g, r, scale){
+/* ------------------------------------------------------------------ car
+   Drawn in two parts. What the car puts ON THE GROUND - its shadow and the
+   glow off its lamps - belongs in the world buffer, at world pixel size,
+   because it is lighting the scenery. The car itself is drawn afterwards
+   onto the screen canvas at full device resolution, so the sprite's detail
+   is not thrown away by the buffer. That split is what the reference shows:
+   chunky ground, a finer car sitting on it. */
+function carArt(r){
+  var tier = r.car.damage>72 ? 2 : (r.car.damage>34 ? 1 : 0);
+  return r.sprites[tier];
+}
+function drawCarGround(g, r, scale){
   var c = r.car;
-  var tier = c.damage>72 ? 2 : (c.damage>34 ? 1 : 0);
-  var sp = r.sprites[tier];
+  var sp = carArt(r);
   /* the car occupies a fixed footprint in world units, so changing the
      sprite grid stays purely visual and never alters how big it drives */
   var wh = CAR_WORLD_LEN, ww = wh * sp.pw / sp.ph;
@@ -4017,12 +4069,29 @@ function drawCar(g, r, scale){
     g.fillRect(tx2-trad, ty2-trad, trad*2, trad*2);
     g.restore();
   }
+  /* the shadow is the car's own silhouette, offset down and right to match
+     the light. It stays in the buffer: it is a mark on the ground. */
   g.save();
   g.translate(c.x, c.y);
   g.rotate(c.a);
-  /* the shadow is the car's own silhouette, offset down and right to match
-     the light, and pixellated exactly like everything else */
   g.drawImage(sp.shadow, -ww/2 + ww*0.06, -wh/2 + wh*0.05, ww, wh);
+  g.restore();
+}
+
+function drawCarSharp(g, r, scaleCss, W, focalCss, shakeX){
+  var c = r.car;
+  var sp = carArt(r);
+  var wh = CAR_WORLD_LEN, ww = wh * sp.pw / sp.ph;
+  var braking = ctl.brake > 0.25 || ctl.hbrake > 0.4;
+  g.save();
+  /* the same camera transform the world buffer used, in CSS pixels */
+  g.translate(W/2 + shakeX, focalCss);
+  g.scale(scaleCss, scaleCss);
+  g.rotate(-r.camA);
+  g.translate(-r.camX, -r.camY);
+  g.translate(c.x, c.y);
+  g.rotate(c.a);
+  g.imageSmoothingEnabled = false;
   g.drawImage(sp.canvas, -ww/2, -wh/2, ww, wh);
   if(braking && sp.lamps){
     var ux = ww/sp.pw, uy = wh/sp.ph;
@@ -4756,7 +4825,7 @@ function refreshMoney(){
 function renderMenu(){
   refreshMoney();
   var cs = curCarSave();
-  var sp = getCarSprite(save.current, cs.paint, cs.livery, 0, 4);
+  var sp = getCarSprite(save.current, cs.paint, cs.livery, 0, 2);
   var mc = document.getElementById('menu-car');
   var g = mc.getContext('2d');
   g.imageSmoothingEnabled = false;
@@ -5293,7 +5362,7 @@ function renderCars(body){
       body.appendChild(row);
       var g = cvs.getContext('2d');
       g.imageSmoothingEnabled = false;
-      var sp = getCarSprite(def.id, cs.paint, cs.livery, 0, 2);
+      var sp = getCarSprite(def.id, cs.paint, cs.livery, 0, 1);
       g.drawImage(sp.canvas, (cvs.width-sp.w)/2, (cvs.height-sp.h)/2);
     })(CARS[i], i);
   }
